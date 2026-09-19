@@ -8,6 +8,69 @@ Static recompilation of Wii Party for native PC.
 
 Wii Party Recomp is a project that aims to translate the original game executable into C++ source code that can be compiled natively, so the game can run on PC without an emulator.
 
+## Current state
+
+Working today:
+
+- The main executable (about 6950 functions) and all 115 REL modules are translated to C++ and compile.
+- The game boots through the Revolution OS initialisation, runs its threads and video retrace interrupts, loads and links its modules, and reaches its scene task loop.
+- The IOS layer is emulated at request level: disc reads from the extracted file system and a virtual NAND with a default `SYSCONF`.
+
+Not implemented yet: graphics (GX), audio (DSP), controller input and window output. The game runs headless and prints diagnostics to the console. Progress notes are in `DECOMP_PROGRESS.md`.
+
+## Setup
+
+Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (for `nodtool`), Python 3, JDK 21+, [Ghidra](https://github.com/NationalSecurityAgency/ghidra/releases) 12.x unpacked into `ghidra/install/` and the Ghidra GameCube Loader extension (Apache-2.0, provides the `Gekko_Broadway` processor with paired singles) installed in Ghidra.
+
+1. Install the disc tool:
+
+   ```
+   cargo install nodtool
+   ```
+
+2. Put your own dump of Wii Party in `game/` (ISO, WBFS, RVZ or CISO; e.g. `game/wiiparty.rvz`).
+3. Extract it:
+
+   ```
+   nodtool extract game/wiiparty.rvz extracted
+   ```
+
+   The recompiler inputs are `extracted/sys/main.dol` and the LZ11-compressed modules in `extracted/files/rel/*.rel.lz`; assets live in the rest of `extracted/files/`.
+
+4. Unpack the REL modules and import the DOL into Ghidra. Optionally, name the functions first: in Dolphin, run the game, use Symbols > Generate Symbols From > Signature Database, then save the symbol map as `reference/symbols/SUPP01.map`.
+
+   ```
+   python tools/unpack_rels.py
+   python tools/import_map.py
+   python tools/ghidra_import.py
+   ```
+
+   Unpacked modules go to `build/rel/`, the converted symbol names to `build/dolphin_symbols.csv` and the Ghidra project to `ghidra/projects/`. The symbol map stays local and is never committed.
+
+5. Generate the C++ from the DOL, build it and run the tests:
+
+   ```
+   python tools/recomp.py
+   cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
+   cmake --build build/out
+   ctest --test-dir build/out
+   ```
+
+   `tools/recomp.py` reads `analysis/dol_functions.csv` and writes the generated sources to `build/recomp/`. Game modules are translated separately with `python tools/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/rel_code/`; run `tools/recomp.py` again afterwards so the DOL provides every function the modules call.
+
+   Run the result with `build/out/wiiparty extracted [seconds] [nand directory]`. The virtual NAND (settings and saves) lives in `game/nand`.
+
+6. Optional, to drive Ghidra from an MCP client: create the virtual environment and install the bridge.
+
+   ```
+   uv venv .venv
+   uv pip install --python .venv/Scripts/python.exe -r tools/requirements.txt
+   ```
+
+   The [GhidraMCP](https://github.com/bethington/ghidra-mcp) 6.0.0 extension must be unpacked into `%APPDATA%\ghidra\ghidra_12.1.3_PUBLIC\Extensions\` and enabled in Ghidra. Its server listens on `http://127.0.0.1:8089`.
+
+`game/`, `extracted/` and `reference/` (optional local material such as an emulator and RAM dumps of your own copy) are ignored by Git and must never be committed.
+
 ## Legal notice
 
 This project does not include any copyrighted assets, game code or binaries from Nintendo. You must provide your own legally obtained copy of Wii Party. This project is not affiliated with or endorsed by Nintendo.

@@ -1,0 +1,55 @@
+cmake_minimum_required(VERSION 3.20)
+project(wiiparty_recomp CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(WP_RECOMP_DIR "${CMAKE_SOURCE_DIR}/build/recomp" CACHE PATH "Directory with generated recompiled sources")
+
+option(WP_TRACE "Record function entries for diagnostics" ON)
+
+add_library(wp_runtime STATIC src/runtime.cpp src/dol.cpp src/boot.cpp src/hle.cpp src/ios.cpp src/interrupts.cpp src/threads.cpp src/format.cpp src/disc.cpp src/modules.cpp src/nand.cpp)
+target_include_directories(wp_runtime PUBLIC include)
+if(WP_TRACE)
+    target_compile_definitions(wp_runtime PUBLIC WP_TRACE)
+endif()
+target_compile_options(wp_runtime PRIVATE -Wall -Wextra)
+
+set(WP_MODULES_DIR "${CMAKE_SOURCE_DIR}/build/rel_code" CACHE PATH "Directory with generated recompiled module sources")
+file(GLOB WP_MODULE_SOURCES CONFIGURE_DEPENDS "${WP_MODULES_DIR}/*.cpp")
+
+file(GLOB WP_DOL_SOURCES CONFIGURE_DEPENDS "${WP_RECOMP_DIR}/*.cpp")
+if(WP_DOL_SOURCES)
+    add_library(wp_dol STATIC ${WP_DOL_SOURCES})
+    target_include_directories(wp_dol PUBLIC "${WP_RECOMP_DIR}")
+    if(WP_MODULE_SOURCES)
+        target_sources(wp_dol PRIVATE ${WP_MODULE_SOURCES})
+        target_include_directories(wp_dol PRIVATE "${WP_MODULES_DIR}")
+    else()
+        target_sources(wp_dol PRIVATE src/no_modules.cpp)
+    endif()
+    target_link_libraries(wp_dol PUBLIC wp_runtime)
+    target_compile_options(wp_dol PRIVATE -Wall -Wextra -Wno-unused-label -Wno-unused-parameter -Wno-clobbered)
+endif()
+
+enable_testing()
+
+add_executable(runtime_tests tests/runtime_tests.cpp)
+target_link_libraries(runtime_tests PRIVATE wp_runtime)
+target_compile_options(runtime_tests PRIVATE -Wall -Wextra)
+add_test(NAME runtime_tests COMMAND runtime_tests)
+add_test(NAME ppc_tests COMMAND python -m unittest discover -s "${CMAKE_SOURCE_DIR}/tests")
+
+if(TARGET wp_dol)
+    add_executable(lifted_tests tests/lifted_tests.cpp)
+    target_link_libraries(lifted_tests PRIVATE "$<LINK_GROUP:RESCAN,wp_dol,wp_runtime>")
+    add_test(NAME lifted_tests COMMAND lifted_tests)
+endif()
+
+if(TARGET wp_dol)
+    add_executable(wiiparty src/main.cpp)
+    target_link_libraries(wiiparty PRIVATE "$<LINK_GROUP:RESCAN,wp_dol,wp_runtime>")
+    target_link_options(wiiparty PRIVATE -Wl,--stack,536870912)
+    target_compile_options(wiiparty PRIVATE -Wall -Wextra)
+endif()

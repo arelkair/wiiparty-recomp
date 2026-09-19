@@ -1,0 +1,15 @@
+name
+EXIInit
+EXILock
+EXIUnlock
+EXIProbe
+EXIGetID
+__OSInitAudioSystem
+OSRealModeCall
+IOSSendRequest
+OSLoadContext
+OSSwitchFiber
+WPADInit
+KPADInit
+OSReport
+OSPanic

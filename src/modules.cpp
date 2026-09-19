@@ -1,0 +1,119 @@
+#include "wp/modules.h"
+
+#include <cstdio>
+
+namespace wp {
+
+namespace {
+
+constexpr uint32_t kModuleListHead = 0x800030C8;
+constexpr uint32_t kInfoNext = 0x04;
+constexpr uint32_t kInfoIdentifier = 0x00;
+constexpr uint32_t kInfoSectionCount = 0x0C;
+constexpr uint32_t kInfoSectionTable = 0x10;
+constexpr uint32_t kHeaderBssSize = 0x20;
+constexpr uint32_t kSectionEntrySize = 8;
+constexpr uint32_t kMaxModules = 64;
+constexpr uint32_t kFnvOffset = 2166136261u;
+constexpr uint32_t kFnvPrime = 16777619u;
+
+uint32_t mix(uint32_t hash, uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) {
+        hash = (hash ^ ((value >> shift) & 0xFF)) * kFnvPrime;
+    }
+    return hash;
+}
+
+uint32_t section_table(uint32_t info) {
+    uint32_t table = rd32(info + kInfoSectionTable);
+    return table < 0x80000000 ? info + table : table;
+}
+
+uint32_t signature_of(uint32_t info) {
+    uint32_t count = rd32(info + kInfoSectionCount);
+    uint32_t table = section_table(info);
+    uint32_t hash = mix(kFnvOffset, rd32(info + kInfoIdentifier));
+    hash = mix(hash, count);
+    for (uint32_t i = 0; i < count; i++) {
+        hash = mix(hash, rd32(table + i * kSectionEntrySize + 4));
+    }
+    return mix(hash, rd32(info + kHeaderBssSize));
+}
+
+const ModuleDescriptor* find_descriptor(uint32_t signature) {
+    for (size_t i = 0; i < g_module_count; i++) {
+        if (g_module_table[i]->signature == signature) {
+            return g_module_table[i];
+        }
+    }
+    return nullptr;
+}
+
+void update_bases(const ModuleDescriptor& descriptor, uint32_t info) {
+    uint32_t table = section_table(info);
+    for (uint32_t i = 0; i < descriptor.section_count; i++) {
+        descriptor.bases[i] = rd32(table + i * kSectionEntrySize) & ~1u;
+    }
+}
+
+const ModuleFunction* find_function(const ModuleDescriptor& descriptor, uint32_t section, uint32_t offset) {
+    for (size_t i = 0; i < descriptor.function_count; i++) {
+        if (descriptor.functions[i].section == section && descriptor.functions[i].offset == offset) {
+            return &descriptor.functions[i];
+        }
+    }
+    return nullptr;
+}
+
+}
+
+bool call_module_function(Cpu& c, uint32_t address) {
+    uint32_t info = rd32(kModuleListHead);
+    for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
+        const ModuleDescriptor* descriptor = find_descriptor(signature_of(info));
+        if (!descriptor) {
+            continue;
+        }
+        update_bases(*descriptor, info);
+        for (uint32_t section = 1; section < descriptor->section_count; section++) {
+            uint32_t size = rd32(section_table(info) + section * kSectionEntrySize + 4);
+            uint32_t base = descriptor->bases[section];
+            if (base != 0 && address >= base && address < base + size) {
+                const ModuleFunction* function = find_function(*descriptor, section, address - base);
+                if (function) {
+                    function->function(c);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+uint32_t external_address(uint32_t module_identifier, uint32_t section, uint32_t offset) {
+    uint32_t info = rd32(kModuleListHead);
+    for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
+        if (rd32(info + kInfoIdentifier) == module_identifier) {
+            return (rd32(section_table(info) + section * kSectionEntrySize) & ~1u) + offset;
+        }
+    }
+    return 0;
+}
+
+void describe_loaded_modules(uint32_t address) {
+    std::fprintf(stderr, "address %08x, loaded modules:\n", address);
+    uint32_t info = rd32(kModuleListHead);
+    for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
+        uint32_t count = rd32(info + kInfoSectionCount);
+        uint32_t table = section_table(info);
+        std::fprintf(stderr, "  module id %u at %08x signature %08x, %u sections:", rd32(info + kInfoIdentifier), info,
+                     signature_of(info), count);
+        for (uint32_t i = 0; i < count; i++) {
+            std::fprintf(stderr, " [%u]%08x+%x", i, rd32(table + i * kSectionEntrySize) & ~1u,
+                         rd32(table + i * kSectionEntrySize + 4));
+        }
+        std::fputc('\n', stderr);
+    }
+}
+
+}

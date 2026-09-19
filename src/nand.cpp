@@ -1,0 +1,223 @@
+#include "wp/nand.h"
+
+#include <cstdio>
+#include <filesystem>
+#include <map>
+#include <vector>
+
+#include "wp/memory.h"
+
+namespace wp::nand {
+
+namespace {
+
+namespace fs = std::filesystem;
+
+constexpr uint32_t kModeRead = 1;
+constexpr uint32_t kModeWrite = 2;
+constexpr size_t kSysconfSize = 0x4000;
+constexpr uint8_t kTypeBigArray = 1;
+constexpr uint8_t kTypeSmallArray = 2;
+constexpr uint8_t kTypeByte = 3;
+constexpr uint8_t kTypeLong = 5;
+constexpr uint8_t kTypeBool = 7;
+constexpr uint8_t kLanguageEnglish = 1;
+
+fs::path g_root;
+std::map<int32_t, std::FILE*> g_files;
+int32_t g_next_handle = 1;
+
+fs::path host_path(const std::string& path) {
+    fs::path relative;
+    for (const auto& part : fs::path(path).relative_path()) {
+        if (part != "." && part != "..") {
+            relative /= part;
+        }
+    }
+    return g_root / relative;
+}
+
+void append16(std::vector<uint8_t>& out, uint16_t value) {
+    out.push_back(static_cast<uint8_t>(value >> 8));
+    out.push_back(static_cast<uint8_t>(value));
+}
+
+void add_item(std::vector<std::vector<uint8_t>>& items, uint8_t type, const std::string& name,
+              const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> item;
+    item.push_back(static_cast<uint8_t>((type << 5) | (name.size() - 1)));
+    item.insert(item.end(), name.begin(), name.end());
+    if (type == kTypeBigArray) {
+        append16(item, static_cast<uint16_t>(data.size() - 1));
+    } else if (type == kTypeSmallArray) {
+        item.push_back(static_cast<uint8_t>(data.size() - 1));
+    }
+    item.insert(item.end(), data.begin(), data.end());
+    items.push_back(item);
+}
+
+std::vector<uint8_t> default_sysconf() {
+    std::vector<std::vector<uint8_t>> items;
+    add_item(items, kTypeByte, "IPL.LNG", {kLanguageEnglish});
+    add_item(items, kTypeByte, "IPL.AR", {0});
+    add_item(items, kTypeByte, "IPL.SND", {1});
+    add_item(items, kTypeByte, "IPL.PGS", {0});
+    add_item(items, kTypeByte, "IPL.E60", {0});
+    add_item(items, kTypeByte, "IPL.SSV", {1});
+    add_item(items, kTypeBool, "IPL.CB", {1});
+    add_item(items, kTypeLong, "IPL.UPT", {0, 0, 0, 0});
+    add_item(items, kTypeSmallArray, "IPL.IDL", {0, 1});
+    add_item(items, kTypeSmallArray, "IPL.AREA", {'E', 'U', 'R', 0});
+    add_item(items, kTypeSmallArray, "IPL.CODE", {'L', 'E', 'H', 0});
+    add_item(items, kTypeByte, "BT.MOT", {1});
+    add_item(items, kTypeByte, "BT.SPKV", {88});
+    add_item(items, kTypeLong, "BT.SENS", {0, 0, 0, 3});
+    add_item(items, kTypeByte, "BT.BAR", {1});
+
+    std::vector<uint8_t> file;
+    file.push_back('S');
+    file.push_back('C');
+    file.push_back('v');
+    file.push_back('0');
+    append16(file, static_cast<uint16_t>(items.size()));
+    size_t position = 4 + 2 + 2 * items.size();
+    for (const auto& item : items) {
+        append16(file, static_cast<uint16_t>(position));
+        position += item.size();
+    }
+    for (const auto& item : items) {
+        file.insert(file.end(), item.begin(), item.end());
+    }
+    file.resize(kSysconfSize, 0);
+    file[kSysconfSize - 4] = 'S';
+    file[kSysconfSize - 3] = 'C';
+    file[kSysconfSize - 2] = 'e';
+    file[kSysconfSize - 1] = 'd';
+    return file;
+}
+
+void ensure_sysconf() {
+    fs::path path = host_path("/shared2/sys/SYSCONF");
+    if (fs::exists(path)) {
+        return;
+    }
+    fs::create_directories(path.parent_path());
+    std::vector<uint8_t> data = default_sysconf();
+    std::FILE* file = std::fopen(path.string().c_str(), "wb");
+    if (file) {
+        std::fwrite(data.data(), 1, data.size(), file);
+        std::fclose(file);
+    }
+}
+
+}
+
+bool mount(const std::string& root) {
+    g_root = root;
+    std::error_code error;
+    fs::create_directories(g_root, error);
+    if (error) {
+        return false;
+    }
+    ensure_sysconf();
+    return true;
+}
+
+std::string host_directory(const std::string& path) {
+    return host_path(path).string();
+}
+
+bool exists(const std::string& path) {
+    return fs::exists(host_path(path));
+}
+
+int32_t open(const std::string& path, uint32_t mode) {
+    fs::path target = host_path(path);
+    if (!fs::is_regular_file(target)) {
+        return kNotFound;
+    }
+    const char* flags = (mode & kModeWrite) ? "r+b" : "rb";
+    std::FILE* file = std::fopen(target.string().c_str(), flags);
+    if (!file) {
+        return kNotFound;
+    }
+    int32_t handle = g_next_handle++;
+    g_files[handle] = file;
+    return handle;
+}
+
+int32_t read(int32_t handle, uint32_t destination, uint32_t length) {
+    auto it = g_files.find(handle);
+    if (it == g_files.end()) {
+        return kInvalid;
+    }
+    return static_cast<int32_t>(std::fread(host(destination), 1, length, it->second));
+}
+
+int32_t write(int32_t handle, uint32_t source, uint32_t length) {
+    auto it = g_files.find(handle);
+    if (it == g_files.end()) {
+        return kInvalid;
+    }
+    int32_t written = static_cast<int32_t>(std::fwrite(host(source), 1, length, it->second));
+    std::fflush(it->second);
+    return written;
+}
+
+int32_t seek(int32_t handle, int32_t offset, int32_t whence) {
+    auto it = g_files.find(handle);
+    if (it == g_files.end()) {
+        return kInvalid;
+    }
+    static const int kOrigins[] = {SEEK_SET, SEEK_CUR, SEEK_END};
+    if (whence < 0 || whence > 2 || std::fseek(it->second, offset, kOrigins[whence]) != 0) {
+        return kInvalid;
+    }
+    return static_cast<int32_t>(std::ftell(it->second));
+}
+
+void close(int32_t handle) {
+    auto it = g_files.find(handle);
+    if (it != g_files.end()) {
+        std::fclose(it->second);
+        g_files.erase(it);
+    }
+}
+
+int32_t create_file(const std::string& path) {
+    fs::path target = host_path(path);
+    if (fs::exists(target)) {
+        return kExists;
+    }
+    std::error_code error;
+    fs::create_directories(target.parent_path(), error);
+    std::FILE* file = std::fopen(target.string().c_str(), "wb");
+    if (!file) {
+        return kInvalid;
+    }
+    std::fclose(file);
+    return 0;
+}
+
+int32_t create_directory(const std::string& path) {
+    fs::path target = host_path(path);
+    if (fs::exists(target)) {
+        return kExists;
+    }
+    std::error_code error;
+    fs::create_directories(target, error);
+    return error ? kInvalid : 0;
+}
+
+int32_t remove(const std::string& path) {
+    std::error_code error;
+    return fs::remove_all(host_path(path), error) > 0 ? 0 : kNotFound;
+}
+
+int32_t rename(const std::string& from, const std::string& to) {
+    std::error_code error;
+    fs::rename(host_path(from), host_path(to), error);
+    return error ? kNotFound : 0;
+}
+
+}

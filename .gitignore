@@ -1,69 +1,35 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+/game/
+/extracted/
+/ghidra/projects/
+/ghidra/install/
+/ghidra/extensions/
+/reference/
+/.venv/
+/build/
+/.cache/
+/.claude/
+/CLAUDE.md
+/.mcp.json
+*.iso
+*.wbfs
+*.rvz
+*.ciso
+*.gcm
+*.wia
+*.dol
+*.rel
+*.arc
+*.bin
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
 *.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
+*.ilk
+*.exe
 *.dll
-*.so.*
-
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
 *.a
 *.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-# Build directories
-build/
-Build/
-build-*/
-
-# CMake generated files
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-install_manifest.txt
-compile_commands.json
-
-# Temporary files
-*.tmp
 *.log
+*.tmp
 *.bak
 *.swp
-
-# vcpkg
-vcpkg_installed/
-
-# debug information files
-*.dwo
-
-# test output & cache
-Testing/
-.cache/
+__pycache__/
