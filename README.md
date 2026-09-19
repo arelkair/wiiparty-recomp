@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** early development. Nothing is playable yet.
+> **Status:** This project is a work in progress and is not yet playable.
 
 ## About
 
