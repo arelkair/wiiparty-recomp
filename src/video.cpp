@@ -13,6 +13,7 @@
 
 #include "wp/gx.h"
 #include "wp/memory.h"
+#include "wp/nand.h"
 
 namespace wp::video {
 
@@ -28,7 +29,8 @@ constexpr uint32_t kMaxHeight = 576;
 constexpr uint32_t kDefaultHeight = 480;
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
-constexpr double kDisplayAspect = 4.0 / 3.0;
+constexpr double kStandardAspect = 4.0 / 3.0;
+constexpr double kWideAspect = 16.0 / 9.0;
 constexpr const char* kWindowClass = "WiiPartyRecomp";
 
 std::mutex g_lock;
@@ -36,6 +38,7 @@ std::vector<uint32_t> g_pixels;
 uint32_t g_width = 0;
 uint32_t g_height = 0;
 std::atomic<HWND> g_window{nullptr};
+double g_aspect = kStandardAspect;
 
 uint32_t crc32(const uint8_t* data, size_t size, uint32_t crc = 0xFFFFFFFFu) {
     for (size_t i = 0; i < size; i++) {
@@ -141,10 +144,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             info.bmiHeader.biBitCount = 32;
             info.bmiHeader.biCompression = BI_RGB;
             int target_width = client.right;
-            int target_height = static_cast<int>(target_width / kDisplayAspect);
+            int target_height = static_cast<int>(target_width / g_aspect);
             if (target_height > client.bottom) {
                 target_height = client.bottom;
-                target_width = static_cast<int>(target_height * kDisplayAspect);
+                target_width = static_cast<int>(target_height * g_aspect);
             }
             int left = (client.right - target_width) / 2;
             int top = (client.bottom - target_height) / 2;
@@ -205,6 +208,7 @@ void start() {
     if (std::getenv("WP_HEADLESS")) {
         return;
     }
+    g_aspect = nand::widescreen() ? kWideAspect : kStandardAspect;
     std::thread(window_thread).detach();
 }
 

@@ -1,6 +1,7 @@
 #include "wp/nand.h"
 
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <vector>
@@ -59,7 +60,7 @@ void add_item(std::vector<std::vector<uint8_t>>& items, uint8_t type, const std:
 std::vector<uint8_t> default_sysconf() {
     std::vector<std::vector<uint8_t>> items;
     add_item(items, kTypeByte, "IPL.LNG", {kLanguageEnglish});
-    add_item(items, kTypeByte, "IPL.AR", {0});
+    add_item(items, kTypeByte, "IPL.AR", {1});
     add_item(items, kTypeByte, "IPL.SND", {1});
     add_item(items, kTypeByte, "IPL.PGS", {0});
     add_item(items, kTypeByte, "IPL.E60", {0});
@@ -125,6 +126,24 @@ bool mount(const std::string& root) {
 
 std::string host_directory(const std::string& path) {
     return host_path(path).string();
+}
+
+bool widescreen() {
+    std::FILE* file = std::fopen(host_path("/shared2/sys/SYSCONF").string().c_str(), "rb");
+    if (!file) {
+        return false;
+    }
+    std::vector<uint8_t> data(kSysconfSize);
+    size_t count = std::fread(data.data(), 1, data.size(), file);
+    std::fclose(file);
+    static const char kName[] = "IPL.AR";
+    constexpr size_t kNameLength = sizeof(kName) - 1;
+    for (size_t i = 0; i + kNameLength < count; i++) {
+        if (std::memcmp(&data[i], kName, kNameLength) == 0) {
+            return data[i + kNameLength] == 1;
+        }
+    }
+    return false;
 }
 
 bool exists(const std::string& path) {

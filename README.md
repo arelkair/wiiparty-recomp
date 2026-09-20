@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** This project is a work in progress and is not yet playable.
+> **Status:** work in progress. The game reaches and draws its first screen but is not yet playable.
 
 ## About
 
@@ -10,15 +10,25 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
+The game runs natively on Windows up to its first screen. The recompiled program opens a window and draws the wrist strap warning with the game's own textures, at the display aspect ratio chosen by the virtual console settings (16:9 by default). The game does not go further yet because controller input is not implemented.
+
 Working today:
 
-- The main executable (about 6950 functions) and all 115 REL modules are translated to C++ and compile.
-- The game boots through the Revolution OS initialisation, runs its threads and video retrace interrupts, loads and links its modules, and reaches its scene task loop.
-- The IOS layer is emulated at request level: disc reads from the extracted file system and a virtual NAND with a default `SYSCONF`.
+- **Recompilation:** the main executable (about 7350 functions) and all 115 REL modules are translated to C++ and compile into one native program of roughly 300 MB. The translator is covered by unit tests, and one game function (a red-black tree erase) is checked against the C++ standard library.
+- **Boot and system:** the Revolution OS initialisation, threads (as Windows fibers, including the game's own `setjmp`/`longjmp` coroutines), video retrace interrupts derived from the video mode, module loading and linking.
+- **Disc and storage:** disc reads served from the extracted game files, IOS requests emulated at request level, and a virtual NAND with a default `SYSCONF` (English, widescreen).
+- **Graphics:** the GX command stream is decoded and rendered with Direct3D 11: vertex formats, transforms, an ubershader for the TEV stages, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, CMPR), blending, depth, scissor and EFB copies to the framebuffer.
+- **Window:** a resizable window that keeps the aspect ratio.
+- **Diagnostics:** environment variables such as `WP_LOG_GX`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP` and `WP_SAVE_FRAME`, a per-thread call trace, and a GDB client (`tools/dolphin_gdb.py`) to compare against a real Dolphin.
 
-- GX is decoded and rendered with Direct3D 11 (an ubershader for the TEV stages, texture decoding, blending, depth and EFB copies to the framebuffer). The first screen of the game, the wrist strap warning, already draws correctly.
+Not implemented yet:
 
-Not implemented yet: lighting, indirect textures, palette textures and texture copies from the EFB, audio (DSP) and controller input, so the game stays on its first screen. Progress notes are in `DECOMP_PROGRESS.md`.
+- Controller input (keyboard, generic gamepads and real Wii Remotes).
+- Audio (DSP).
+- Graphics: lighting, indirect textures, palette textures, texture copies from the EFB, lines and points, and internal resolution scaling.
+- Higher frame rates, online play and quality-of-life options.
+
+Progress notes and the list of goals are in `DECOMP_PROGRESS.md`.
 
 ## Setup
 

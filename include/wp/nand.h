@@ -21,5 +21,6 @@ int32_t remove(const std::string& path);
 int32_t rename(const std::string& from, const std::string& to);
 bool exists(const std::string& path);
 std::string host_directory(const std::string& path);
+bool widescreen();
 
 }
