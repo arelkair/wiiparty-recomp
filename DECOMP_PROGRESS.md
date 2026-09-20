@@ -124,3 +124,8 @@
 - Juego en línea sin servidor, con un cuarto botón verde "Online" en la fila de tres botones inferiores de la selección de minijuegos. Requiere sincronización de entradas por pasos, semilla de aleatorios y reloj compartidos, intercambio de datos de Miis y conexión directa. El botón se añadirá en memoria al cargar el módulo del menú, sin modificar los recursos del juego.
 - Mejoras de calidad de vida: pantalla completa sin bordes con F11, panorámico 16:9 y ultrawide, omisión de avisos y logos, mapeo de mandos, contador de fotogramas y archivo de configuración.
 - Distribución: el programa no incluirá el juego; usará los archivos extraídos de la copia del usuario, con un lanzador mínimo para elegir la carpeta o el disco.
+
+## Dolphin de referencia
+
+- El Dolphin 2606-374 trae un servidor GDB: con `GDBPort = 2159` en `[General]` de `Dolphin.ini` escucha en el puerto 2159 y admite un único cliente por arranque. `tools/dolphin_gdb.py` implementa el cliente del protocolo GDB (registros, memoria, puntos de ruptura y de vigilancia, pasos) y con `--launch` reinicia Dolphin en cada llamada. Comprobado: parada en el punto de entrada 0x80004050, lectura de memoria y parada en un punto de ruptura de 0x80069ee0.
+- Usos previstos: volcar la memoria de Dolphin en el aviso de la correa del Wiimote y comparar estados y registros con los de `wiiparty.exe` en las mismas funciones.
