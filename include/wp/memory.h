@@ -6,11 +6,17 @@
 namespace wp {
 
 constexpr uint32_t kAddressMask = 0x1FFFFFFF;
-constexpr size_t kMemorySize = 0x14000000;
+constexpr uint32_t kLockedCacheBase = 0xE0000000;
+constexpr uint32_t kLockedCacheSize = 0x4000;
+constexpr uint32_t kPhysicalSize = 0x14000000;
+constexpr size_t kMemorySize = kPhysicalSize + kLockedCacheSize;
 
 extern uint8_t* g_memory;
 
 inline uint8_t* host(uint32_t address) {
+    if ((address & 0xF0000000) == kLockedCacheBase) {
+        return g_memory + kPhysicalSize + (address & (kLockedCacheSize - 1));
+    }
     return g_memory + (address & kAddressMask);
 }
 
