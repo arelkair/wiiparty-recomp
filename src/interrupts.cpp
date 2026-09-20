@@ -17,11 +17,19 @@ constexpr uint32_t kVideoInterruptRegisters[] = {0xCC002030, 0xCC002034};
 constexpr uint16_t kVideoInterruptEnable = 0x1000;
 constexpr uint16_t kVideoInterruptFlag = 0x8000;
 constexpr uint32_t kCurrentContext = 0x800000D4;
-constexpr std::chrono::microseconds kRetracePeriod(20000);
+constexpr uint32_t kDisplayConfig = 0xCC002002;
+constexpr uint16_t kFormatMask = 0x0300;
+constexpr uint16_t kFormatPal = 0x0100;
+constexpr std::chrono::microseconds kPalPeriod(20000);
+constexpr std::chrono::microseconds kNtscPeriod(16683);
 
 using Clock = std::chrono::steady_clock;
 
-Clock::time_point g_next_retrace = Clock::now() + kRetracePeriod;
+std::chrono::microseconds retrace_period() {
+    return (rd16(kDisplayConfig) & kFormatMask) == kFormatPal ? kPalPeriod : kNtscPeriod;
+}
+
+Clock::time_point g_next_retrace = Clock::now() + kPalPeriod;
 bool g_in_interrupt = false;
 
 bool arm_video_interrupt() {
@@ -65,9 +73,10 @@ void poll_interrupts(Cpu& c) {
     if (now < g_next_retrace) {
         return;
     }
-    g_next_retrace += kRetracePeriod;
+    std::chrono::microseconds period = retrace_period();
+    g_next_retrace += period;
     if (g_next_retrace < now) {
-        g_next_retrace = now + kRetracePeriod;
+        g_next_retrace = now + period;
     }
     deliver_video_interrupt(c);
 }
