@@ -26,8 +26,9 @@ constexpr uint32_t kFramebufferBase = 0x80000000;
 constexpr uint32_t kMaxWidth = 720;
 constexpr uint32_t kMaxHeight = 576;
 constexpr uint32_t kDefaultHeight = 480;
-constexpr int kWindowWidth = 640;
-constexpr int kWindowHeight = 480;
+constexpr int kWindowWidth = 1280;
+constexpr int kWindowHeight = 720;
+constexpr double kDisplayAspect = 4.0 / 3.0;
 constexpr const char* kWindowClass = "WiiPartyRecomp";
 
 std::mutex g_lock;
@@ -139,8 +140,25 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             info.bmiHeader.biPlanes = 1;
             info.bmiHeader.biBitCount = 32;
             info.bmiHeader.biCompression = BI_RGB;
+            int target_width = client.right;
+            int target_height = static_cast<int>(target_width / kDisplayAspect);
+            if (target_height > client.bottom) {
+                target_height = client.bottom;
+                target_width = static_cast<int>(target_height * kDisplayAspect);
+            }
+            int left = (client.right - target_width) / 2;
+            int top = (client.bottom - target_height) / 2;
+            HBRUSH black = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+            RECT bars[4] = {{0, 0, client.right, top},
+                            {0, top + target_height, client.right, client.bottom},
+                            {0, top, left, top + target_height},
+                            {left + target_width, top, client.right, top + target_height}};
+            for (const RECT& bar : bars) {
+                FillRect(dc, &bar, black);
+            }
             SetStretchBltMode(dc, HALFTONE);
-            StretchDIBits(dc, 0, 0, client.right, client.bottom, 0, 0, static_cast<int>(g_width),
+            SetBrushOrgEx(dc, 0, 0, nullptr);
+            StretchDIBits(dc, left, top, target_width, target_height, 0, 0, static_cast<int>(g_width),
                           static_cast<int>(g_height), g_pixels.data(), &info, DIB_RGB_COLORS, SRCCOPY);
         } else {
             FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
