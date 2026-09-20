@@ -16,7 +16,9 @@ Working today:
 - The game boots through the Revolution OS initialisation, runs its threads and video retrace interrupts, loads and links its modules, and reaches its scene task loop.
 - The IOS layer is emulated at request level: disc reads from the extracted file system and a virtual NAND with a default `SYSCONF`.
 
-Not implemented yet: 3D graphics (GX), audio (DSP) and controller input. The window only displays the framebuffer the game hands to the video interface, which stays empty until GX is emulated. Progress notes are in `DECOMP_PROGRESS.md`.
+- GX is decoded and rendered with Direct3D 11 (an ubershader for the TEV stages, texture decoding, blending, depth and EFB copies to the framebuffer). The first screen of the game, the wrist strap warning, already draws correctly.
+
+Not implemented yet: lighting, indirect textures, palette textures and texture copies from the EFB, audio (DSP) and controller input, so the game stays on its first screen. Progress notes are in `DECOMP_PROGRESS.md`.
 
 ## Setup
 

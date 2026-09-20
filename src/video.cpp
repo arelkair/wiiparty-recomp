@@ -2,7 +2,9 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <mutex>
@@ -33,6 +35,74 @@ std::vector<uint32_t> g_pixels;
 uint32_t g_width = 0;
 uint32_t g_height = 0;
 std::atomic<HWND> g_window{nullptr};
+
+uint32_t crc32(const uint8_t* data, size_t size, uint32_t crc = 0xFFFFFFFFu) {
+    for (size_t i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (int k = 0; k < 8; k++) {
+            crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+        }
+    }
+    return crc;
+}
+
+void put32(std::vector<uint8_t>& out, uint32_t value) {
+    for (int shift = 24; shift >= 0; shift -= 8) {
+        out.push_back(static_cast<uint8_t>(value >> shift));
+    }
+}
+
+void put_chunk(std::vector<uint8_t>& out, const char* type, const std::vector<uint8_t>& body) {
+    put32(out, static_cast<uint32_t>(body.size()));
+    std::vector<uint8_t> tagged(type, type + 4);
+    tagged.insert(tagged.end(), body.begin(), body.end());
+    out.insert(out.end(), tagged.begin(), tagged.end());
+    put32(out, ~crc32(tagged.data(), tagged.size()));
+}
+
+void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
+    std::vector<uint8_t> raw;
+    for (uint32_t y = 0; y < height; y++) {
+        raw.push_back(0);
+        for (uint32_t x = 0; x < width; x++) {
+            uint32_t p = pixels[static_cast<size_t>(y) * width + x];
+            raw.push_back(static_cast<uint8_t>(p >> 16));
+            raw.push_back(static_cast<uint8_t>(p >> 8));
+            raw.push_back(static_cast<uint8_t>(p));
+        }
+    }
+    std::vector<uint8_t> deflated = {0x78, 0x01};
+    size_t position = 0;
+    while (position < raw.size()) {
+        size_t length = std::min<size_t>(65535, raw.size() - position);
+        deflated.push_back(position + length >= raw.size() ? 1 : 0);
+        deflated.push_back(static_cast<uint8_t>(length));
+        deflated.push_back(static_cast<uint8_t>(length >> 8));
+        deflated.push_back(static_cast<uint8_t>(~length));
+        deflated.push_back(static_cast<uint8_t>((~length) >> 8));
+        deflated.insert(deflated.end(), raw.begin() + static_cast<std::ptrdiff_t>(position), raw.begin() + static_cast<std::ptrdiff_t>(position + length));
+        position += length;
+    }
+    uint32_t a = 1, b = 0;
+    for (uint8_t byte : raw) {
+        a = (a + byte) % 65521;
+        b = (b + a) % 65521;
+    }
+    put32(deflated, (b << 16) | a);
+    std::vector<uint8_t> file = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    std::vector<uint8_t> header;
+    put32(header, width);
+    put32(header, height);
+    header.insert(header.end(), {8, 2, 0, 0, 0});
+    put_chunk(file, "IHDR", header);
+    put_chunk(file, "IDAT", deflated);
+    put_chunk(file, "IEND", {});
+    std::FILE* handle = std::fopen(path, "wb");
+    if (handle) {
+        std::fwrite(file.data(), 1, file.size(), handle);
+        std::fclose(handle);
+    }
+}
 
 uint8_t clamp(int value) {
     return static_cast<uint8_t>(value < 0 ? 0 : value > 255 ? 255 : value);
@@ -134,6 +204,19 @@ void present() {
     if (!(config & 1) || width == 0 || width > kMaxWidth || height > kMaxHeight) {
         return;
     }
+    uint32_t pitch = (picture & 0xFF) * 16;
+    if (pitch == 0) {
+        pitch = width * 2;
+    }
+    uint32_t copied_width = 0;
+    uint32_t copied_height = 0;
+    gx::last_framebuffer_size(copied_width, copied_height);
+    if (copied_width != 0 && copied_width < width) {
+        width = copied_width;
+    }
+    if (copied_height != 0 && copied_height < height) {
+        height = copied_height;
+    }
     uint32_t source = framebuffer_address(rd32(kTopFramebuffer));
     {
         std::lock_guard<std::mutex> guard(g_lock);
@@ -141,7 +224,7 @@ void present() {
         g_height = height;
         g_pixels.resize(static_cast<size_t>(width) * height);
         for (uint32_t row = 0; row < height; row++) {
-            const uint8_t* line = host(source + row * (width * 2));
+            const uint8_t* line = host(source + row * pitch);
             uint32_t* out = &g_pixels[static_cast<size_t>(row) * width];
             for (uint32_t x = 0; x < width; x += 2) {
                 int y0 = line[2 * x];
@@ -152,6 +235,12 @@ void present() {
                 out[x + 1] = to_rgb(y1, u, v);
             }
         }
+    }
+    static int frames = 0;
+    const char* save = std::getenv("WP_SAVE_FRAME");
+    if (save && ++frames % 100 == 0) {
+        std::lock_guard<std::mutex> guard(g_lock);
+        save_png(save, g_pixels, g_width, g_height);
     }
     InvalidateRect(window, nullptr, FALSE);
 }

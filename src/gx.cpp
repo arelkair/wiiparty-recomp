@@ -1,10 +1,12 @@
 #include "wp/gx.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
 
+#include "wp/gx_render.h"
 #include "wp/memory.h"
 
 namespace wp::gx {
@@ -20,9 +22,20 @@ constexpr uint8_t kCommandMetrics = 0x44;
 constexpr uint8_t kCommandInvalidate = 0x48;
 constexpr uint8_t kCommandLoadBp = 0x61;
 constexpr uint8_t kCommandDrawMask = 0x80;
-constexpr uint8_t kBpCopyExecute = 0x52;
+constexpr uint32_t kBpMask = 0xFE;
+constexpr uint32_t kBpCopyExecute = 0x52;
 constexpr uint32_t kCopyToFramebuffer = 1u << 14;
+constexpr uint32_t kCopyClear = 1u << 11;
+constexpr uint32_t kXfSize = 0x1100;
+constexpr uint32_t kArrayCount = 16;
+constexpr uint32_t kRamBase = 0x80000000;
+constexpr uint32_t kArrayAddressMask = 0x03FFFFFF;
+constexpr float kViewportOffset = 342.0f;
+constexpr float kEfbWidth = 640.0f;
+constexpr float kEfbHeight = 528.0f;
+constexpr float kDepthRange = 16777215.0f;
 constexpr int kMaxLoggedCopies = 60;
+constexpr uint32_t kTexCoordCount = 8;
 
 enum Attribute : uint32_t { kNone = 0, kDirect = 1, kIndex8 = 2, kIndex16 = 3 };
 
@@ -36,28 +49,52 @@ struct Statistics {
     uint32_t unknown = 0;
 };
 
+struct Element {
+    uint32_t mode = kNone;
+    uint32_t components = 0;
+    uint32_t format = 0;
+    uint32_t shift = 0;
+    uint32_t direct_size = 0;
+};
+
+struct Layout {
+    bool position_matrix = false;
+    uint32_t texture_matrices = 0;
+    Element position;
+    Element normal;
+    Element color[2];
+    Element texture[kTexCoordCount];
+    uint32_t size = 0;
+};
+
+struct Vertex {
+    float position[3] = {0, 0, 0};
+    float color[2][4] = {{1, 1, 1, 1}, {1, 1, 1, 1}};
+    float texture[kTexCoordCount][2] = {};
+    uint32_t position_matrix = 0;
+    bool has_color[2] = {false, false};
+};
+
 std::vector<uint8_t> g_fifo;
 uint32_t g_vcd_low = 0;
 uint32_t g_vcd_high = 0;
 uint32_t g_vat[3][8] = {};
+uint32_t g_array_base[kArrayCount] = {};
+uint32_t g_array_stride[kArrayCount] = {};
 uint32_t g_bp[256] = {};
+uint32_t g_konst[8] = {};
+uint32_t g_bp_mask = 0xFFFFFF;
+uint32_t g_xf[kXfSize] = {};
 Statistics g_stats;
 int g_logged_copies = 0;
 const char* g_log_level = std::getenv("WP_LOG_GX");
 bool g_log = g_log_level != nullptr;
 bool g_log_draws = g_log_level != nullptr && g_log_level[0] == '2';
 int g_logged_draws = 0;
-int g_logged_unknown = 0;
-int g_traced = 0;
-
-struct Recent {
-    uint8_t command;
-    size_t length;
-    uint8_t bytes[64];
-};
-Recent g_recent[16];
-int g_recent_index = 0;
-uint8_t g_last_command = 0;
+int g_logged_prepared = 0;
+uint32_t g_copy_width = 0;
+uint32_t g_copy_height = 0;
+bool g_render_enabled = std::getenv("WP_NO_RENDER") == nullptr;
 
 uint32_t be32(const uint8_t* data) {
     return (static_cast<uint32_t>(data[0]) << 24) | (static_cast<uint32_t>(data[1]) << 16) |
@@ -66,6 +103,16 @@ uint32_t be32(const uint8_t* data) {
 
 uint32_t be16(const uint8_t* data) {
     return (static_cast<uint32_t>(data[0]) << 8) | data[1];
+}
+
+float bits_to_float(uint32_t bits) {
+    float value;
+    std::memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
+float xf_float(uint32_t index) {
+    return bits_to_float(g_xf[index]);
 }
 
 uint32_t component_size(uint32_t format) {
@@ -81,10 +128,15 @@ uint32_t component_size(uint32_t format) {
     }
 }
 
-uint32_t attribute_size(uint32_t mode, uint32_t direct) {
-    switch (mode) {
+uint32_t color_size(uint32_t format) {
+    static const uint32_t kSizes[] = {2, 3, 4, 2, 3, 4, 4, 4};
+    return kSizes[format & 7];
+}
+
+uint32_t element_size(const Element& element) {
+    switch (element.mode) {
     case kDirect:
-        return direct;
+        return element.direct_size;
     case kIndex8:
         return 1;
     case kIndex16:
@@ -94,30 +146,370 @@ uint32_t attribute_size(uint32_t mode, uint32_t direct) {
     }
 }
 
-uint32_t color_size(uint32_t format) {
-    static const uint32_t kSizes[] = {2, 3, 4, 2, 3, 4, 4, 4};
-    return kSizes[format & 7];
-}
-
-uint32_t vertex_size(uint32_t vat) {
+Layout make_layout(uint32_t vat) {
+    Layout layout;
     uint32_t a = g_vat[0][vat];
     uint32_t b = g_vat[1][vat];
     uint32_t c = g_vat[2][vat];
-    uint32_t size = 0;
-    size += g_vcd_low & 1;
-    size += __builtin_popcount((g_vcd_low >> 1) & 0xFF);
-    uint32_t position_components = (a & 1) ? 3 : 2;
-    size += attribute_size((g_vcd_low >> 9) & 3, position_components * component_size((a >> 1) & 7));
-    uint32_t normal_components = (a & 0x200) ? 9 : 3;
-    size += attribute_size((g_vcd_low >> 11) & 3, normal_components * component_size((a >> 10) & 7));
-    size += attribute_size((g_vcd_low >> 13) & 3, color_size((a >> 14) & 7));
-    size += attribute_size((g_vcd_low >> 15) & 3, color_size((a >> 18) & 7));
+    layout.position_matrix = (g_vcd_low & 1) != 0;
+    layout.texture_matrices = (g_vcd_low >> 1) & 0xFF;
+    layout.position.mode = (g_vcd_low >> 9) & 3;
+    layout.position.components = (a & 1) ? 3 : 2;
+    layout.position.format = (a >> 1) & 7;
+    layout.position.shift = (a >> 4) & 31;
+    layout.position.direct_size = layout.position.components * component_size(layout.position.format);
+    layout.normal.mode = (g_vcd_low >> 11) & 3;
+    layout.normal.components = (a & 0x200) ? 9 : 3;
+    layout.normal.format = (a >> 10) & 7;
+    layout.normal.direct_size = layout.normal.components * component_size(layout.normal.format);
+    layout.color[0].mode = (g_vcd_low >> 13) & 3;
+    layout.color[0].components = ((a >> 13) & 1) ? 4 : 3;
+    layout.color[0].format = (a >> 14) & 7;
+    layout.color[0].direct_size = color_size(layout.color[0].format);
+    layout.color[1].mode = (g_vcd_low >> 15) & 3;
+    layout.color[1].components = ((a >> 17) & 1) ? 4 : 3;
+    layout.color[1].format = (a >> 18) & 7;
+    layout.color[1].direct_size = color_size(layout.color[1].format);
     uint32_t counts[8] = {(a >> 21) & 1, b & 1, (b >> 9) & 1, (b >> 18) & 1, (b >> 27) & 1, (c >> 5) & 1, (c >> 14) & 1, (c >> 23) & 1};
     uint32_t formats[8] = {(a >> 22) & 7, (b >> 1) & 7, (b >> 10) & 7, (b >> 19) & 7, (b >> 28) & 7, (c >> 6) & 7, (c >> 15) & 7, (c >> 24) & 7};
-    for (int i = 0; i < 8; i++) {
-        size += attribute_size((g_vcd_high >> (2 * i)) & 3, (counts[i] + 1) * component_size(formats[i]));
+    uint32_t shifts[8] = {(a >> 25) & 31, (b >> 4) & 31, (b >> 13) & 31, (b >> 22) & 31, c & 31, (c >> 9) & 31, (c >> 18) & 31, (c >> 27) & 31};
+    for (uint32_t i = 0; i < kTexCoordCount; i++) {
+        Element& element = layout.texture[i];
+        element.mode = (g_vcd_high >> (2 * i)) & 3;
+        element.components = counts[i] + 1;
+        element.format = formats[i];
+        element.shift = shifts[i];
+        element.direct_size = element.components * component_size(element.format);
     }
-    return size;
+    uint32_t size = layout.position_matrix ? 1 : 0;
+    size += __builtin_popcount(layout.texture_matrices);
+    size += element_size(layout.position);
+    size += element_size(layout.normal);
+    size += element_size(layout.color[0]);
+    size += element_size(layout.color[1]);
+    for (const Element& element : layout.texture) {
+        size += element_size(element);
+    }
+    layout.size = size;
+    return layout;
+}
+
+float read_number(const uint8_t* p, uint32_t format, uint32_t shift) {
+    float value;
+    switch (format) {
+    case 0:
+        value = static_cast<float>(p[0]);
+        break;
+    case 1:
+        value = static_cast<float>(static_cast<int8_t>(p[0]));
+        break;
+    case 2:
+        value = static_cast<float>(be16(p));
+        break;
+    case 3:
+        value = static_cast<float>(static_cast<int16_t>(be16(p)));
+        break;
+    default:
+        return bits_to_float(be32(p));
+    }
+    return std::ldexp(value, -static_cast<int>(shift));
+}
+
+void read_color(const uint8_t* p, uint32_t format, float* out) {
+    float r = 1, g = 1, b = 1, a = 1;
+    switch (format) {
+    case 0: {
+        uint32_t v = be16(p);
+        r = ((v >> 11) & 31) / 31.0f;
+        g = ((v >> 5) & 63) / 63.0f;
+        b = (v & 31) / 31.0f;
+        break;
+    }
+    case 1:
+    case 2:
+        r = p[0] / 255.0f;
+        g = p[1] / 255.0f;
+        b = p[2] / 255.0f;
+        break;
+    case 3: {
+        uint32_t v = be16(p);
+        r = ((v >> 12) & 15) / 15.0f;
+        g = ((v >> 8) & 15) / 15.0f;
+        b = ((v >> 4) & 15) / 15.0f;
+        a = (v & 15) / 15.0f;
+        break;
+    }
+    case 4: {
+        uint32_t v = (static_cast<uint32_t>(p[0]) << 16) | (static_cast<uint32_t>(p[1]) << 8) | p[2];
+        r = ((v >> 18) & 63) / 63.0f;
+        g = ((v >> 12) & 63) / 63.0f;
+        b = ((v >> 6) & 63) / 63.0f;
+        a = (v & 63) / 63.0f;
+        break;
+    }
+    default:
+        r = p[0] / 255.0f;
+        g = p[1] / 255.0f;
+        b = p[2] / 255.0f;
+        a = p[3] / 255.0f;
+        break;
+    }
+    out[0] = r;
+    out[1] = g;
+    out[2] = b;
+    out[3] = a;
+}
+
+const uint8_t* array_element(uint32_t array, uint32_t index) {
+    return host(kRamBase | (g_array_base[array] & kArrayAddressMask)) + static_cast<size_t>(index) * g_array_stride[array];
+}
+
+const uint8_t* fetch(const Element& element, uint32_t array, const uint8_t*& stream) {
+    if (element.mode == kDirect) {
+        const uint8_t* p = stream;
+        stream += element.direct_size;
+        return p;
+    }
+    uint32_t index;
+    if (element.mode == kIndex8) {
+        index = stream[0];
+        stream += 1;
+    } else {
+        index = be16(stream);
+        stream += 2;
+    }
+    return array_element(array, index);
+}
+
+Vertex decode_vertex(const Layout& layout, const uint8_t*& stream) {
+    Vertex vertex;
+    vertex.position_matrix = g_xf[0x1018] & 0x3F;
+    if (layout.position_matrix) {
+        vertex.position_matrix = stream[0] & 0x3F;
+        stream++;
+    }
+    stream += __builtin_popcount(layout.texture_matrices);
+    if (layout.position.mode != kNone) {
+        const uint8_t* p = fetch(layout.position, 0, stream);
+        uint32_t step = component_size(layout.position.format);
+        for (uint32_t i = 0; i < layout.position.components; i++) {
+            vertex.position[i] = read_number(p + i * step, layout.position.format, layout.position.shift);
+        }
+    }
+    if (layout.normal.mode != kNone) {
+        fetch(layout.normal, 1, stream);
+    }
+    for (uint32_t k = 0; k < 2; k++) {
+        if (layout.color[k].mode != kNone) {
+            const uint8_t* p = fetch(layout.color[k], 2 + k, stream);
+            read_color(p, layout.color[k].format, vertex.color[k]);
+            vertex.has_color[k] = true;
+        }
+    }
+    for (uint32_t k = 0; k < kTexCoordCount; k++) {
+        const Element& element = layout.texture[k];
+        if (element.mode != kNone) {
+            const uint8_t* p = fetch(element, 4 + k, stream);
+            uint32_t step = component_size(element.format);
+            for (uint32_t i = 0; i < element.components && i < 2; i++) {
+                vertex.texture[k][i] = read_number(p + i * step, element.format, element.shift);
+            }
+        }
+    }
+    return vertex;
+}
+
+float material_component(uint32_t value, uint32_t index) {
+    return static_cast<float>((value >> (24 - 8 * index)) & 0xFF) / 255.0f;
+}
+
+void rasterize_colors(const Vertex& vertex, float out[2][4]) {
+    for (uint32_t k = 0; k < 2; k++) {
+        uint32_t color_control = g_xf[0x100E + k];
+        uint32_t alpha_control = g_xf[0x1010 + k];
+        uint32_t material = g_xf[0x100C + k];
+        bool color_from_vertex = (color_control & 1) != 0 && vertex.has_color[k];
+        bool alpha_from_vertex = (alpha_control & 1) != 0 && vertex.has_color[k];
+        for (uint32_t i = 0; i < 3; i++) {
+            out[k][i] = color_from_vertex ? vertex.color[k][i] : material_component(material, i);
+        }
+        out[k][3] = alpha_from_vertex ? vertex.color[k][3] : material_component(material, 3);
+    }
+}
+
+void transform_position(const Vertex& vertex, float* eye) {
+    uint32_t base = vertex.position_matrix * 4;
+    const float x = vertex.position[0];
+    const float y = vertex.position[1];
+    const float z = vertex.position[2];
+    for (uint32_t row = 0; row < 3; row++) {
+        eye[row] = xf_float(base + row * 4) * x + xf_float(base + row * 4 + 1) * y + xf_float(base + row * 4 + 2) * z +
+                   xf_float(base + row * 4 + 3);
+    }
+}
+
+void generate_texture_coordinates(const Vertex& vertex, float out[8][2]) {
+    uint32_t count = g_bp[0x00] & 15;
+    for (uint32_t i = 0; i < count && i < kTexCoordCount; i++) {
+        uint32_t info = g_xf[0x1040 + i];
+        uint32_t source = (info >> 7) & 31;
+        bool projected = (info & 1) != 0;
+        bool three = ((info >> 1) & 1) != 0;
+        float input[4] = {0, 0, 1, 1};
+        if (source == 0) {
+            input[0] = vertex.position[0];
+            input[1] = vertex.position[1];
+            input[2] = vertex.position[2];
+        } else if (source >= 5 && source < 13) {
+            input[0] = vertex.texture[source - 5][0];
+            input[1] = vertex.texture[source - 5][1];
+            input[2] = three ? 0.0f : 1.0f;
+        }
+        uint32_t index = i < 4 ? (g_xf[0x1018] >> (6 + 6 * i)) & 0x3F : (g_xf[0x1019] >> (6 * (i - 4))) & 0x3F;
+        uint32_t base = index * 4;
+        float s = xf_float(base) * input[0] + xf_float(base + 1) * input[1] + xf_float(base + 2) * input[2] + xf_float(base + 3);
+        float t = xf_float(base + 4) * input[0] + xf_float(base + 5) * input[1] + xf_float(base + 6) * input[2] + xf_float(base + 7);
+        if (projected) {
+            float q = xf_float(base + 8) * input[0] + xf_float(base + 9) * input[1] + xf_float(base + 10) * input[2] + xf_float(base + 11);
+            if (q != 0.0f) {
+                s /= q;
+                t /= q;
+            }
+        }
+        out[i][0] = s;
+        out[i][1] = t;
+    }
+}
+
+bool project(const float* eye, float* screen) {
+    float a = xf_float(0x1020), b = xf_float(0x1021), c = xf_float(0x1022), d = xf_float(0x1023), e = xf_float(0x1024), f = xf_float(0x1025);
+    bool orthographic = g_xf[0x1026] != 0;
+    float x, y, z, w;
+    if (orthographic) {
+        x = a * eye[0] + b;
+        y = c * eye[1] + d;
+        z = e * eye[2] + f;
+        w = 1.0f;
+    } else {
+        x = a * eye[0] + b * eye[2];
+        y = c * eye[1] + d * eye[2];
+        z = e * eye[2] + f;
+        w = -eye[2];
+    }
+    if (w <= 0.0f) {
+        return false;
+    }
+    float ndc_x = x / w;
+    float ndc_y = y / w;
+    float ndc_z = z / w;
+    float sx = ndc_x * xf_float(0x101A) + xf_float(0x101D) - kViewportOffset;
+    float sy = ndc_y * xf_float(0x101B) + xf_float(0x101E) - kViewportOffset;
+    float sz = ndc_z * xf_float(0x101C) + xf_float(0x101F);
+    screen[0] = sx / kEfbWidth * 2.0f - 1.0f;
+    screen[1] = 1.0f - sy / kEfbHeight * 2.0f;
+    float depth = sz / kDepthRange;
+    screen[2] = depth < 0.0f ? 0.0f : depth > 1.0f ? 1.0f : depth;
+    return true;
+}
+
+struct Prepared {
+    ScreenVertex vertex;
+    bool valid;
+};
+
+Prepared prepare(const Vertex& vertex) {
+    Prepared prepared;
+    std::memset(&prepared.vertex, 0, sizeof prepared.vertex);
+    float eye[3];
+    transform_position(vertex, eye);
+    float screen[3];
+    prepared.valid = project(eye, screen);
+    prepared.vertex.x = screen[0];
+    prepared.vertex.y = screen[1];
+    prepared.vertex.z = screen[2];
+    rasterize_colors(vertex, prepared.vertex.color);
+    generate_texture_coordinates(vertex, prepared.vertex.uv);
+    return prepared;
+}
+
+bool culled(const ScreenVertex& a, const ScreenVertex& b, const ScreenVertex& c) {
+    uint32_t mode = (g_bp[0x00] >> 14) & 3;
+    if (mode == 0) {
+        return false;
+    }
+    if (mode == 3) {
+        return true;
+    }
+    float area = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
+    bool front = area < 0.0f;
+    return mode == 1 ? !front : front;
+}
+
+void emit_triangle(std::vector<ScreenVertex>& out, const Prepared& a, const Prepared& b, const Prepared& c) {
+    if (!a.valid || !b.valid || !c.valid || culled(a.vertex, b.vertex, c.vertex)) {
+        return;
+    }
+    out.push_back(a.vertex);
+    out.push_back(b.vertex);
+    out.push_back(c.vertex);
+}
+
+void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
+    if (!g_render_enabled) {
+        return;
+    }
+    Layout layout = make_layout(command & 7);
+    std::vector<Prepared> vertices;
+    vertices.reserve(count);
+    const uint8_t* stream = data;
+    for (uint32_t i = 0; i < count; i++) {
+        vertices.push_back(prepare(decode_vertex(layout, stream)));
+    }
+    std::vector<ScreenVertex> triangles;
+    uint32_t primitive = (command >> 3) & 7;
+    switch (primitive) {
+    case 0:
+        for (uint32_t i = 0; i + 3 < count; i += 4) {
+            emit_triangle(triangles, vertices[i], vertices[i + 1], vertices[i + 2]);
+            emit_triangle(triangles, vertices[i], vertices[i + 2], vertices[i + 3]);
+        }
+        break;
+    case 2:
+        for (uint32_t i = 0; i + 2 < count; i += 3) {
+            emit_triangle(triangles, vertices[i], vertices[i + 1], vertices[i + 2]);
+        }
+        break;
+    case 3:
+        for (uint32_t i = 0; i + 2 < count; i++) {
+            if (i & 1) {
+                emit_triangle(triangles, vertices[i + 1], vertices[i], vertices[i + 2]);
+            } else {
+                emit_triangle(triangles, vertices[i], vertices[i + 1], vertices[i + 2]);
+            }
+        }
+        break;
+    case 4:
+        for (uint32_t i = 1; i + 1 < count; i++) {
+            emit_triangle(triangles, vertices[0], vertices[i], vertices[i + 1]);
+        }
+        break;
+    default:
+        break;
+    }
+    if (g_log_draws && g_logged_prepared < 12) {
+        g_logged_prepared++;
+        std::fprintf(stderr, "GX prepared: %zu triangles from %u vertices, stages=%u texgens=%u cull=%u\n", triangles.size() / 3, count,
+                     ((g_bp[0x00] >> 10) & 15) + 1, g_bp[0x00] & 15, (g_bp[0x00] >> 14) & 3);
+        for (uint32_t i = 0; i < count && i < 4; i++) {
+            const ScreenVertex& v = vertices[i].vertex;
+            std::fprintf(stderr, "  v%u valid=%d pos=(%.3f %.3f %.3f) c0=(%.2f %.2f %.2f %.2f) uv0=(%.3f %.3f)\n", i, vertices[i].valid, v.x, v.y, v.z,
+                         v.color[0][0], v.color[0][1], v.color[0][2], v.color[0][3], v.uv[0][0], v.uv[0][1]);
+        }
+        std::fprintf(stderr, "  tev0 color=%06x alpha=%06x order=%06x kc=%06x blend=%06x z=%06x proj=%f %f %f %f %f %f ortho=%u\n", g_bp[0xC0], g_bp[0xC1],
+                     g_bp[0x28], g_bp[0xF6], g_bp[0x41], g_bp[0x40], xf_float(0x1020), xf_float(0x1021), xf_float(0x1022), xf_float(0x1023),
+                     xf_float(0x1024), xf_float(0x1025), g_xf[0x1026]);
+    }
+    render::draw(triangles.data(), static_cast<uint32_t>(triangles.size()));
 }
 
 void report_copy() {
@@ -131,13 +523,46 @@ void report_copy() {
     g_stats = Statistics{};
 }
 
+void execute_copy(uint32_t value) {
+    report_copy();
+    if (!g_render_enabled) {
+        return;
+    }
+    if (value & kCopyToFramebuffer) {
+        uint32_t source = g_bp[0x49];
+        uint32_t size = g_bp[0x4A];
+        int x = static_cast<int>(source & 0x3FF);
+        int y = static_cast<int>((source >> 10) & 0x3FF);
+        int width = static_cast<int>(size & 0x3FF) + 1;
+        int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
+        uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
+        uint32_t stride = (g_bp[0x4D] & 0x3FF) << 5;
+        g_copy_width = static_cast<uint32_t>(width);
+        g_copy_height = static_cast<uint32_t>(height);
+        render::copy_to_framebuffer(address, stride, x, y, width, height);
+    }
+    if (value & kCopyClear) {
+        render::clear();
+    }
+}
+
 void load_bp(uint32_t word) {
     uint32_t reg = word >> 24;
     uint32_t value = word & 0xFFFFFF;
-    g_bp[reg] = value;
     g_stats.bp_writes++;
-    if (reg == kBpCopyExecute && (value & kCopyToFramebuffer)) {
-        report_copy();
+    if (reg == kBpMask) {
+        g_bp_mask = value;
+        return;
+    }
+    uint32_t mask = g_bp_mask;
+    g_bp_mask = 0xFFFFFF;
+    if (reg >= 0xE0 && reg <= 0xE7 && (value & (1u << 23))) {
+        g_konst[reg - 0xE0] = (g_konst[reg - 0xE0] & ~mask) | (value & mask);
+        return;
+    }
+    g_bp[reg] = (g_bp[reg] & ~mask) | (value & mask);
+    if (reg == kBpCopyExecute) {
+        execute_copy(g_bp[reg]);
     }
 }
 
@@ -149,6 +574,27 @@ void load_cp(uint8_t reg, uint32_t value) {
         g_vcd_high = value;
     } else if (reg >= 0x70 && reg < 0x98) {
         g_vat[(reg >> 4) - 7][reg & 7] = value;
+    } else if (reg >= 0xA0 && reg < 0xB0) {
+        g_array_base[reg - 0xA0] = value;
+    } else if (reg >= 0xB0 && reg < 0xC0) {
+        g_array_stride[reg - 0xB0] = value & 0xFF;
+    }
+}
+
+void write_xf(uint32_t address, uint32_t value) {
+    if (address < kXfSize) {
+        g_xf[address] = value;
+    }
+}
+
+void indexed_xf_load(uint8_t command, uint32_t word) {
+    uint32_t array = 12 + ((command >> 3) & 3);
+    uint32_t index = word >> 16;
+    uint32_t count = ((word >> 12) & 15) + 1;
+    uint32_t address = word & 0xFFF;
+    const uint8_t* source = array_element(array, index);
+    for (uint32_t i = 0; i < count; i++) {
+        write_xf(address + i, be32(source + 4 * i));
     }
 }
 
@@ -156,7 +602,6 @@ size_t parse(const uint8_t* data, size_t size, bool list);
 
 size_t parse_one(const uint8_t* data, size_t size, bool list) {
     uint8_t command = data[0];
-    g_last_command = command;
     if (command == kCommandNop || command == kCommandMetrics || command == kCommandInvalidate) {
         return 1;
     }
@@ -171,9 +616,13 @@ size_t parse_one(const uint8_t* data, size_t size, bool list) {
         if (size < 5) {
             return 0;
         }
-        uint32_t count = (be32(data + 1) >> 16) + 1;
+        uint32_t header = be32(data + 1);
+        uint32_t count = (header >> 16) + 1;
         if (size < 5 + 4 * static_cast<size_t>(count)) {
             return 0;
+        }
+        for (uint32_t i = 0; i < count; i++) {
+            write_xf((header & 0xFFFF) + i, be32(data + 5 + 4 * i));
         }
         g_stats.xf_words += count;
         return 5 + 4 * static_cast<size_t>(count);
@@ -182,6 +631,7 @@ size_t parse_one(const uint8_t* data, size_t size, bool list) {
         if (size < 5) {
             return 0;
         }
+        indexed_xf_load(command, be32(data + 1));
         g_stats.xf_words++;
         return 5;
     }
@@ -209,39 +659,21 @@ size_t parse_one(const uint8_t* data, size_t size, bool list) {
             return 0;
         }
         uint32_t count = be16(data + 1);
-        size_t total = 3 + static_cast<size_t>(count) * vertex_size(command & 7);
+        Layout layout = make_layout(command & 7);
+        size_t total = 3 + static_cast<size_t>(count) * layout.size;
         if (size < total) {
             return 0;
         }
         if (g_log_draws && g_logged_draws < 60) {
             g_logged_draws++;
-            uint32_t vat = command & 7;
-            std::fprintf(stderr, "GX draw %02x count=%u size=%u vcd=%08x/%08x vat=%08x %08x %08x\n", command, count,
-                         vertex_size(vat), g_vcd_low, g_vcd_high, g_vat[0][vat], g_vat[1][vat], g_vat[2][vat]);
+            std::fprintf(stderr, "GX draw %02x count=%u size=%u vcd=%08x/%08x\n", command, count, layout.size, g_vcd_low, g_vcd_high);
         }
+        draw_primitive(command, data + 3, count);
         g_stats.draws++;
         g_stats.vertices += count;
         return total;
     }
     g_stats.unknown++;
-    if (g_log && g_logged_unknown < 10) {
-        g_logged_unknown++;
-        if (g_logged_unknown == 1) {
-            for (int k = 0; k < 16; k++) {
-                const Recent& r = g_recent[(g_recent_index + k) % 16];
-                std::fprintf(stderr, "GX recent %02x len %zu:", r.command, r.length);
-                for (int j = 0; j < 64 && static_cast<size_t>(j) < r.length; j++) {
-                    std::fprintf(stderr, " %02x", r.bytes[j]);
-                }
-                std::fputc(10, stderr);
-            }
-        }
-        std::fprintf(stderr, "GX unknown command %02x after %02x:", command, g_last_command);
-        for (size_t i = 0; i < 16 && i < size; i++) {
-            std::fprintf(stderr, " %02x", data[i]);
-        }
-        std::fputc(10, stderr);
-    }
     return 1;
 }
 
@@ -249,21 +681,6 @@ size_t parse(const uint8_t* data, size_t size, bool list) {
     size_t offset = 0;
     while (offset < size) {
         size_t used = parse_one(data + offset, size - offset, list);
-        if (used != 0) {
-            Recent& r = g_recent[g_recent_index];
-            g_recent_index = (g_recent_index + 1) % 16;
-            r.command = data[offset];
-            r.length = used;
-            std::memcpy(r.bytes, data + offset, used < 64 ? used : 64);
-        }
-        if (g_log_level != nullptr && g_log_level[0] == '3' && g_traced < 120 && used != 0) {
-            g_traced++;
-            std::fprintf(stderr, "GX cmd %02x len %zu:", data[offset], used);
-            for (size_t i = 0; i < used && i < 12; i++) {
-                std::fprintf(stderr, " %02x", data[offset + i]);
-            }
-            std::fputc(10, stderr);
-        }
         if (used == 0) {
             break;
         }
@@ -272,6 +689,23 @@ size_t parse(const uint8_t* data, size_t size, bool list) {
     return offset;
 }
 
+}
+
+const uint32_t* bp_registers() {
+    return g_bp;
+}
+
+const uint32_t* konst_registers() {
+    return g_konst;
+}
+
+const uint32_t* xf_registers() {
+    return g_xf;
+}
+
+void last_framebuffer_size(uint32_t& width, uint32_t& height) {
+    width = g_copy_width;
+    height = g_copy_height;
 }
 
 void push(uint64_t value, unsigned bytes) {
