@@ -92,6 +92,7 @@ bool g_log = g_log_level != nullptr;
 bool g_log_draws = g_log_level != nullptr && g_log_level[0] == '2';
 int g_logged_draws = 0;
 int g_logged_prepared = 0;
+uint64_t g_copy_count = 0;
 uint32_t g_copy_width = 0;
 uint32_t g_copy_height = 0;
 bool g_render_enabled = std::getenv("WP_NO_RENDER") == nullptr;
@@ -537,6 +538,7 @@ void execute_copy(uint32_t value) {
         int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
         uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
         uint32_t stride = (g_bp[0x4D] & 0x3FF) << 5;
+        g_copy_count++;
         g_copy_width = static_cast<uint32_t>(width);
         g_copy_height = static_cast<uint32_t>(height);
         render::copy_to_framebuffer(address, stride, x, y, width, height);
@@ -701,6 +703,10 @@ const uint32_t* konst_registers() {
 
 const uint32_t* xf_registers() {
     return g_xf;
+}
+
+uint64_t framebuffer_copies() {
+    return g_copy_count;
 }
 
 void last_framebuffer_size(uint32_t& width, uint32_t& height) {
