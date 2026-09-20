@@ -3,10 +3,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <string>
 
 #include "wp/format.h"
 #include "wp/gx.h"
+#include "wp/input.h"
 #include "wp/ios.h"
 #include "wp/threads.h"
 
@@ -19,6 +21,30 @@ constexpr uint32_t kRequestArgument = 0x24;
 constexpr uint32_t kIpcHeapSlot = 0xFFFF871C;
 constexpr uint32_t kFreeRequestFunction = 0x80177300;
 constexpr uint32_t kDrawDoneSlot = 0xFFFF8F38;
+constexpr uint32_t kKpadStatusSize = 0xF0;
+constexpr uint32_t kKpadTrigger = 0x04;
+constexpr uint32_t kKpadRelease = 0x08;
+constexpr uint32_t kKpadAcceleration = 0x0C;
+constexpr uint32_t kKpadPointer = 0x20;
+constexpr uint32_t kKpadHorizon = 0x34;
+constexpr uint32_t kKpadDeviceType = 0x5C;
+constexpr uint32_t kKpadError = 0x5D;
+constexpr uint32_t kKpadPointerValid = 0x5E;
+constexpr uint32_t kDeviceCore = 0;
+constexpr uint32_t kDeviceNotFound = 0xFD;
+constexpr uint32_t kChannelCount = 4;
+constexpr const char* kSilentPrefix = "HleZero_";
+constexpr float kPointerHeightScale = 0.75f;
+uint32_t g_previous_buttons[kChannelCount] = {};
+
+struct PendingRequest {
+    uint32_t request;
+    uint32_t result;
+    uint32_t callback;
+    uint32_t argument;
+};
+
+std::deque<PendingRequest> g_pending_ipc;
 
 struct Replacement {
     const char* name;
@@ -51,23 +77,59 @@ void ios_send(Cpu& c) {
         c.r[3] = static_cast<uint32_t>(result);
         return;
     }
-    uint32_t callback = rd32(request + kRequestCallback);
-    uint32_t argument = rd32(request + kRequestArgument);
-    uint32_t heap = rd32(c.r[13] + kIpcHeapSlot);
-    if (callback != 0) {
-        c.r[3] = static_cast<uint32_t>(result);
-        c.r[4] = argument;
-        call(c, callback);
-    }
-    c.r[3] = heap;
-    c.r[4] = request;
-    call(c, kFreeRequestFunction);
+    g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument)});
     c.r[3] = 0;
 }
 
 void gx_draw_done(Cpu& c) {
     gx::process();
     wr8(c.r[13] + kDrawDoneSlot, 1);
+}
+
+void kpad_read(Cpu& c) {
+    uint32_t channel = c.r[3];
+    uint32_t buffer = c.r[4];
+    uint32_t count = c.r[5];
+    uint32_t error = c.r[6];
+    uint32_t samples = 0;
+    int32_t result = -1;
+    if (buffer != 0 && count != 0) {
+        std::memset(host(buffer), 0, kKpadStatusSize);
+        if (channel < kChannelCount && input::connected(channel)) {
+            input::Sample sample = input::sample(channel);
+            uint32_t previous = g_previous_buttons[channel];
+            g_previous_buttons[channel] = sample.buttons;
+            wr32(buffer, sample.buttons);
+            wr32(buffer + kKpadTrigger, sample.buttons & ~previous);
+            wr32(buffer + kKpadRelease, previous & ~sample.buttons);
+            wrf32(buffer + kKpadAcceleration + 8, 1.0f);
+            wrf32(buffer + kKpadHorizon, 1.0f);
+            wrf32(buffer + kKpadPointer, sample.pointer_x);
+            wrf32(buffer + kKpadPointer + 4, sample.pointer_y * kPointerHeightScale);
+            wr8(buffer + kKpadDeviceType, kDeviceCore);
+            wr8(buffer + kKpadError, 0);
+            wr8(buffer + kKpadPointerValid, sample.pointer_valid ? 1 : 0);
+            samples = 1;
+            result = 0;
+        } else {
+            wr8(buffer + kKpadDeviceType, kDeviceNotFound);
+            wr8(buffer + kKpadError, 0xFF);
+        }
+    }
+    if (error != 0) {
+        wr32(error, static_cast<uint32_t>(result));
+    }
+    c.r[3] = samples;
+}
+
+void wpad_probe(Cpu& c) {
+    uint32_t channel = c.r[3];
+    uint32_t type = c.r[4];
+    bool present = channel < kChannelCount && input::connected(channel);
+    if (type != 0) {
+        wr32(type, present ? kDeviceCore : kDeviceNotFound);
+    }
+    c.r[3] = present ? 0 : static_cast<uint32_t>(-1);
 }
 
 void os_report(Cpu& c) {
@@ -103,11 +165,36 @@ const Replacement kReplacements[] = {
     {"OSSwitchFiber", switch_fiber},
     {"longjmp", long_jump},
     {"GXDrawDone", gx_draw_done},
+    {"KPADReadEx", kpad_read},
+    {"WPADProbe", wpad_probe},
 };
 
 }
 
+bool ipc_pending() {
+    return !g_pending_ipc.empty();
+}
+
+void ipc_deliver(Cpu& c) {
+    while (!g_pending_ipc.empty()) {
+        PendingRequest pending = g_pending_ipc.front();
+        g_pending_ipc.pop_front();
+        uint32_t heap = rd32(c.r[13] + kIpcHeapSlot);
+        if (pending.callback != 0) {
+            c.r[3] = pending.result;
+            c.r[4] = pending.argument;
+            call(c, pending.callback);
+        }
+        c.r[3] = heap;
+        c.r[4] = pending.request;
+        call(c, kFreeRequestFunction);
+    }
+}
+
 HleFunction find_replacement(const char* name) {
+    if (std::strncmp(name, kSilentPrefix, std::strlen(kSilentPrefix)) == 0) {
+        return return_zero;
+    }
     for (const Replacement& replacement : kReplacements) {
         if (std::strcmp(replacement.name, name) == 0) {
             return replacement.function;

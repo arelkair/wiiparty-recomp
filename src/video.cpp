@@ -234,6 +234,10 @@ void start() {
     std::thread(window_thread).detach();
 }
 
+void* window_handle() {
+    return g_window.load();
+}
+
 void present() {
     gx::process();
     HWND window = g_window;

@@ -1,6 +1,8 @@
 #include <chrono>
 
+#include "wp/audio.h"
 #include "wp/cpu.h"
+#include "wp/hle.h"
 #include "wp/memory.h"
 #include "wp/threads.h"
 #include "wp/video.h"
@@ -45,6 +47,18 @@ bool arm_video_interrupt() {
     return armed;
 }
 
+void deliver_ipc_interrupt(Cpu& c) {
+    Cpu saved = c;
+    g_in_interrupt = true;
+    c.msr &= ~kMsrExternalInterrupt;
+    ipc_deliver(c);
+    c = saved;
+    g_in_interrupt = false;
+    c.r[3] = 0;
+    call(c, symbol_address("OSSelectThread"));
+    c = saved;
+}
+
 void deliver_video_interrupt(Cpu& c) {
     uint32_t handler = rd32(kInterruptTable + 4 * kVideoInterrupt);
     if (handler == 0 || !arm_video_interrupt()) {
@@ -68,8 +82,12 @@ void deliver_video_interrupt(Cpu& c) {
 
 void poll_interrupts(Cpu& c) {
     g_poll_counter = 0;
+    audio::update();
     if (g_in_interrupt || !(c.msr & kMsrExternalInterrupt)) {
         return;
+    }
+    if (ipc_pending()) {
+        deliver_ipc_interrupt(c);
     }
     Clock::time_point now = Clock::now();
     if (now < g_next_retrace) {
