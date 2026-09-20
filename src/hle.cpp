@@ -6,6 +6,7 @@
 #include <string>
 
 #include "wp/format.h"
+#include "wp/gx.h"
 #include "wp/ios.h"
 #include "wp/threads.h"
 
@@ -65,6 +66,7 @@ void ios_send(Cpu& c) {
 }
 
 void gx_draw_done(Cpu& c) {
+    gx::process();
     wr8(c.r[13] + kDrawDoneSlot, 1);
 }
 

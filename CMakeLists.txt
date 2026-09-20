@@ -9,7 +9,7 @@ set(WP_RECOMP_DIR "${CMAKE_SOURCE_DIR}/build/recomp" CACHE PATH "Directory with 
 
 option(WP_TRACE "Record function entries for diagnostics" ON)
 
-add_library(wp_runtime STATIC src/runtime.cpp src/dol.cpp src/boot.cpp src/hle.cpp src/ios.cpp src/interrupts.cpp src/threads.cpp src/format.cpp src/disc.cpp src/modules.cpp src/nand.cpp src/video.cpp)
+add_library(wp_runtime STATIC src/runtime.cpp src/dol.cpp src/boot.cpp src/hle.cpp src/ios.cpp src/interrupts.cpp src/threads.cpp src/format.cpp src/disc.cpp src/modules.cpp src/nand.cpp src/video.cpp src/gx.cpp)
 target_include_directories(wp_runtime PUBLIC include)
 target_link_libraries(wp_runtime PUBLIC gdi32 user32)
 if(WP_TRACE)

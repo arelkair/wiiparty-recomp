@@ -31,6 +31,8 @@ GROUP_31 = {
     1014: "dcbz",
 }
 
+RECORD_OPCODES = {4, 20, 21, 23, 30, 31, 59, 63}
+
 OE_FORMS = {8, 10, 40, 104, 136, 138, 200, 202, 232, 234, 235, 266, 459, 491}
 
 SINGLE_A_FORM = {
@@ -128,9 +130,11 @@ class Instr:
 
     @property
     def rc(self):
-        return self.word & 1
+        return self.word & 1 if (self.word >> 26) in RECORD_OPCODES else 0
 
-    lk = rc
+    @property
+    def lk(self):
+        return self.word & 1
 
     @property
     def aa(self):

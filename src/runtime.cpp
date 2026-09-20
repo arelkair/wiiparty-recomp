@@ -7,11 +7,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include "wp/function_table.h"
 #include "wp/modules.h"
+#include "wp/watch.h"
 
 namespace wp {
 
@@ -56,7 +58,8 @@ const char* find_name(uint32_t address) {
 }
 
 #ifdef WP_TRACE
-uint32_t g_call_stack[kCallStackSize];
+uint32_t g_main_stack[kCallStackSize];
+uint32_t* g_call_stack = g_main_stack;
 volatile size_t g_call_depth = 0;
 
 void print_call_stack() {
@@ -91,6 +94,31 @@ void start_profiler() {
     }).detach();
 }
 
+void start_watch(uint32_t address) {
+    std::thread([address] {
+        uint32_t last = rd32(address);
+        int reported = 0;
+        while (reported < 40) {
+            uint32_t value = rd32(address);
+            if (value == last) {
+                continue;
+            }
+            size_t depth = g_call_depth;
+            std::string line;
+            char text[96];
+            std::snprintf(text, sizeof text, "WATCH %08x: %08x -> %08x in", address, last, value);
+            line = text;
+            for (size_t i = 0; i < 8 && i < depth && depth <= kCallStackSize; i++) {
+                std::snprintf(text, sizeof text, " %08x", g_call_stack[depth - 1 - i]);
+                line += text;
+            }
+            std::fprintf(stderr, "%s\n", line.c_str());
+            last = value;
+            reported++;
+        }
+    }).detach();
+}
+
 void print_profile() {
     g_sampling = false;
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -106,6 +134,7 @@ void print_profile() {
 #else
 void print_call_stack() {}
 void start_profiler() {}
+void start_watch(uint32_t) {}
 void print_profile() {}
 #endif
 

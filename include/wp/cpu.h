@@ -57,12 +57,11 @@ void poll_interrupts(Cpu& c);
 
 #ifdef WP_TRACE
 constexpr size_t kCallStackSize = 16384;
-extern uint32_t g_call_stack[kCallStackSize];
+extern uint32_t* g_call_stack;
 extern volatile size_t g_call_depth;
 
 struct TraceScope {
-    explicit TraceScope(uint32_t address) {
-        size_t depth = g_call_depth;
+    explicit TraceScope(uint32_t address) : depth(g_call_depth) {
         if (depth < kCallStackSize) {
             g_call_stack[depth] = address;
         }
@@ -70,8 +69,10 @@ struct TraceScope {
     }
 
     ~TraceScope() {
-        g_call_depth = g_call_depth - 1;
+        g_call_depth = depth;
     }
+
+    size_t depth;
 };
 
 #define WP_ENTER(address) ::wp::TraceScope wp_trace_scope(address)

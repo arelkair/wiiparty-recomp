@@ -11,6 +11,7 @@
 #include "wp/nand.h"
 #include "wp/threads.h"
 #include "wp/video.h"
+#include "wp/watch.h"
 
 int main(int argc, char** argv) {
     std::string extracted = argc > 1 ? argv[1] : "extracted";
@@ -41,6 +42,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (const char* watch = std::getenv("WP_WATCH")) {
+        wp::start_watch(static_cast<uint32_t>(std::strtoul(watch, nullptr, 16)));
+    }
     if (std::getenv("WP_PROFILE")) {
         wp::start_profiler();
     }
@@ -49,6 +53,7 @@ int main(int argc, char** argv) {
             std::this_thread::sleep_for(std::chrono::seconds(timeout_seconds));
             std::fprintf(stderr, "no progress after %d seconds\n", timeout_seconds);
             wp::print_call_stack();
+            wp::print_thread_stacks();
             wp::print_profile();
             std::_Exit(3);
         }).detach();

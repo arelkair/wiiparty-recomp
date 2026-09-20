@@ -102,6 +102,15 @@ class EmitterTests(unittest.TestCase):
             ["c.r[3] = c.r[4] | c.r[5];", "wp::record(c, c.r[3]);"],
         )
 
+    def test_immediate_operations_ignore_the_low_immediate_bit(self):
+        self.assertEqual(lift(d_form(26, 9, 11, 1)), ["c.r[11] = c.r[9] ^ 0x1u;"])
+        self.assertEqual(lift(d_form(24, 9, 11, 1)), ["c.r[11] = c.r[9] | 0x1u;"])
+        self.assertEqual(lift(d_form(14, 9, 11, 1)), ["c.r[9] = c.r[11] + 0x1u;"])
+        self.assertEqual(
+            lift(d_form(28, 9, 11, 1)),
+            ["c.r[11] = c.r[9] & 0x1u;", "wp::record(c, c.r[11]);"],
+        )
+
     def test_rlwinm(self):
         self.assertEqual(lift(m_form(21, 4, 3, 0, 28, 31)), ["c.r[3] = c.r[4] & 0xfu;"])
         self.assertEqual(lift(m_form(21, 4, 3, 2, 0, 29)), ["c.r[3] = wp::rotl(c.r[4], 2) & 0xfffffffcu;"])

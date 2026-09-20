@@ -9,6 +9,7 @@
 #include <thread>
 #include <vector>
 
+#include "wp/gx.h"
 #include "wp/memory.h"
 
 namespace wp::video {
@@ -120,6 +121,7 @@ void start() {
 }
 
 void present() {
+    gx::process();
     HWND window = g_window;
     if (!window) {
         return;

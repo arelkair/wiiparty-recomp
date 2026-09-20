@@ -2,7 +2,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <random>
+#include <set>
 #include <vector>
+
+#include <bits/stl_tree.h>
 
 #include "functions.h"
 #include "wp/cpu.h"
@@ -88,6 +93,134 @@ std::vector<uint16_t> quoted_text(int pairs) {
     return characters;
 }
 
+constexpr uint32_t kTreeHeader = 0x80200000;
+constexpr uint32_t kTreeNodes = 0x80200100;
+constexpr uint32_t kNodeStride = 0x20;
+constexpr uint32_t kKeyOffset = 0x10;
+constexpr uint32_t kRedBit = 1;
+
+struct HostNode : std::_Rb_tree_node_base {
+    int key;
+};
+
+uint32_t guest_address(const std::map<const std::_Rb_tree_node_base*, uint32_t>& addresses,
+                       const std::_Rb_tree_node_base* node, const std::_Rb_tree_node_base* header) {
+    if (node == nullptr) {
+        return 0;
+    }
+    if (node == header) {
+        return kTreeHeader;
+    }
+    return addresses.at(node);
+}
+
+void mirror(const std::_Rb_tree_node_base* node, const std::_Rb_tree_node_base* header,
+            std::map<const std::_Rb_tree_node_base*, uint32_t>& addresses) {
+    if (node == nullptr) {
+        return;
+    }
+    addresses[node] = kTreeNodes + static_cast<uint32_t>(addresses.size()) * kNodeStride;
+    mirror(node->_M_left, header, addresses);
+    mirror(node->_M_right, header, addresses);
+}
+
+void write_node(const std::_Rb_tree_node_base* node, const std::_Rb_tree_node_base* header,
+                const std::map<const std::_Rb_tree_node_base*, uint32_t>& addresses) {
+    if (node == nullptr) {
+        return;
+    }
+    uint32_t address = addresses.at(node);
+    bool red = node->_M_color == std::_S_red;
+    wp::wr32(address, guest_address(addresses, node->_M_left, header));
+    wp::wr32(address + 4, guest_address(addresses, node->_M_right, header));
+    wp::wr32(address + 8, guest_address(addresses, node->_M_parent, header) | (red ? kRedBit : 0));
+    wp::wr32(address + kKeyOffset, static_cast<uint32_t>(static_cast<const HostNode*>(node)->key));
+    write_node(node->_M_left, header, addresses);
+    write_node(node->_M_right, header, addresses);
+}
+
+int check_subtree(uint32_t node, uint32_t parent, int64_t low, int64_t high, uint32_t& count, bool& ok) {
+    if (node == 0) {
+        return 1;
+    }
+    count++;
+    uint32_t link = wp::rd32(node + 8);
+    int64_t key = static_cast<int32_t>(wp::rd32(node + kKeyOffset));
+    if ((link & ~kRedBit) != parent || key <= low || key >= high) {
+        ok = false;
+        return 0;
+    }
+    uint32_t left = wp::rd32(node);
+    uint32_t right = wp::rd32(node + 4);
+    bool red = (link & kRedBit) != 0;
+    if (red && ((left && (wp::rd32(left + 8) & kRedBit)) || (right && (wp::rd32(right + 8) & kRedBit)))) {
+        ok = false;
+        return 0;
+    }
+    int left_height = check_subtree(left, node, low, key, count, ok);
+    int right_height = check_subtree(right, node, key, high, count, ok);
+    if (!ok || left_height != right_height) {
+        ok = false;
+        return 0;
+    }
+    return left_height + (red ? 0 : 1);
+}
+
+bool run_tree_erase(std::mt19937& random, int size) {
+    std::set<int> keys;
+    while (static_cast<int>(keys.size()) < size) {
+        keys.insert(static_cast<int>(random() % 1000));
+    }
+    std::vector<int> order(keys.begin(), keys.end());
+    std::shuffle(order.begin(), order.end(), random);
+    std::_Rb_tree_node_base header;
+    header._M_color = std::_S_red;
+    header._M_parent = nullptr;
+    header._M_left = &header;
+    header._M_right = &header;
+    std::vector<HostNode> nodes(order.size());
+    for (size_t i = 0; i < order.size(); i++) {
+        nodes[i].key = order[i];
+        std::_Rb_tree_node_base* parent = &header;
+        std::_Rb_tree_node_base* cursor = header._M_parent;
+        bool left = true;
+        while (cursor != nullptr) {
+            parent = cursor;
+            left = order[i] < static_cast<HostNode*>(cursor)->key;
+            cursor = left ? cursor->_M_left : cursor->_M_right;
+        }
+        std::_Rb_tree_insert_and_rebalance(left, &nodes[i], parent, header);
+    }
+    std::map<const std::_Rb_tree_node_base*, uint32_t> addresses;
+    mirror(header._M_parent, &header, addresses);
+    write_node(header._M_parent, &header, addresses);
+    uint32_t root = guest_address(addresses, header._M_parent, &header);
+    wp::wr32(kTreeHeader, root);
+    wp::wr32(kTreeHeader + 4, root);
+    wp::wr32(kTreeHeader + 8, 0);
+    size_t victim_index = random() % nodes.size();
+    uint32_t victim = addresses.at(&nodes[victim_index]);
+    int victim_key = nodes[victim_index].key;
+
+    wp::Cpu c{};
+    c.r[3] = victim;
+    c.r[4] = root;
+    f_80039510(c);
+
+    uint32_t new_root = wp::rd32(kTreeHeader);
+    uint32_t count = 0;
+    bool ok = true;
+    if (new_root != 0 && (wp::rd32(new_root + 8) & kRedBit)) {
+        return false;
+    }
+    check_subtree(new_root, kTreeHeader, -1, 1000000, count, ok);
+    if (!ok || count != nodes.size() - 1) {
+        std::fprintf(stderr, "tree erase failure: size %zu erased key %d count %u ok %d\n", nodes.size(), victim_key, count, ok);
+        return false;
+    }
+    return true;
+}
+
 }
 
 int main() {
@@ -102,6 +235,15 @@ int main() {
     if (!run_quote_scan({0x22, 0x22, 0x22, 'q', 0x22, 0x22})) {
         std::fputs("quote scan mismatch on adjacent quotes\n", stderr);
         failures++;
+    }
+    std::mt19937 random(12345);
+    for (int round = 0; round < 3000; round++) {
+        if (!run_tree_erase(random, 1 + static_cast<int>(random() % 40))) {
+            failures++;
+            if (failures > 5) {
+                break;
+            }
+        }
     }
     std::free(wp::g_memory);
     if (failures == 0) {

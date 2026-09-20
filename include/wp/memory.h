@@ -13,6 +13,12 @@ constexpr size_t kMemorySize = kPhysicalSize + kLockedCacheSize;
 
 extern uint8_t* g_memory;
 
+constexpr uint32_t kFifoAddress = 0xCC008000;
+
+namespace gx {
+void push(uint64_t value, unsigned bytes);
+}
+
 inline uint8_t* host(uint32_t address) {
     if ((address & 0xF0000000) == kLockedCacheBase) {
         return g_memory + kPhysicalSize + (address & (kLockedCacheSize - 1));
@@ -55,20 +61,36 @@ inline uint32_t rd32_reversed(uint32_t address) {
 }
 
 inline void wr8(uint32_t address, uint8_t value) {
+    if (__builtin_expect(address == kFifoAddress, 0)) {
+        gx::push(value, 1);
+        return;
+    }
     *host(address) = value;
 }
 
 inline void wr16(uint32_t address, uint16_t value) {
+    if (__builtin_expect(address == kFifoAddress, 0)) {
+        gx::push(value, 2);
+        return;
+    }
     value = __builtin_bswap16(value);
     std::memcpy(host(address), &value, sizeof value);
 }
 
 inline void wr32(uint32_t address, uint32_t value) {
+    if (__builtin_expect(address == kFifoAddress, 0)) {
+        gx::push(value, 4);
+        return;
+    }
     value = __builtin_bswap32(value);
     std::memcpy(host(address), &value, sizeof value);
 }
 
 inline void wr64(uint32_t address, uint64_t value) {
+    if (__builtin_expect(address == kFifoAddress, 0)) {
+        gx::push(value, 8);
+        return;
+    }
     value = __builtin_bswap64(value);
     std::memcpy(host(address), &value, sizeof value);
 }

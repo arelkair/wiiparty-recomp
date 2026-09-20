@@ -13,6 +13,7 @@ void load_context(Cpu& c);
 void save_jump(Cpu& c, std::jmp_buf* point);
 void resume_jump(Cpu& c);
 void long_jump(Cpu& c);
+void print_thread_stacks();
 uint32_t symbol_address(const char* name);
 
 }

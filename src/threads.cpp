@@ -47,6 +47,30 @@ struct SavedJump {
     uint32_t stack;
 };
 
+#ifdef WP_TRACE
+struct TraceState {
+    uint32_t* stack;
+    size_t depth;
+};
+
+std::map<void*, TraceState> g_traces;
+
+void register_trace(void* fiber) {
+    g_traces[fiber] = TraceState{new uint32_t[kCallStackSize], 0};
+}
+#endif
+
+void switch_to(void* fiber) {
+#ifdef WP_TRACE
+    TraceState& self = g_traces[GetCurrentFiber()];
+    self.depth = g_call_depth;
+    TraceState& target = g_traces[fiber];
+    g_call_stack = target.stack;
+    g_call_depth = target.depth;
+#endif
+    SwitchToFiber(fiber);
+}
+
 std::map<uint32_t, SavedContext> g_saved;
 std::map<uint32_t, SavedJump> g_jumps;
 uint32_t g_jump_buffer = 0;
@@ -170,6 +194,9 @@ VOID CALLBACK start_jump(PVOID parameter) {
 void init_threads(Cpu& c) {
     g_cpu = &c;
     ConvertThreadToFiber(nullptr);
+#ifdef WP_TRACE
+    g_traces[GetCurrentFiber()] = TraceState{g_call_stack, 0};
+#endif
 }
 
 void save_context(Cpu& c, std::jmp_buf* point) {
@@ -189,7 +216,10 @@ void load_context(Cpu& c) {
     auto it = g_saved.find(context);
     if (it == g_saved.end()) {
         void* fiber = CreateFiber(kFiberStackSize, start_thread, reinterpret_cast<void*>(static_cast<uintptr_t>(context)));
-        SwitchToFiber(fiber);
+#ifdef WP_TRACE
+        register_trace(fiber);
+#endif
+        switch_to(fiber);
         if (g_resume_point) {
             resume_pending();
         }
@@ -200,7 +230,7 @@ void load_context(Cpu& c) {
     g_resume_point = saved.point;
     g_resume_context = context;
     if (saved.fiber != GetCurrentFiber()) {
-        SwitchToFiber(saved.fiber);
+        switch_to(saved.fiber);
     }
     if (g_resume_point) {
         resume_pending();
@@ -230,7 +260,10 @@ void long_jump(Cpu& c) {
             g_jumps.erase(it);
         }
         void* fiber = CreateFiber(kFiberStackSize, start_jump, reinterpret_cast<void*>(static_cast<uintptr_t>(buffer)));
-        SwitchToFiber(fiber);
+#ifdef WP_TRACE
+        register_trace(fiber);
+#endif
+        switch_to(fiber);
         if (g_resume_point) {
             resume_pending();
         }
@@ -242,11 +275,28 @@ void long_jump(Cpu& c) {
     g_jump_buffer = buffer;
     g_jump_value = value;
     if (saved.fiber != GetCurrentFiber()) {
-        SwitchToFiber(saved.fiber);
+        switch_to(saved.fiber);
     }
     if (g_resume_point) {
         resume_pending();
     }
+}
+
+void print_thread_stacks() {
+#ifdef WP_TRACE
+    void* current = GetCurrentFiber();
+    int index = 0;
+    for (const auto& entry : g_traces) {
+        size_t depth = entry.first == current ? g_call_depth : entry.second.depth;
+        std::fprintf(stderr, "fiber %d%s depth %zu:", index++, entry.first == current ? " (current)" : "", depth);
+        for (size_t i = 0; i < 12 && i < depth && depth <= kCallStackSize; i++) {
+            uint32_t address = entry.second.stack[depth - 1 - i];
+            const char* name = find_name(address);
+            std::fprintf(stderr, " %08x%s%s%s", address, *name ? "(" : "", name, *name ? ")" : "");
+        }
+        std::fputc(10, stderr);
+    }
+#endif
 }
 
 uint32_t symbol_address(const char* name) {
