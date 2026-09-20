@@ -112,4 +112,15 @@
 - Corrección del decodificador: en las instrucciones de formato D (`ori`, `xori`, `addi`...) el último bit pertenece al inmediato y no es el bit de registro. Se leía como bit de registro y se sobrescribía cr0. Ahora solo los códigos de operación 4, 20, 21, 23, 30, 31, 59 y 63 aceptan el bit de registro. Se comprueba con un test del decodificador y con un test de la función 0x80039510 (borrado de nodo en árbol rojo-negro) contra `_Rb_tree_insert_and_rebalance` de libstdc++ en `tests/lifted_tests.cpp`.
 - Captura del FIFO de GX: las escrituras a 0xCC008000 (incluidas las de `psq_st`) se acumulan en `src/gx.cpp` y se decodifican comando a comando (registros CP, XF, BP, listas de visualización y dibujado); con `WP_LOG_GX=1` se imprime un resumen por cada copia de EFB al framebuffer.
 - Diagnóstico por hilo: cada fibra tiene su propia traza de llamadas; con el temporizador se imprime la pila de todas las fibras, y `WP_WATCH=direccion` informa de los cambios de una palabra de memoria.
+- El decodificador del FIFO de GX ya interpreta sin errores el flujo del juego (0 comandos desconocidos). Los pares de floats de `psq_st` van los dos al FIFO. Con `WP_LOG_GX=2` se listan los dibujados (vértices, VCD y VAT) y con `3` los primeros comandos. Cada fotograma del estado actual contiene tres cuadriláteros y una copia de EFB al framebuffer.
 - Pendiente: gráficos (GX), audio (DSP), entrada (WPAD/KPAD), liberar las fibras de hilos terminados y contabilizar la profundidad de la traza tras un `longjmp`.
+- Entrada con Wiimote real: Windows pide PIN al emparejarlo por la interfaz normal (con 1+2 y con SYNC). El emparejamiento se hará dentro del programa con la API Bluetooth de Windows, usando como PIN los 6 bytes de la dirección Bluetooth del equipo, y la lectura de los informes HID después. Mando genérico tipo Pro Controller: SDL2. Monitor del usuario: ultrawide 2K a 75 Hz.
+
+## Objetivos del usuario
+
+- Salida a 1080p con el juego a 60 Hz. El juego PAL elige 50 o 60 Hz según el ajuste `IPL.E60` de SYSCONF; se activará desde la configuración del programa.
+- Resolución interna multiplicada por 3 o 4, dentro del renderizador propio.
+- Frecuencias superiores a 60 Hz (por ejemplo 120 Hz) mediante interpolación de las matrices de los objetos entre pasos de la lógica; experimental y posterior al renderizador. El monitor del usuario es de 75 Hz, que no es múltiplo de 60.
+- Juego en línea sin servidor, con un cuarto botón verde "Online" en la fila de tres botones inferiores de la selección de minijuegos. Requiere sincronización de entradas por pasos, semilla de aleatorios y reloj compartidos, intercambio de datos de Miis y conexión directa. El botón se añadirá en memoria al cargar el módulo del menú, sin modificar los recursos del juego.
+- Mejoras de calidad de vida: pantalla completa sin bordes con F11, panorámico 16:9 y ultrawide, omisión de avisos y logos, mapeo de mandos, contador de fotogramas y archivo de configuración.
+- Distribución: el programa no incluirá el juego; usará los archivos extraídos de la copia del usuario, con un lanzador mínimo para elegir la carpeta o el disco.

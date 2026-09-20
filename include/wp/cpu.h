@@ -361,7 +361,7 @@ inline void store_quantized(Cpu& c, uint32_t s, uint32_t address, uint32_t w, ui
         size = first;
     } else {
         uint32_t second = 0;
-        quantize(address + first, static_cast<float>(c.ps1[s]), type, scale, second);
+        quantize(address == kFifoAddress ? address : address + first, static_cast<float>(c.ps1[s]), type, scale, second);
         size = first + second;
     }
 }

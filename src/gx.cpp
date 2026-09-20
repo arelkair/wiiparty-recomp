@@ -43,7 +43,21 @@ uint32_t g_vat[3][8] = {};
 uint32_t g_bp[256] = {};
 Statistics g_stats;
 int g_logged_copies = 0;
-bool g_log = std::getenv("WP_LOG_GX") != nullptr;
+const char* g_log_level = std::getenv("WP_LOG_GX");
+bool g_log = g_log_level != nullptr;
+bool g_log_draws = g_log_level != nullptr && g_log_level[0] == '2';
+int g_logged_draws = 0;
+int g_logged_unknown = 0;
+int g_traced = 0;
+
+struct Recent {
+    uint8_t command;
+    size_t length;
+    uint8_t bytes[64];
+};
+Recent g_recent[16];
+int g_recent_index = 0;
+uint8_t g_last_command = 0;
 
 uint32_t be32(const uint8_t* data) {
     return (static_cast<uint32_t>(data[0]) << 24) | (static_cast<uint32_t>(data[1]) << 16) |
@@ -142,6 +156,7 @@ size_t parse(const uint8_t* data, size_t size, bool list);
 
 size_t parse_one(const uint8_t* data, size_t size, bool list) {
     uint8_t command = data[0];
+    g_last_command = command;
     if (command == kCommandNop || command == kCommandMetrics || command == kCommandInvalidate) {
         return 1;
     }
@@ -198,11 +213,35 @@ size_t parse_one(const uint8_t* data, size_t size, bool list) {
         if (size < total) {
             return 0;
         }
+        if (g_log_draws && g_logged_draws < 60) {
+            g_logged_draws++;
+            uint32_t vat = command & 7;
+            std::fprintf(stderr, "GX draw %02x count=%u size=%u vcd=%08x/%08x vat=%08x %08x %08x\n", command, count,
+                         vertex_size(vat), g_vcd_low, g_vcd_high, g_vat[0][vat], g_vat[1][vat], g_vat[2][vat]);
+        }
         g_stats.draws++;
         g_stats.vertices += count;
         return total;
     }
     g_stats.unknown++;
+    if (g_log && g_logged_unknown < 10) {
+        g_logged_unknown++;
+        if (g_logged_unknown == 1) {
+            for (int k = 0; k < 16; k++) {
+                const Recent& r = g_recent[(g_recent_index + k) % 16];
+                std::fprintf(stderr, "GX recent %02x len %zu:", r.command, r.length);
+                for (int j = 0; j < 64 && static_cast<size_t>(j) < r.length; j++) {
+                    std::fprintf(stderr, " %02x", r.bytes[j]);
+                }
+                std::fputc(10, stderr);
+            }
+        }
+        std::fprintf(stderr, "GX unknown command %02x after %02x:", command, g_last_command);
+        for (size_t i = 0; i < 16 && i < size; i++) {
+            std::fprintf(stderr, " %02x", data[i]);
+        }
+        std::fputc(10, stderr);
+    }
     return 1;
 }
 
@@ -210,6 +249,21 @@ size_t parse(const uint8_t* data, size_t size, bool list) {
     size_t offset = 0;
     while (offset < size) {
         size_t used = parse_one(data + offset, size - offset, list);
+        if (used != 0) {
+            Recent& r = g_recent[g_recent_index];
+            g_recent_index = (g_recent_index + 1) % 16;
+            r.command = data[offset];
+            r.length = used;
+            std::memcpy(r.bytes, data + offset, used < 64 ? used : 64);
+        }
+        if (g_log_level != nullptr && g_log_level[0] == '3' && g_traced < 120 && used != 0) {
+            g_traced++;
+            std::fprintf(stderr, "GX cmd %02x len %zu:", data[offset], used);
+            for (size_t i = 0; i < used && i < 12; i++) {
+                std::fprintf(stderr, " %02x", data[offset + i]);
+            }
+            std::fputc(10, stderr);
+        }
         if (used == 0) {
             break;
         }
