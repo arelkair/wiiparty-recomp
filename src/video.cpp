@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
@@ -27,6 +26,8 @@ constexpr uint32_t kDisplayConfig = 0xCC002002;
 constexpr uint32_t kTopFramebuffer = 0xCC00201C;
 constexpr uint32_t kPictureConfig = 0xCC002048;
 constexpr uint32_t kFramebufferBase = 0x80000000;
+constexpr uint32_t kGameCodeAddress = 0x80000000;
+constexpr uint32_t kGameCodeLength = 6;
 constexpr uint32_t kMaxWidth = 720;
 constexpr uint32_t kMaxHeight = 576;
 constexpr uint32_t kDefaultHeight = 480;
@@ -177,26 +178,21 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     }
 }
 
-std::string window_title(uint64_t frames_per_second) {
-    bool pal = (rd16(kDisplayConfig) & 0x0300) == 0x0100;
-    return std::string("Wii Party  |  ") + WP_VERSION + "  |  " + gx::render::api_name() + "  |  " + std::to_string(frames_per_second) +
-           " FPS  |  " + (pal ? "PAL" : "NTSC");
+std::string game_code() {
+    std::string code;
+    for (uint32_t i = 0; i < kGameCodeLength; i++) {
+        char ch = static_cast<char>(rd8(kGameCodeAddress + i));
+        if (ch != 0) {
+            code.push_back(ch);
+        }
+    }
+    return code;
 }
 
-void update_title(HWND window) {
-    using Clock = std::chrono::steady_clock;
-    static Clock::time_point last = Clock::now();
-    static uint64_t last_copies = 0;
-    Clock::time_point now = Clock::now();
-    double elapsed = std::chrono::duration<double>(now - last).count();
-    if (elapsed < 1.0) {
-        return;
-    }
-    uint64_t copies = gx::framebuffer_copies();
-    uint64_t rate = static_cast<uint64_t>((copies - last_copies) / elapsed + 0.5);
-    last = now;
-    last_copies = copies;
-    SetWindowTextA(window, window_title(rate).c_str());
+std::string window_title() {
+    bool pal = (rd16(kDisplayConfig) & 0x0300) == 0x0100;
+    return std::string("Wii Party (") + game_code() + ")  |  Build " + WP_BUILD + "  |  " + gx::render::api_name() + "  |  " +
+           (pal ? "PAL" : "NTSC") + "  |  SRC";
 }
 
 void window_thread() {
@@ -206,7 +202,7 @@ void window_thread() {
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = kWindowClass;
     RegisterClassA(&window_class);
-    std::string title = window_title(0);
+    std::string title = window_title();
     RECT rect{0, 0, kWindowWidth, kWindowHeight};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     HWND window = CreateWindowA(kWindowClass, title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
@@ -244,7 +240,6 @@ void present() {
     if (!window) {
         return;
     }
-    update_title(window);
     uint16_t config = rd16(kDisplayConfig);
     uint32_t picture = rd16(kPictureConfig);
     uint32_t width = ((picture >> 8) & 0x7F) * 16;
