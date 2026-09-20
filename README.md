@@ -16,7 +16,7 @@ Working today:
 - The game boots through the Revolution OS initialisation, runs its threads and video retrace interrupts, loads and links its modules, and reaches its scene task loop.
 - The IOS layer is emulated at request level: disc reads from the extracted file system and a virtual NAND with a default `SYSCONF`.
 
-Not implemented yet: graphics (GX), audio (DSP), controller input and window output. The game runs headless and prints diagnostics to the console. Progress notes are in `DECOMP_PROGRESS.md`.
+Not implemented yet: 3D graphics (GX), audio (DSP) and controller input. The window only displays the framebuffer the game hands to the video interface, which stays empty until GX is emulated. Progress notes are in `DECOMP_PROGRESS.md`.
 
 ## Setup
 
@@ -58,7 +58,7 @@ Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (f
 
    `tools/recomp.py` reads `analysis/dol_functions.csv` and writes the generated sources to `build/recomp/`. Game modules are translated separately with `python tools/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/rel_code/`; run `tools/recomp.py` again afterwards so the DOL provides every function the modules call.
 
-   Run the result with `build/out/wiiparty extracted [seconds] [nand directory]`. The virtual NAND (settings and saves) lives in `game/nand`.
+   Run the result with `build/out/wiiparty extracted [seconds] [nand directory]`. It opens a window that shows the console framebuffer; `seconds` is an optional watchdog that stops the process after that long (0 or omitted means no limit) and `WP_HEADLESS=1` runs without a window. The virtual NAND (settings and saves) lives in `game/nand`.
 
 6. Optional, to drive Ghidra from an MCP client: create the virtual environment and install the bridge.
 

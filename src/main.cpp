@@ -10,10 +10,11 @@
 #include "wp/dol.h"
 #include "wp/nand.h"
 #include "wp/threads.h"
+#include "wp/video.h"
 
 int main(int argc, char** argv) {
     std::string extracted = argc > 1 ? argv[1] : "extracted";
-    int timeout_seconds = argc > 2 ? std::atoi(argv[2]) : 10;
+    int timeout_seconds = argc > 2 ? std::atoi(argv[2]) : 0;
 
     wp::g_memory = static_cast<uint8_t*>(std::calloc(wp::kMemorySize, 1));
     if (!wp::g_memory) {
@@ -43,14 +44,17 @@ int main(int argc, char** argv) {
     if (std::getenv("WP_PROFILE")) {
         wp::start_profiler();
     }
-    std::thread([timeout_seconds] {
-        std::this_thread::sleep_for(std::chrono::seconds(timeout_seconds));
-        std::fprintf(stderr, "no progress after %d seconds\n", timeout_seconds);
-        wp::print_call_stack();
-        wp::print_profile();
-        std::_Exit(3);
-    }).detach();
+    if (timeout_seconds > 0) {
+        std::thread([timeout_seconds] {
+            std::this_thread::sleep_for(std::chrono::seconds(timeout_seconds));
+            std::fprintf(stderr, "no progress after %d seconds\n", timeout_seconds);
+            wp::print_call_stack();
+            wp::print_profile();
+            std::_Exit(3);
+        }).detach();
+    }
 
+    wp::video::start();
     wp::Cpu cpu{};
     wp::init_threads(cpu);
     wp::call(cpu, entry);

@@ -3,6 +3,7 @@
 #include "wp/cpu.h"
 #include "wp/memory.h"
 #include "wp/threads.h"
+#include "wp/video.h"
 
 namespace wp {
 
@@ -56,6 +57,7 @@ void deliver_video_interrupt(Cpu& c) {
     c.r[4] = rd32(kCurrentContext);
     call(c, handler);
     c = saved;
+    video::present();
     g_in_interrupt = false;
     c.r[3] = 0;
     call(c, symbol_address("OSSelectThread"));
