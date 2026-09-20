@@ -8,10 +8,12 @@
 #include <cstdint>
 #include <cstdlib>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include "wp/gx.h"
+#include "wp/gx_render.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
 
@@ -181,9 +183,10 @@ void window_thread() {
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = kWindowClass;
     RegisterClassA(&window_class);
+    std::string title = std::string("Wii Party  |  ") + gx::render::api_name();
     RECT rect{0, 0, kWindowWidth, kWindowHeight};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
-    HWND window = CreateWindowA(kWindowClass, "Wii Party", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
+    HWND window = CreateWindowA(kWindowClass, title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
                                 CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr,
                                 window_class.hInstance, nullptr);
     g_window = window;

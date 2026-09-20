@@ -807,6 +807,10 @@ void fill_constants(Constants& constants) {
 
 }
 
+const char* api_name() {
+    return "Direct3D 11";
+}
+
 void draw(const ScreenVertex* vertices, uint32_t count) {
     if (count == 0 || !initialize()) {
         return;
