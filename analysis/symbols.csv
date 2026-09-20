@@ -31,3 +31,6 @@ address,name
 0x80176bb0,IOSIoctlv
 0x8017b5a0,WPADInit
 0x80193cf0,KPADInit
+0x801c8a1c,setjmp
+0x801c8b20,longjmp
+0x8014fe50,GXDrawDone

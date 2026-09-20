@@ -41,6 +41,8 @@ void system_call(Cpu& c);
 uint64_t time_base();
 
 void print_call_stack();
+void start_profiler();
+void print_profile();
 
 constexpr uint32_t kPollInterval = 1u << 14;
 extern uint32_t g_poll_counter;

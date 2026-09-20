@@ -17,6 +17,7 @@ constexpr uint32_t kRequestCallback = 0x20;
 constexpr uint32_t kRequestArgument = 0x24;
 constexpr uint32_t kIpcHeapSlot = 0xFFFF871C;
 constexpr uint32_t kFreeRequestFunction = 0x80177300;
+constexpr uint32_t kDrawDoneSlot = 0xFFFF8F38;
 
 struct Replacement {
     const char* name;
@@ -63,6 +64,10 @@ void ios_send(Cpu& c) {
     c.r[3] = 0;
 }
 
+void gx_draw_done(Cpu& c) {
+    wr8(c.r[13] + kDrawDoneSlot, 1);
+}
+
 void os_report(Cpu& c) {
     std::fputs(format_guest(c, c.r[3], 4).c_str(), stderr);
 }
@@ -94,6 +99,8 @@ const Replacement kReplacements[] = {
     {"KPADInit", do_nothing},
     {"OSLoadContext", load_context},
     {"OSSwitchFiber", switch_fiber},
+    {"longjmp", long_jump},
+    {"GXDrawDone", gx_draw_done},
 };
 
 }

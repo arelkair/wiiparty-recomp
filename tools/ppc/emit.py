@@ -142,12 +142,13 @@ NO_OPERATION = {
 
 
 class Emitter:
-    def __init__(self, start, end, entries, jump_tables, save_context=None):
+    def __init__(self, start, end, entries, jump_tables, save_context=None, set_jump=None):
         self.start = start
         self.end = end
         self.entries = entries
         self.jump_tables = jump_tables
         self.save_context = save_context
+        self.set_jump = set_jump
         self.save_sites = 0
         self.unsupported = []
 
@@ -635,9 +636,23 @@ class Emitter:
             "}",
         ]
 
+    def save_jump_lines(self, return_address):
+        site = self.save_sites
+        self.save_sites += 1
+        return [
+            f"c.lr = {u32(return_address)};",
+            f"if (setjmp(wp_jump[{site}]) == 0) {{",
+            f"wp::save_jump(c, &wp_jump[{site}]);",
+            "} else {",
+            "wp::resume_jump(c);",
+            "}",
+        ]
+
     def call_lines(self, target, return_address):
         if target == self.save_context:
             return self.save_context_lines(return_address)
+        if target == self.set_jump:
+            return self.save_jump_lines(return_address)
         return [f"c.lr = {u32(return_address)};", self.call_statement(target)]
 
     def tail_lines(self, target):

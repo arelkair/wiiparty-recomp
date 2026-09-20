@@ -97,3 +97,11 @@
 3. Identificar funciones del SDK y tabla de símbolos en `analysis/`
 4. Lifter de instrucciones PPC y sistema de build CMake
 5. Extender el lifter a los REL
+
+## Estado tras traducir todos los módulos
+
+- Los 115 módulos REL se traducen (`python tools/recomp_rel.py --all`, unos 650 MB de C++) y el ejecutable completo compila (unos 316 MB). Recompilar todo tarda del orden de 15 minutos con 12 hilos.
+- Perfilador de diagnóstico: `WP_PROFILE=1` muestrea la función más interna cada milisegundo y la imprime al vencer el temporizador; con `WP_DUMP=archivo` vuelca también la memoria del invitado.
+- El motor de tareas del juego (0x80069af0-0x8006a96c) usa `setjmp` (0x801c8a1c) y `longjmp` (0x801c8b20) como corrutinas. El lifter emite `setjmp` nativo en las llamadas a `setjmp` y el runtime reemplaza `longjmp` por un cambio de fibra; un búfer cuyo enlace o pila difieren del guardado se trata como contexto nuevo y arranca una fibra en la dirección guardada. Los módulos se tienen que regenerar para incluir este cambio.
+- Estado actual: las tareas del juego ya se ejecutan. El hilo principal queda esperando en `GXDrawDone` (0x8014fe50) a que la interrupción de fin de dibujado del procesador gráfico active una bandera; hace falta una implementación de GX o de esa interrupción.
+- Pendiente para dejar `main.dol` al 100 %: 14 palabras ilegales, 169 saltos indirectos sin resolver y 37 usos de `rfi`.

@@ -40,10 +40,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (std::getenv("WP_PROFILE")) {
+        wp::start_profiler();
+    }
     std::thread([timeout_seconds] {
         std::this_thread::sleep_for(std::chrono::seconds(timeout_seconds));
         std::fprintf(stderr, "no progress after %d seconds\n", timeout_seconds);
         wp::print_call_stack();
+        wp::print_profile();
         std::_Exit(3);
     }).detach();
 

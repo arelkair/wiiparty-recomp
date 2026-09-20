@@ -17,6 +17,7 @@ DOL_HEADER = ROOT / "build" / "recomp" / "functions.h"
 DOL_TARGETS = ROOT / "build" / "rel_dol_targets.csv"
 LINES_PER_FILE = 40000
 OSSAVECONTEXT = 0x80138290
+SETJMP = 0x801c8a1c
 MFLR_R0 = 0x7C0802A6
 FNV_PRIME = 16777619
 FNV_OFFSET = 2166136261
@@ -192,7 +193,7 @@ def render_function(name, module, start, instrs, entries, relocations_by_site, d
     for targets in tables.values():
         labels.update(t for t in targets if start <= t < end)
     emitter = ModuleEmitter(
-        name, module.module_id, start, end, entries, tables, relocations_by_site, dol_entries, ("dol", OSSAVECONTEXT)
+        name, module.module_id, start, end, entries, tables, relocations_by_site, dol_entries, ("dol", OSSAVECONTEXT), ("dol", SETJMP)
     )
     body = []
     for instr in instrs:

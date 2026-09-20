@@ -24,6 +24,15 @@ constexpr uint32_t kSrr0Offset = 0x198;
 constexpr uint32_t kSrr1Offset = 0x19C;
 constexpr uint32_t kGqrOffset = 0x1A4;
 constexpr uint32_t kPairedOffset = 0x1C8;
+constexpr uint32_t kJumpLinkOffset = 0x00;
+constexpr uint32_t kJumpConditionOffset = 0x04;
+constexpr uint32_t kJumpStackOffset = 0x08;
+constexpr uint32_t kJumpTocOffset = 0x0C;
+constexpr uint32_t kJumpGprOffset = 0x14;
+constexpr uint32_t kJumpFprOffset = 0x60;
+constexpr uint32_t kJumpFpscrOffset = 0x180;
+constexpr uint32_t kFirstSavedRegister = 13;
+constexpr uint32_t kFirstSavedFloat = 14;
 constexpr size_t kFiberStackSize = 4u << 20;
 
 struct SavedContext {
@@ -31,7 +40,17 @@ struct SavedContext {
     std::jmp_buf* point;
 };
 
+struct SavedJump {
+    void* fiber;
+    std::jmp_buf* point;
+    uint32_t link;
+    uint32_t stack;
+};
+
 std::map<uint32_t, SavedContext> g_saved;
+std::map<uint32_t, SavedJump> g_jumps;
+uint32_t g_jump_buffer = 0;
+uint32_t g_jump_value = 0;
 Cpu* g_cpu = nullptr;
 std::jmp_buf* g_resume_point = nullptr;
 uint32_t g_resume_context = 0;
@@ -70,6 +89,52 @@ void restore(Cpu& c, uint32_t context) {
     }
 }
 
+uint32_t float_bits(double value) {
+    float single = static_cast<float>(value);
+    uint32_t bits;
+    std::memcpy(&bits, &single, sizeof bits);
+    return bits;
+}
+
+double float_from_bits(uint32_t bits) {
+    float single;
+    std::memcpy(&single, &bits, sizeof single);
+    return single;
+}
+
+void store_jump(const Cpu& c, uint32_t buffer) {
+    wr32(buffer + kJumpLinkOffset, c.lr);
+    wr32(buffer + kJumpConditionOffset, mfcr(c));
+    wr32(buffer + kJumpStackOffset, c.r[1]);
+    wr32(buffer + kJumpTocOffset, c.r[2]);
+    for (uint32_t i = kFirstSavedRegister; i < 32; i++) {
+        wr32(buffer + kJumpGprOffset + 4 * (i - kFirstSavedRegister), c.r[i]);
+    }
+    for (uint32_t i = kFirstSavedFloat; i < 32; i++) {
+        uint32_t slot = buffer + kJumpFprOffset + 0x10 * (i - kFirstSavedFloat);
+        wr64(slot, fpr_bits(c.f[i]));
+        wr32(slot + 8, float_bits(c.f[i]));
+        wr32(slot + 12, float_bits(c.ps1[i]));
+    }
+    wr64(buffer + kJumpFpscrOffset, c.fpscr);
+}
+
+void restore_jump(Cpu& c, uint32_t buffer) {
+    c.lr = rd32(buffer + kJumpLinkOffset);
+    mtcrf(c, 0xFF, rd32(buffer + kJumpConditionOffset));
+    c.r[1] = rd32(buffer + kJumpStackOffset);
+    c.r[2] = rd32(buffer + kJumpTocOffset);
+    for (uint32_t i = kFirstSavedRegister; i < 32; i++) {
+        c.r[i] = rd32(buffer + kJumpGprOffset + 4 * (i - kFirstSavedRegister));
+    }
+    for (uint32_t i = kFirstSavedFloat; i < 32; i++) {
+        uint32_t slot = buffer + kJumpFprOffset + 0x10 * (i - kFirstSavedFloat);
+        c.f[i] = float_from_bits(rd32(slot + 8));
+        c.ps1[i] = float_from_bits(rd32(slot + 12));
+    }
+    c.fpscr = rd32(buffer + kJumpFpscrOffset + 4);
+}
+
 [[noreturn]] void resume_pending() {
     std::jmp_buf* point = g_resume_point;
     g_resume_point = nullptr;
@@ -86,6 +151,17 @@ VOID CALLBACK start_thread(PVOID parameter) {
     call(c, entry);
     call(c, exit_function);
     std::fputs("thread function returned without exiting\n", stderr);
+    std::abort();
+}
+
+VOID CALLBACK start_jump(PVOID parameter) {
+    uint32_t buffer = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(parameter));
+    Cpu& c = *g_cpu;
+    restore_jump(c, buffer);
+    uint32_t entry = c.lr;
+    c.lr = 0;
+    call(c, entry);
+    std::fputs("jump function returned without exiting\n", stderr);
     std::abort();
 }
 
@@ -123,6 +199,48 @@ void load_context(Cpu& c) {
     g_saved.erase(it);
     g_resume_point = saved.point;
     g_resume_context = context;
+    if (saved.fiber != GetCurrentFiber()) {
+        SwitchToFiber(saved.fiber);
+    }
+    if (g_resume_point) {
+        resume_pending();
+    }
+}
+
+void save_jump(Cpu& c, std::jmp_buf* point) {
+    uint32_t buffer = c.r[3];
+    store_jump(c, buffer);
+    g_jumps[buffer] = SavedJump{GetCurrentFiber(), point, rd32(buffer + kJumpLinkOffset), rd32(buffer + kJumpStackOffset)};
+    c.r[3] = 0;
+}
+
+void resume_jump(Cpu& c) {
+    restore_jump(c, g_jump_buffer);
+    c.r[3] = g_jump_value;
+}
+
+void long_jump(Cpu& c) {
+    uint32_t buffer = c.r[3];
+    uint32_t value = c.r[4] != 0 ? c.r[4] : 1;
+    auto it = g_jumps.find(buffer);
+    bool resumable = it != g_jumps.end() && it->second.link == rd32(buffer + kJumpLinkOffset) &&
+                     it->second.stack == rd32(buffer + kJumpStackOffset);
+    if (!resumable) {
+        if (it != g_jumps.end()) {
+            g_jumps.erase(it);
+        }
+        void* fiber = CreateFiber(kFiberStackSize, start_jump, reinterpret_cast<void*>(static_cast<uintptr_t>(buffer)));
+        SwitchToFiber(fiber);
+        if (g_resume_point) {
+            resume_pending();
+        }
+        return;
+    }
+    SavedJump saved = it->second;
+    g_jumps.erase(it);
+    g_resume_point = saved.point;
+    g_jump_buffer = buffer;
+    g_jump_value = value;
     if (saved.fiber != GetCurrentFiber()) {
         SwitchToFiber(saved.fiber);
     }

@@ -13,3 +13,5 @@ WPADInit
 KPADInit
 OSReport
 OSPanic
+longjmp
+GXDrawDone

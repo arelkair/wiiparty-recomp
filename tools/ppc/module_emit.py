@@ -15,8 +15,8 @@ def split(address):
 
 
 class ModuleEmitter(Emitter):
-    def __init__(self, name, identifier, start, end, entries, jump_tables, relocations, dol_entries, save_context=None):
-        super().__init__(start, end, entries, jump_tables, save_context)
+    def __init__(self, name, identifier, start, end, entries, jump_tables, relocations, dol_entries, save_context=None, set_jump=None):
+        super().__init__(start, end, entries, jump_tables, save_context, set_jump)
         self.name = name
         self.identifier = identifier
         self.relocations = relocations

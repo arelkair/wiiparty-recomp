@@ -6,6 +6,9 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
+#include <thread>
+#include <vector>
 
 #include "wp/function_table.h"
 #include "wp/modules.h"
@@ -69,8 +72,41 @@ void print_call_stack() {
     }
     std::fputc('\n', stderr);
 }
+
+namespace {
+std::map<uint32_t, uint32_t> g_profile;
+std::atomic<bool> g_sampling{false};
+}
+
+void start_profiler() {
+    g_sampling = true;
+    std::thread([] {
+        while (g_sampling) {
+            size_t depth = g_call_depth;
+            if (depth > 0 && depth <= kCallStackSize) {
+                g_profile[g_call_stack[depth - 1]]++;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }).detach();
+}
+
+void print_profile() {
+    g_sampling = false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    dump_memory();
+    std::vector<std::pair<uint32_t, uint32_t>> rows(g_profile.begin(), g_profile.end());
+    std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+    std::fprintf(stderr, "profile (samples per innermost function):\n");
+    for (size_t i = 0; i < rows.size() && i < 15; i++) {
+        const char* name = find_name(rows[i].first);
+        std::fprintf(stderr, "  %08x %6u %s\n", rows[i].first, rows[i].second, name);
+    }
+}
 #else
 void print_call_stack() {}
+void start_profiler() {}
+void print_profile() {}
 #endif
 
 void call(Cpu& c, uint32_t address) {
