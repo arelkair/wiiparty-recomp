@@ -299,3 +299,10 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Plan: imagen interna con la proporción de la ventana; campo de visión horizontal ampliado modificando la proyección de las escenas 3D; en los layouts 2D anclar cada elemento a un borde o al centro y extender los fondos.
 - Orden: después de corregir colores, Miis planos y texturas; no se implementa todavía.
 - Licencias: Dolphin y el fork RecompCore son GPL v2 o posterior, no MIT; se usan solo como referencia de comportamiento, sin copiar código.
+
+## Licencia GPL-3.0-or-later (2026-09-21)
+
+- El proyecto adopta GPL-3.0-or-later como licencia del código propio. `LICENSE` contiene el texto oficial de la GPLv3; `README.md` y `CLAUDE.md` se actualizan.
+- Nuevo `THIRD_PARTY_NOTICES.md` con las reglas de incorporación, los proyectos revisados como posibles fuentes (Dolphin, WiiCompiled, Aurora, RecompCore) y los elementos propios pendientes de revisión.
+- La reutilización de código externo queda condicionada a una revisión individual de licencia y procedencia. En esta tarea no se ha incorporado código externo ni se ha modificado código del proyecto.
+- No es una auditoría legal completa.
