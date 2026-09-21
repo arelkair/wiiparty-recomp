@@ -40,6 +40,10 @@ void trap(Cpu& c, uint32_t address);
 void system_call(Cpu& c);
 uint64_t time_base();
 void locked_cache_dma(Cpu& c);
+void set_decrementer(Cpu& c, uint32_t value);
+uint32_t get_decrementer(Cpu& c);
+bool decrementer_due();
+void decrementer_fired();
 
 void print_call_stack();
 void start_profiler();

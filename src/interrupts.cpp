@@ -1,4 +1,6 @@
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 
 #include "wp/audio.h"
 #include "wp/cpu.h"
@@ -20,6 +22,8 @@ constexpr uint32_t kVideoInterruptRegisters[] = {0xCC002030, 0xCC002034};
 constexpr uint16_t kVideoInterruptEnable = 0x1000;
 constexpr uint16_t kVideoInterruptFlag = 0x8000;
 constexpr uint32_t kCurrentContext = 0x800000D4;
+constexpr uint32_t kExceptionTable = 0x80003000;
+constexpr uint32_t kDecrementerException = 8;
 constexpr uint32_t kDisplayConfig = 0xCC002002;
 constexpr uint16_t kFormatMask = 0x0300;
 constexpr uint16_t kFormatPal = 0x0100;
@@ -45,6 +49,36 @@ bool arm_video_interrupt() {
         }
     }
     return armed;
+}
+
+void deliver_decrementer(Cpu& c) {
+    decrementer_fired();
+    static const bool log_interrupts = std::getenv("WP_LOG_IRQ") != nullptr;
+    if (log_interrupts) {
+        std::fprintf(stderr, "IRQ decrementer at tick %llu", static_cast<unsigned long long>(time_base()));
+        std::fputc(10, stderr);
+    }
+    uint32_t handler = rd32(kExceptionTable + 4 * kDecrementerException);
+    uint32_t context = rd32(kCurrentContext);
+    if (handler == 0 || context == 0) {
+        return;
+    }
+    Cpu interrupted = c;
+    std::jmp_buf point;
+    c.r[3] = context;
+    save_context(c, &point);
+    if (setjmp(point) == 0) {
+        c = interrupted;
+        c.spr[26] = interrupted.lr;
+        c.spr[27] = interrupted.msr;
+        c.msr &= ~kMsrExternalInterrupt;
+        c.r[3] = kDecrementerException;
+        c.r[4] = context;
+        g_in_interrupt = true;
+        call(c, handler);
+    }
+    c = interrupted;
+    g_in_interrupt = false;
 }
 
 void deliver_ipc_interrupt(Cpu& c) {
@@ -80,11 +114,18 @@ void deliver_video_interrupt(Cpu& c) {
 
 }
 
+void interrupt_left() {
+    g_in_interrupt = false;
+}
+
 void poll_interrupts(Cpu& c) {
     g_poll_counter = 0;
     audio::update();
     if (g_in_interrupt || !(c.msr & kMsrExternalInterrupt)) {
         return;
+    }
+    if (decrementer_due()) {
+        deliver_decrementer(c);
     }
     if (ipc_pending()) {
         deliver_ipc_interrupt(c);

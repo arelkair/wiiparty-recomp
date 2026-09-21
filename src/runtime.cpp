@@ -210,6 +210,34 @@ void locked_cache_dma(Cpu& c) {
     c.spr[923] &= ~kDmaClear;
 }
 
+namespace {
+
+bool g_decrementer_armed = false;
+uint64_t g_decrementer_deadline = 0;
+
+}
+
+void set_decrementer(Cpu& c, uint32_t value) {
+    c.spr[22] = value;
+    g_decrementer_deadline = time_base() + ((value & 0x80000000u) ? 0 : value);
+    g_decrementer_armed = true;
+}
+
+uint32_t get_decrementer(Cpu&) {
+    if (!g_decrementer_armed) {
+        return 0x7FFFFFFFu;
+    }
+    return static_cast<uint32_t>(static_cast<int64_t>(g_decrementer_deadline) - static_cast<int64_t>(time_base()));
+}
+
+bool decrementer_due() {
+    return g_decrementer_armed && time_base() >= g_decrementer_deadline;
+}
+
+void decrementer_fired() {
+    g_decrementer_armed = false;
+}
+
 uint64_t wall_clock_ticks() {
     constexpr int64_t kSecondsFrom1970To2000 = 946684800;
     std::time_t now = std::time(nullptr);

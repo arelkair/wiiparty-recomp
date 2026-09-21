@@ -450,7 +450,7 @@ class Emitter:
         return [f"c.sr[{i.sr}] = {reg(i.rs)};"]
 
     def op_mfspr(self, i):
-        special = {1: "wp::mfxer(c)", 8: "c.lr", 9: "c.ctr"}
+        special = {1: "wp::mfxer(c)", 8: "c.lr", 9: "c.ctr", 22: "wp::get_decrementer(c)"}
         return [f"{reg(i.rd)} = {special.get(i.spr, f'c.spr[{i.spr}]')};"]
 
     def op_mtspr(self, i):
@@ -459,6 +459,7 @@ class Emitter:
             1: f"wp::mtxer(c, {source});",
             8: f"c.lr = {source};",
             9: f"c.ctr = {source};",
+            22: f"wp::set_decrementer(c, {source});",
             923: f"c.spr[923] = {source}; wp::locked_cache_dma(c);",
         }
         return [special.get(i.spr, f"c.spr[{i.spr}] = {source};")]

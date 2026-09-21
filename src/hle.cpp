@@ -1,6 +1,7 @@
 #include "wp/hle.h"
 
 #include <cstdio>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
@@ -42,7 +43,10 @@ struct PendingRequest {
     uint32_t result;
     uint32_t callback;
     uint32_t argument;
+    std::chrono::steady_clock::time_point ready;
 };
+
+constexpr std::chrono::microseconds kIpcLatency(1000);
 
 std::deque<PendingRequest> g_pending_ipc;
 
@@ -81,7 +85,8 @@ void ios_send(Cpu& c) {
         c.r[3] = static_cast<uint32_t>(result);
         return;
     }
-    g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument)});
+    g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument),
+                             std::chrono::steady_clock::now() + kIpcLatency});
     c.r[3] = 0;
 }
 
@@ -176,11 +181,11 @@ const Replacement kReplacements[] = {
 }
 
 bool ipc_pending() {
-    return !g_pending_ipc.empty();
+    return !g_pending_ipc.empty() && g_pending_ipc.front().ready <= std::chrono::steady_clock::now();
 }
 
 void ipc_deliver(Cpu& c) {
-    while (!g_pending_ipc.empty()) {
+    while (ipc_pending()) {
         PendingRequest pending = g_pending_ipc.front();
         g_pending_ipc.pop_front();
         uint32_t heap = rd32(c.r[13] + kIpcHeapSlot);
@@ -193,6 +198,10 @@ void ipc_deliver(Cpu& c) {
             c.r[3] = pending.result;
             c.r[4] = pending.argument;
             call(c, pending.callback);
+            if (log_requests) {
+                std::fprintf(stderr, "IOS callback returned request=%08x", pending.request);
+                std::fputc(10, stderr);
+            }
         }
         c.r[3] = heap;
         c.r[4] = pending.request;

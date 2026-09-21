@@ -8,6 +8,7 @@
 #include <map>
 
 #include "wp/function_table.h"
+#include "wp/hle.h"
 
 namespace wp {
 
@@ -61,6 +62,7 @@ void register_trace(void* fiber) {
 #endif
 
 void switch_to(void* fiber) {
+    interrupt_left();
 #ifdef WP_TRACE
     TraceState& self = g_traces[GetCurrentFiber()];
     self.depth = g_call_depth;
