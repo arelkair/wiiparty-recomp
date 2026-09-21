@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** work in progress. The game boots, reaches the menu and plays through the start of Board Game Island, including a minigame, but it is not yet playable to the end of a turn.
+> **Status:** The game boots, reaches the menu and plays through the start of Board Game Island (for example), including a minigame, but it is not yet playable to the end of a turn.
 
 ![Project progress](docs/progress.svg)
 
