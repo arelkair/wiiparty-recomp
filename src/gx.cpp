@@ -1,5 +1,6 @@
 #include "wp/gx.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -103,6 +104,9 @@ int g_logged_prepared = 0;
 uint32_t g_copy_width = 0;
 uint32_t g_copy_height = 0;
 bool g_render_enabled = std::getenv("WP_NO_RENDER") == nullptr;
+bool g_log_fps = std::getenv("WP_LOG_FPS") != nullptr;
+int g_frames = 0;
+std::chrono::steady_clock::time_point g_fps_start = std::chrono::steady_clock::now();
 
 uint32_t be32(const uint8_t* data) {
     return (static_cast<uint32_t>(data[0]) << 24) | (static_cast<uint32_t>(data[1]) << 16) |
@@ -542,6 +546,17 @@ void execute_copy(uint32_t value) {
         int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
         uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
         uint32_t stride = (g_bp[0x4D] & 0x3FF) << 5;
+        if (g_log_fps) {
+            g_frames++;
+            auto now = std::chrono::steady_clock::now();
+            double seconds = std::chrono::duration<double>(now - g_fps_start).count();
+            if (seconds >= 1.0) {
+                std::fprintf(stderr, "fps %.1f", g_frames / seconds);
+                std::fputc(10, stderr);
+                g_frames = 0;
+                g_fps_start = now;
+            }
+        }
         g_copy_width = static_cast<uint32_t>(width);
         g_copy_height = static_cast<uint32_t>(height);
         render::copy_to_framebuffer(address, stride, x, y, width, height);

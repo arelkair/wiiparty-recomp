@@ -4,6 +4,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <set>
 
 #include "wp/disc.h"
 #include "wp/memory.h"
@@ -37,6 +38,18 @@ constexpr uint32_t kDiErrorOutOfRange = 0x00052100;
 constexpr uint32_t kDiErrorInvalidField = 0x00053100;
 constexpr uint64_t kDiscSize = 0x118240000ull;
 constexpr uint32_t kDriveInfoSize = 0x20;
+constexpr const char* kEventHook = "/dev/stm/eventhook";
+
+void log_once(const char* kind, const std::string& device, uint32_t command) {
+    static std::set<std::string> seen;
+    char text[160];
+    std::snprintf(text, sizeof text, "%s %s command %#x", kind, device.c_str(), command);
+    if (seen.insert(text).second) {
+        std::fprintf(stderr, "IOS %s", text);
+        std::fputc(10, stderr);
+    }
+}
+
 
 constexpr uint32_t kFsCreateDirectory = 0x03;
 constexpr uint32_t kFsGetAttributes = 0x06;
@@ -95,7 +108,7 @@ int32_t di_command(uint32_t command, uint32_t input, uint32_t output) {
         g_di_last_error = 0;
         return kDiSuccess;
     default:
-        std::fprintf(stderr, "IOS ioctl /dev/di command %#x\n", command);
+        log_once("ioctl", "/dev/di", command);
         return kDiSuccess;
     }
 }
@@ -116,7 +129,7 @@ int32_t fs_command(uint32_t command, uint32_t input, uint32_t output) {
         return nand::exists(path) ? 0 : nand::kNotFound;
     }
     default:
-        std::fprintf(stderr, "IOS ioctl /dev/fs command %#x\n", command);
+        log_once("ioctl", "/dev/fs", command);
         return 0;
     }
 }
@@ -140,10 +153,15 @@ int32_t fs_vector_command(uint32_t command, uint32_t input_count, uint32_t vecto
         wr32(count_address, count);
         return 0;
     }
-    std::fprintf(stderr, "IOS ioctlv /dev/fs command %#x\n", command);
+    log_once("ioctlv", "/dev/fs", command);
     return 0;
 }
 
+}
+
+bool never_completes(uint32_t request) {
+    auto device = g_devices.find(static_cast<int32_t>(rd32(request + 8)));
+    return rd32(request) == kIoctl && device != g_devices.end() && device->second.path == kEventHook;
 }
 
 int32_t send(uint32_t request) {
@@ -223,7 +241,7 @@ int32_t ioctl(int32_t descriptor, uint32_t command, uint32_t input, uint32_t, ui
         wr32(output + 4, static_cast<uint32_t>(position));
         return 0;
     }
-    std::fprintf(stderr, "IOS ioctl %s command %#x\n", device.c_str(), command);
+    log_once("ioctl", device, command);
     return 0;
 }
 
@@ -238,7 +256,7 @@ int32_t ioctlv(int32_t descriptor, uint32_t command, uint32_t input_count, uint3
     if (device == "/dev/fs") {
         return fs_vector_command(command, input_count, vectors);
     }
-    std::fprintf(stderr, "IOS ioctlv %s command %#x\n", device.c_str(), command);
+    log_once("ioctlv", device, command);
     return 0;
 }
 

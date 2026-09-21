@@ -73,6 +73,10 @@ void ios_send(Cpu& c) {
     uint32_t request = c.r[3];
     bool asynchronous = c.r[4] != 0;
     int32_t result = ios::send(request);
+    if (asynchronous && ios::never_completes(request)) {
+        c.r[3] = 0;
+        return;
+    }
     if (!asynchronous) {
         c.r[3] = static_cast<uint32_t>(result);
         return;

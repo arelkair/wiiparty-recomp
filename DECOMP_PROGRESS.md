@@ -182,3 +182,9 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Descartado: `PSMTXConcat` (0x8014b100) se compara con una multiplicación de matrices de referencia con 50 casos aleatorios y coincide (prueba añadida en `tests/lifted_tests.cpp`); la constante `(0,1)` que usa está en 0x802f58d0.
 - Pendiente: averiguar qué código debería escribir esos arrays (cálculo de matrices mundo de los modelos) y por qué no lo hace o guarda ceros; hipótesis: una función reemplazada por HLE, un hilo/corrutina que no llega a ejecutarse, o datos del esqueleto sin cargar.
 - Sin investigar todavía: diferencia de colores del menú y rendimiento (el usuario percibe 30-40 fps con caídas).
+
+## Eventhook de STM, ruido de log y medición de fps (2026-09-21)
+
+- `IOSSendRequest` asíncrono sobre `/dev/stm/eventhook` se completaba al instante, así que el SDK lo reenviaba sin parar (cientos de líneas de log y tiempo de CPU). Ahora esa petición queda pendiente para siempre (`ios::never_completes`), como en IOS real hasta que hay un evento de reinicio o apagado. Los avisos de ioctl sin manejar se registran una sola vez por dispositivo y comando.
+- Nuevo diagnóstico `WP_LOG_FPS=1`: imprime una vez por segundo las copias EFB a XFB (fotogramas reales del juego). Medición con el menú principal: 50 fps al inicio y baja de forma sostenida hasta unos 20 fps en 30 s, así que hay una degradación con el tiempo (sospechas: fibras terminadas sin liberar, caché de texturas, coste por dibujo). Sin investigar todavía.
+- `/shared2/menu/FaceLib/RFL_DB.dat` no existe en la NAND virtual: la base de datos de Miis está vacía (sin verificar si eso influye en los Miis que faltan).
