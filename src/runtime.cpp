@@ -153,8 +153,17 @@ void call(Cpu& c, uint32_t address) {
     it->function(c);
 }
 
-void missing_function(Cpu&, uint32_t address) {
+void missing_function(Cpu& c, uint32_t address) {
     describe_loaded_modules(address);
+    std::fprintf(stderr, "registers at the call: lr=%08x r3=%08x r4=%08x r5=%08x r12=%08x r30=%08x r31=%08x\n", c.lr, c.r[3], c.r[4], c.r[5], c.r[12], c.r[30],
+                 c.r[31]);
+    uint32_t object = c.r[28];
+    uint32_t table = rd32(object);
+    std::fprintf(stderr, "r28=%08x vtable=%08x slots:", object, table);
+    for (uint32_t i = 0; i < 12; i++) {
+        std::fprintf(stderr, " %08x", rd32(table + i * 4));
+    }
+    std::fputc('\n', stderr);
     fail("call to unknown function %08x", address);
 }
 

@@ -23,10 +23,9 @@ namespace {
 constexpr uint32_t kDisplayConfig = 0xCC002002;
 constexpr uint32_t kGameCodeAddress = 0x80000000;
 constexpr uint32_t kGameCodeLength = 6;
-constexpr int kWindowWidth = 1920;
-constexpr int kWindowHeight = 1080;
+constexpr int kWindowWidth = 1280;
+constexpr int kWindowHeight = 960;
 constexpr double kStandardAspect = 4.0 / 3.0;
-constexpr double kWideAspect = 16.0 / 9.0;
 constexpr const char* kWindowClass = "WiiPartyRecomp";
 
 std::atomic<HWND> g_window{nullptr};
@@ -151,7 +150,7 @@ void window_thread() {
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     while ((rect.right - rect.left > work.right - work.left || rect.bottom - rect.top > work.bottom - work.top) && client_width > 320) {
         client_width -= 16;
-        client_height = client_width * 9 / 16;
+        client_height = client_width * 3 / 4;
         rect = {0, 0, client_width, client_height};
         AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     }
@@ -172,7 +171,6 @@ void start() {
     if (std::getenv("WP_HEADLESS")) {
         return;
     }
-    g_aspect = nand::widescreen() ? kWideAspect : kStandardAspect;
     std::thread(window_thread).detach();
 }
 

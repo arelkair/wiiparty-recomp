@@ -228,7 +228,7 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 
 ## Resolución interna escalada y presentación por GPU (2026-09-21)
 
-- Causa del pixelado: el EFB se renderizaba a 640x480 y la ventana lo ampliaba con GDI. Ahora el EFB tiene `WP_SCALE` veces la resolución nativa (por defecto 3, es decir 1920x1440 internos; rango 1 a 6): el viewport y el recorte se multiplican por la escala y las copias EFB a textura conservan la resolución alta.
+- Causa del pixelado: el EFB se renderizaba a 640x480 y la ventana lo ampliaba con GDI. Ahora el EFB tiene `WP_SCALE` veces la resolución nativa (rango 1 a 6; por defecto 1, resolución nativa, desde 2026-09-21): el viewport y el recorte se multiplican por la escala y las copias EFB a textura conservan la resolución alta.
 - La copia del EFB a XFB ya no se lee a memoria en YUV ni se convierte en la CPU: una copia en la GPU deja el fotograma en una textura (`copy_to_framebuffer`) y `present_frame` lo dibuja en una cadena de intercambio DXGI (flip, sin sincronía vertical) con filtrado lineal, centrado y con bandas negras según la relación de aspecto (16:9 con `IPL.AR=1`). El pintado GDI y el código YUV de `src/video.cpp` se han eliminado; `WP_SAVE_FRAME` guarda ahora el fotograma a resolución interna mediante `read_frame`.
 - Verificado por ejecución: título y menú nítidos (capturas de 1920x1440), 45 a 51 copias por segundo con `WP_LOG_FPS=1` en el menú 3D, ctest 3/3.
 - Limitaciones: la memoria XFB del invitado ya no se rellena (el juego no la lee; no verificado en otros modos); sin vsync (Present(0, 0)); los mipmaps de textura no se generan; las texturas de las caras de los Miis se ven con bloques y no se ha investigado su filtrado.
@@ -285,3 +285,10 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Corrección: si la última instrucción de un trozo puede seguir (no es un salto o retorno incondicional), se emite la llamada al trozo siguiente. Se regeneraron los 115 módulos. `tools/recomp_rel.py` deja de reescribir los archivos que no cambian.
 - Verificado por ejecución: tras el cambio el mismo recorrido llega a la isla en 3D, los cuatro Miis en la entrada y Party Phil ("Since this is your first time playing, I'll explain how this game works."), sin fallos. ctest 3/3.
 - Sin verificar: el resto de módulos (minijuegos y demás tableros) tras la corrección general; el aviso `unsupported EFB copy format 8` (copia de EFB en formato R8) sigue pendiente.
+
+## Proporción de imagen y resolución por defecto (2026-09-21)
+
+- La imagen se veía estirada: la ventana presentaba en 16:9 (según `IPL.AR` de la SYSCONF) lo que el juego dibuja en 4:3 sin comprimir. Comprobado con dos NAND que solo difieren en `IPL.AR` (0 y 1): el fotograma del menú es idéntico en diseño, así que el juego no reacciona a ese flag tal como se ejecuta ahora. La presentación pasa a ser siempre 4:3 y la ventana inicial es 1280x960 (se reduce manteniendo 4:3).
+- Sin resolver: comprobar si el juego real usa 16:9 anamórfico en Dolphin con la misma SYSCONF (podría leer el aspecto por otra vía). `nand::widescreen()` se conserva para esa investigación.
+- Resolución interna por defecto: nativa (`WP_SCALE=1`); `WP_SCALE` 2 a 6 multiplica.
+- Fallo al terminar la explicación del tablero: `0x80042140` llama a una función virtual de un layout NW4R (`0x8012aa70`) con un puntero nulo devuelto al construir el layout tras cargar `layout/inst/cont012.arc.lz` y `cont013.arc.lz`. Los recuadros negros de la explicación son vídeos `.mv` (`inst/thumbnail/mg408.mv`, `mg410.mv`) que aún no se decodifican. `missing_function` imprime ahora registros y vtable del objeto.
