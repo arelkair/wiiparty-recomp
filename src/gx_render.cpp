@@ -402,6 +402,7 @@ bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
 uint8_t g_tlut[kTlutSize];
 int g_scale = 1;
+uint32_t g_vertex_cursor = kVertexCapacity;
 uint32_t g_batches = 0;
 uint32_t g_batch_vertices = 0;
 double g_batch_seconds = 0.0;
@@ -1008,12 +1009,18 @@ void flush_pending() {
     size_t offset = 0;
     while (offset < total) {
         uint32_t batch = static_cast<uint32_t>(std::min<size_t>(total - offset, kVertexCapacity));
-        if (FAILED(context->Map(g_device.vertex_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        D3D11_MAP mode = D3D11_MAP_WRITE_NO_OVERWRITE;
+        if (g_vertex_cursor + batch > kVertexCapacity) {
+            mode = D3D11_MAP_WRITE_DISCARD;
+            g_vertex_cursor = 0;
+        }
+        if (FAILED(context->Map(g_device.vertex_buffer, 0, mode, 0, &mapped))) {
             break;
         }
-        std::memcpy(mapped.pData, pending.vertices.data() + offset, batch * sizeof(ScreenVertex));
+        std::memcpy(static_cast<ScreenVertex*>(mapped.pData) + g_vertex_cursor, pending.vertices.data() + offset, batch * sizeof(ScreenVertex));
         context->Unmap(g_device.vertex_buffer, 0);
-        context->Draw(batch, 0);
+        context->Draw(batch, g_vertex_cursor);
+        g_vertex_cursor += batch;
         offset += batch;
     }
     pending.vertices.clear();

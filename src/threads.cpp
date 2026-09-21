@@ -284,6 +284,15 @@ void long_jump(Cpu& c) {
     }
 }
 
+void print_guest_registers() {
+    if (!g_cpu) {
+        return;
+    }
+    std::fprintf(stderr, "guest registers: lr=%08x sp=%08x r3=%08x r4=%08x r5=%08x r6=%08x r7=%08x r30=%08x r31=%08x", g_cpu->lr, g_cpu->r[1],
+                 g_cpu->r[3], g_cpu->r[4], g_cpu->r[5], g_cpu->r[6], g_cpu->r[7], g_cpu->r[30], g_cpu->r[31]);
+    std::fputc(10, stderr);
+}
+
 void print_thread_stacks() {
 #ifdef WP_TRACE
     void* current = GetCurrentFiber();

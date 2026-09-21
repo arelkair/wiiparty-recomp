@@ -14,6 +14,7 @@ void save_jump(Cpu& c, std::jmp_buf* point);
 void resume_jump(Cpu& c);
 void long_jump(Cpu& c);
 void print_thread_stacks();
+void print_guest_registers();
 uint32_t symbol_address(const char* name);
 
 }

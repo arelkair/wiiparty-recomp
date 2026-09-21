@@ -26,6 +26,7 @@ LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
                      reinterpret_cast<void*>(record->ExceptionInformation[1]));
     }
     std::fputc(10, stderr);
+    wp::print_guest_registers();
     wp::print_call_stack();
     wp::print_thread_stacks();
     std::fflush(stderr);

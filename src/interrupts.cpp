@@ -64,6 +64,9 @@ void deliver_decrementer(Cpu& c) {
         return;
     }
     Cpu interrupted = c;
+#ifdef WP_TRACE
+    size_t trace_depth = g_call_depth;
+#endif
     std::jmp_buf point;
     c.r[3] = context;
     save_context(c, &point);
@@ -78,6 +81,9 @@ void deliver_decrementer(Cpu& c) {
         call(c, handler);
     }
     c = interrupted;
+#ifdef WP_TRACE
+    g_call_depth = trace_depth;
+#endif
     g_in_interrupt = false;
 }
 
