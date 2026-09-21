@@ -315,3 +315,12 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Verified by running the scripted path (title, menu, Board Game Island, players, Mii, CPU skill, Start, then A presses) for 280 s with no crash. The game shows the explanation, the "Maze Daze" instruction screen (Rules, Controls, Practice, Start), starts the minigame, shows the play order ("Megan, Hiroshi, Luca, Guest A") and reaches the board turn screen. ctest 3/3.
 - Still wrong: the explanation pictures are black rectangles; the minigame itself is drawn upside down or black; `unsupported EFB copy format 8` (R8 EFB copy) is still logged; the menu panel colors are unresolved (see the color sections above).
 - Not verified: other modules and minigames; the crash earlier seen in `memset` after the same scenes did not reappear in this run, but it was not investigated separately.
+
+## Freeze when the first Mii moves on the board (2026-09-21, in progress)
+
+- Reproduced with the scripted path plus periodic A presses (about 250 s in). The main fiber stays inside `0x80126ad0`, a rotation-matrix builder from three Euler angles that reduces each angle by repeated subtraction. It never finishes when an angle is huge.
+- The caller is `0x8005ade0`, which reads the rotation of an object at `+0xb8`, `+0xbc` and `+0xc0` (vtable `0x80400f4c`) and calls `0x80126ad0`. The Y angle (`+0xbc`) follows `a' = -2a - k` each frame, so its magnitude doubles and alternates sign (for example -2150, 2150, -6451, 10752, -23654, 45158) until it reaches about 1e12. The X and Z angles converge normally (each step is about 0.95 times the previous one).
+- This looks like a proportional controller with a gain of 3 per step on the Y angle, which diverges. The gain is probably scaled by a time step or another value that differs from real hardware. The source of that value has not been found.
+- The rotation setters are `0x80053de0`, `0x80053df0` and `0x80053e40`. The next step is to log who calls them with a large Y angle. Object addresses change between runs, so a fixed memory watch does not work; log at the setters instead.
+- Checked and ruled out: the semantics of `ps_sum0` and `ps_muls0` match the PowerPC manual and the Dolphin interpreter.
+- Other findings from the same session, not yet investigated: the barrel in the first minigame does not appear, the dice have no pips, Miis look flat (GX lighting is not implemented, which fits), and round text such as "Round 1" is not drawn.
