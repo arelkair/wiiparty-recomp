@@ -1,6 +1,6 @@
-# Contributing
+# Contributing to Wii Party Recomp
 
-The file is named `CONTRIBUTING.md` because GitHub looks for that name.
+I appreciate your support!
 
 ## Before anything else
 
