@@ -306,6 +306,7 @@ struct CachedTexture {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t format = 0;
+    uint64_t verified_frame = ~0ull;
 };
 
 struct CopiedTexture {
@@ -345,9 +346,24 @@ struct Device {
 constexpr uint32_t kTlutSize = 0x100000;
 constexpr uint32_t kTlutMask = 0x7FE00;
 
+struct PendingBatch {
+    std::vector<ScreenVertex> vertices;
+    Constants constants;
+    ID3D11ShaderResourceView* views[kTextureMaps];
+    ID3D11SamplerState* samplers[kTextureMaps];
+    uint32_t blend = 0;
+    uint32_t depth = 0;
+    uint32_t top_left = 0;
+    uint32_t bottom_right = 0;
+};
+
 Device g_device;
+PendingBatch g_pending;
+
+void flush_pending();
 bool g_logged_palette = false;
 bool g_logged_copy_format = false;
+uint64_t g_frame = 0;
 uint8_t g_tlut[kTlutSize];
 
 bool compile(const char* entry, const char* profile, ID3DBlob** blob) {
@@ -700,22 +716,30 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         return copied->second.view;
     }
     uint64_t key = (static_cast<uint64_t>(address) << 20) ^ (static_cast<uint64_t>(width) << 8) ^ (static_cast<uint64_t>(height) << 32) ^ format;
-    uint64_t hash = hash_bytes(source, size);
     const uint8_t* tlut = nullptr;
     uint32_t tlut_format = 0;
+    uint32_t entries = 0;
     if (format >= 8 && format <= 10) {
         uint32_t tlut_register = bp[map < 4 ? 0x98 + map : 0xB8 + (map - 4)];
         uint32_t tlut_offset = (tlut_register & 0x3FF) << 9;
         tlut_format = (tlut_register >> 10) & 3;
         tlut = g_tlut + (tlut_offset & kTlutMask);
-        uint32_t entries = format == 8 ? 16 : format == 9 ? 256 : 16384;
-        hash = (hash ^ hash_bytes(tlut, entries * 2)) * 1099511628211ull ^ tlut_format;
+        entries = format == 8 ? 16 : format == 9 ? 256 : 16384;
         key ^= (static_cast<uint64_t>(tlut_offset >> 9) << 54) ^ (static_cast<uint64_t>(tlut_format) << 52);
     }
     CachedTexture& entry = g_device.textures[key];
-    if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format) {
+    if (entry.view && entry.verified_frame == g_frame && entry.width == width && entry.height == height && entry.format == format) {
         return entry.view;
     }
+    uint64_t hash = hash_bytes(source, size);
+    if (tlut) {
+        hash = (hash ^ hash_bytes(tlut, entries * 2)) * 1099511628211ull ^ tlut_format;
+    }
+    if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format) {
+        entry.verified_frame = g_frame;
+        return entry.view;
+    }
+    flush_pending();
     release(entry.view);
     release(entry.texture);
     std::vector<uint32_t> pixels = decode_texture(source, width, height, format, tlut, tlut_format);
@@ -737,6 +761,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     entry.width = width;
     entry.height = height;
     entry.format = format;
+    entry.verified_frame = g_frame;
     return entry.view;
 }
 
@@ -889,6 +914,59 @@ void fill_constants(Constants& constants) {
     }
 }
 
+void flush_pending() {
+    PendingBatch& pending = g_pending;
+    if (pending.vertices.empty()) {
+        return;
+    }
+    ID3D11DeviceContext* context = g_device.context;
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    if (SUCCEEDED(context->Map(g_device.constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        std::memcpy(mapped.pData, &pending.constants, sizeof pending.constants);
+        context->Unmap(g_device.constants, 0);
+    }
+    context->PSSetShaderResources(0, kTextureMaps, pending.views);
+    context->PSSetSamplers(0, kTextureMaps, pending.samplers);
+    D3D11_VIEWPORT viewport{0, 0, static_cast<float>(kEfbWidth), static_cast<float>(kEfbHeight), 0.0f, 1.0f};
+    context->RSSetViewports(1, &viewport);
+    D3D11_RECT scissor;
+    scissor.left = static_cast<LONG>(((pending.top_left >> 12) & 0x7FF) - kScissorOffset);
+    scissor.top = static_cast<LONG>((pending.top_left & 0x7FF) - kScissorOffset);
+    scissor.right = static_cast<LONG>(((pending.bottom_right >> 12) & 0x7FF) - kScissorOffset + 1);
+    scissor.bottom = static_cast<LONG>((pending.bottom_right & 0x7FF) - kScissorOffset + 1);
+    scissor.left = std::max<LONG>(scissor.left, 0);
+    scissor.top = std::max<LONG>(scissor.top, 0);
+    scissor.right = std::min<LONG>(scissor.right, kEfbWidth);
+    scissor.bottom = std::min<LONG>(scissor.bottom, kEfbHeight);
+    context->RSSetScissorRects(1, &scissor);
+    context->RSSetState(g_device.rasterizer);
+    context->OMSetRenderTargets(1, &g_device.target_view, g_device.depth_view);
+    float blend_factor[4] = {1, 1, 1, 1};
+    context->OMSetBlendState(blend_for(pending.blend), blend_factor, 0xFFFFFFFF);
+    context->OMSetDepthStencilState(depth_for(pending.depth), 0);
+    UINT stride = sizeof(ScreenVertex);
+    UINT zero = 0;
+    context->IASetVertexBuffers(0, 1, &g_device.vertex_buffer, &stride, &zero);
+    context->IASetInputLayout(g_device.layout);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(g_device.vertex_shader, nullptr, 0);
+    context->PSSetShader(g_device.pixel_shader, nullptr, 0);
+    context->PSSetConstantBuffers(0, 1, &g_device.constants);
+    size_t total = pending.vertices.size();
+    size_t offset = 0;
+    while (offset < total) {
+        uint32_t batch = static_cast<uint32_t>(std::min<size_t>(total - offset, kVertexCapacity));
+        if (FAILED(context->Map(g_device.vertex_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            break;
+        }
+        std::memcpy(mapped.pData, pending.vertices.data() + offset, batch * sizeof(ScreenVertex));
+        context->Unmap(g_device.vertex_buffer, 0);
+        context->Draw(batch, 0);
+        offset += batch;
+    }
+    pending.vertices.clear();
+}
+
 }
 
 const char* api_name() {
@@ -899,65 +977,40 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
     if (count == 0 || !initialize()) {
         return;
     }
-    ID3D11DeviceContext* context = g_device.context;
     const uint32_t* bp = bp_registers();
-    uint32_t offset = 0;
-    while (offset < count) {
-        uint32_t batch = std::min<uint32_t>(count - offset, kVertexCapacity);
-        D3D11_MAPPED_SUBRESOURCE mapped;
-        if (FAILED(context->Map(g_device.vertex_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-            return;
+    Constants constants;
+    fill_constants(constants);
+    ID3D11ShaderResourceView* views[kTextureMaps] = {};
+    ID3D11SamplerState* samplers[kTextureMaps] = {};
+    uint32_t used_maps = 0;
+    for (uint32_t i = 0; i < constants.header[0] && i < kMaxStages; i++) {
+        if (constants.stage[i][2] & 0x40) {
+            used_maps |= 1u << (constants.stage[i][2] & 7);
         }
-        std::memcpy(mapped.pData, vertices + offset, batch * sizeof(ScreenVertex));
-        context->Unmap(g_device.vertex_buffer, 0);
-
-        Constants constants;
-        fill_constants(constants);
-        if (SUCCEEDED(context->Map(g_device.constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-            std::memcpy(mapped.pData, &constants, sizeof constants);
-            context->Unmap(g_device.constants, 0);
-        }
-
-        ID3D11ShaderResourceView* views[kTextureMaps] = {};
-        ID3D11SamplerState* samplers[kTextureMaps] = {};
-        for (uint32_t map = 0; map < kTextureMaps; map++) {
+    }
+    for (uint32_t map = 0; map < kTextureMaps; map++) {
+        if (used_maps & (1u << map)) {
             views[map] = texture_for(map);
             samplers[map] = sampler_for(map);
         }
-        context->PSSetShaderResources(0, kTextureMaps, views);
-        context->PSSetSamplers(0, kTextureMaps, samplers);
-
-        D3D11_VIEWPORT viewport{0, 0, static_cast<float>(kEfbWidth), static_cast<float>(kEfbHeight), 0.0f, 1.0f};
-        context->RSSetViewports(1, &viewport);
-        uint32_t top_left = bp[0x20];
-        uint32_t bottom_right = bp[0x21];
-        D3D11_RECT scissor;
-        scissor.left = static_cast<LONG>(((top_left >> 12) & 0x7FF) - kScissorOffset);
-        scissor.top = static_cast<LONG>((top_left & 0x7FF) - kScissorOffset);
-        scissor.right = static_cast<LONG>(((bottom_right >> 12) & 0x7FF) - kScissorOffset + 1);
-        scissor.bottom = static_cast<LONG>((bottom_right & 0x7FF) - kScissorOffset + 1);
-        scissor.left = std::max<LONG>(scissor.left, 0);
-        scissor.top = std::max<LONG>(scissor.top, 0);
-        scissor.right = std::min<LONG>(scissor.right, kEfbWidth);
-        scissor.bottom = std::min<LONG>(scissor.bottom, kEfbHeight);
-        context->RSSetScissorRects(1, &scissor);
-        context->RSSetState(g_device.rasterizer);
-        context->OMSetRenderTargets(1, &g_device.target_view, g_device.depth_view);
-        float blend_factor[4] = {1, 1, 1, 1};
-        context->OMSetBlendState(blend_for(bp[0x41]), blend_factor, 0xFFFFFFFF);
-        context->OMSetDepthStencilState(depth_for(bp[0x40]), 0);
-
-        UINT stride = sizeof(ScreenVertex);
-        UINT zero = 0;
-        context->IASetVertexBuffers(0, 1, &g_device.vertex_buffer, &stride, &zero);
-        context->IASetInputLayout(g_device.layout);
-        context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        context->VSSetShader(g_device.vertex_shader, nullptr, 0);
-        context->PSSetShader(g_device.pixel_shader, nullptr, 0);
-        context->PSSetConstantBuffers(0, 1, &g_device.constants);
-        context->Draw(batch, 0);
-        offset += batch;
     }
+    uint32_t blend = bp[0x41] & 0xFFFF;
+    uint32_t depth = bp[0x40] & 0x1F;
+    PendingBatch& pending = g_pending;
+    bool same = !pending.vertices.empty() && pending.blend == blend && pending.depth == depth && pending.top_left == bp[0x20] &&
+                pending.bottom_right == bp[0x21] && std::memcmp(&pending.constants, &constants, sizeof constants) == 0 &&
+                std::memcmp(pending.views, views, sizeof views) == 0 && std::memcmp(pending.samplers, samplers, sizeof samplers) == 0;
+    if (!same) {
+        flush_pending();
+        pending.constants = constants;
+        std::memcpy(pending.views, views, sizeof views);
+        std::memcpy(pending.samplers, samplers, sizeof samplers);
+        pending.blend = blend;
+        pending.depth = depth;
+        pending.top_left = bp[0x20];
+        pending.bottom_right = bp[0x21];
+    }
+    pending.vertices.insert(pending.vertices.end(), vertices, vertices + count);
 }
 
 void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes) {
@@ -985,6 +1038,7 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     if (width <= 0 || height <= 0) {
         return;
     }
+    flush_pending();
     CopiedTexture& entry = g_device.copies[address];
     uint32_t w = static_cast<uint32_t>(width);
     uint32_t h = static_cast<uint32_t>(height);
@@ -1022,6 +1076,8 @@ void copy_to_framebuffer(uint32_t address, uint32_t stride, int x, int y, int wi
     if (!initialize()) {
         return;
     }
+    flush_pending();
+    g_frame++;
     ID3D11DeviceContext* context = g_device.context;
     x = std::max(0, x);
     y = std::max(0, y);
@@ -1059,6 +1115,7 @@ void clear() {
     if (!initialize()) {
         return;
     }
+    flush_pending();
     const uint32_t* bp = bp_registers();
     float color[4] = {(bp[0x4F] & 0xFF) / 255.0f, ((bp[0x50] >> 8) & 0xFF) / 255.0f, (bp[0x50] & 0xFF) / 255.0f, ((bp[0x4F] >> 8) & 0xFF) / 255.0f};
     g_device.context->ClearRenderTargetView(g_device.target_view, color);

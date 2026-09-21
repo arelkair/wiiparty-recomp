@@ -211,3 +211,10 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - El reloj del sistema (`time_base`) parte ahora de la fecha real desde el 2000-01-01 en vez de cero. Hipótesis descartada: los colores del menú no dependen de la fecha.
 - Diagnóstico: `WP_LOG_GX=2` imprime por dibujo los registros de color de TEV (`regs=`), los konst, el orden, el color de material y el control de canales. Con él se ve que para el panel "Party Games" el juego escribe en el registro de color 1 el valor (0, 140, 255, 255), azul; en Dolphin el panel es rojo. La diferencia está por tanto en los datos que el juego decide, no en la conversión del renderizador (que se limita a decodificar lo que recibe).
 - Sin resolver: qué entrada del juego elige el color (candidatos: datos de guardado `/wiiparty.bin` ausentes, base de datos de Miis `RFL_DB.dat` ausente, ajustes de SYSCONF, un cálculo de animación con coma flotante o cuantizado mal lifteado).
+
+## Rendimiento del renderizador (2026-09-21)
+
+- Medición: con `WP_PROFILE=1` casi todo el tiempo estaba en `GXDrawDone` (procesado de GX del anfitrión). El juego emite unos 5.600 dibujos por fotograma en escenas 3D (partículas y Miis) y cada uno costaba unos 30 microsegundos de sobrecarga de Direct3D 11; resultado: 6 fps en 3D y una caída de 50 a 20 fps en el menú.
+- Cambios en `src/gx_render.cpp`: los dibujos consecutivos con el mismo estado (constantes de TEV, texturas, muestreadores, mezcla, profundidad y recorte) se acumulan y se envían con una sola llamada; el lote se vacía antes de cualquier copia del EFB, limpieza o sustitución de textura. Las texturas solo se consultan para los mapas que usan las etapas de TEV, y una textura ya comprobada en el fotograma actual no se vuelve a hashear.
+- Resultado medido con `WP_LOG_FPS=1`: 50 fps estables (el tope de PAL) en título, menú y escenas 3D durante 70 s (antes 6 fps en 3D).
+- Pixelado: la imagen se renderiza a 640x480 (resolución nativa) y se amplía con GDI sin filtrado. La solución prevista es resolución interna escalada (2x, 3x, 4x) y presentación por GPU; pendiente.
