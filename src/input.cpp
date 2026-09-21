@@ -2,8 +2,12 @@
 
 #include <windows.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "wp/video.h"
 
@@ -27,6 +31,58 @@ bool pressed(int key) {
     return (GetAsyncKeyState(key) & 0x8000) != 0;
 }
 
+struct ScriptEntry {
+    int from = 0;
+    int to = 0;
+    uint32_t buttons = 0;
+    bool pointer = false;
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
+std::vector<ScriptEntry> parse_script(const char* text) {
+    std::vector<ScriptEntry> entries;
+    std::stringstream lines(text);
+    std::string line;
+    while (std::getline(lines, line, ';')) {
+        std::stringstream fields(line);
+        std::string field;
+        std::vector<std::string> parts;
+        while (std::getline(fields, field, ',')) {
+            parts.push_back(field);
+        }
+        if (parts.size() < 3) {
+            continue;
+        }
+        ScriptEntry entry;
+        entry.from = std::atoi(parts[0].c_str());
+        entry.to = std::atoi(parts[1].c_str());
+        entry.buttons = static_cast<uint32_t>(std::strtoul(parts[2].c_str(), nullptr, 16));
+        if (parts.size() >= 5) {
+            entry.pointer = true;
+            entry.x = static_cast<float>(std::atof(parts[3].c_str()));
+            entry.y = static_cast<float>(std::atof(parts[4].c_str()));
+        }
+        entries.push_back(entry);
+    }
+    return entries;
+}
+
+Sample scripted(const std::vector<ScriptEntry>& script, int milliseconds) {
+    Sample result;
+    for (const ScriptEntry& entry : script) {
+        if (milliseconds >= entry.from && milliseconds < entry.to) {
+            result.buttons |= entry.buttons;
+            if (entry.pointer) {
+                result.pointer_valid = true;
+                result.pointer_x = entry.x;
+                result.pointer_y = entry.y;
+            }
+        }
+    }
+    return result;
+}
+
 }
 
 bool connected(uint32_t channel) {
@@ -34,6 +90,13 @@ bool connected(uint32_t channel) {
 }
 
 Sample sample(uint32_t channel) {
+    static const char* script_text = std::getenv("WP_INPUT_SCRIPT");
+    if (script_text) {
+        static const std::vector<ScriptEntry> script = parse_script(script_text);
+        static const auto origin = std::chrono::steady_clock::now();
+        int elapsed = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - origin).count());
+        return channel == 0 ? scripted(script, elapsed) : Sample{};
+    }
     Sample result;
     if (const char* forced = std::getenv("WP_INPUT_BUTTONS")) {
         static int frames = 0;

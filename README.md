@@ -10,7 +10,7 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
-The game runs natively on Windows and reaches its title screen and main menu (Party Games, Pair Games and House Party) with keyboard and mouse input. Menus, text, 3D backgrounds and Mii models are drawn, but panel colours differ from the real game, there is no audio and no minigame has been tried, so it is not playable yet.
+The game runs natively on Windows and reaches its title screen, main menu and the first steps of Board Game Island (player and Mii selection, host tutorial) with keyboard and mouse input. Menus, text, 3D backgrounds and Mii models are drawn, but panel colours differ from the real game, there is no audio and no minigame has been tried, so it is not playable yet.
 
 Working today:
 

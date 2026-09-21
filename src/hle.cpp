@@ -35,7 +35,7 @@ constexpr uint32_t kDeviceCore = 0;
 constexpr uint32_t kDeviceNotFound = 0xFD;
 constexpr uint32_t kChannelCount = 4;
 constexpr const char* kSilentPrefix = "HleZero_";
-constexpr float kPointerHeightScale = 0.75f;
+constexpr float kPointerHeightScale = 1.0f;
 uint32_t g_previous_buttons[kChannelCount] = {};
 
 struct PendingRequest {

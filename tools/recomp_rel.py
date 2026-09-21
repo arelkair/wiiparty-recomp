@@ -175,7 +175,17 @@ def discover(module, relocations, relocations_by_site):
         entries |= found
 
 
-def render_function(name, module, start, instrs, entries, relocations_by_site, dol_entries, stats, dol_targets):
+def falls_through(instr):
+    if instr.mn == "b":
+        return bool(instr.lk)
+    if instr.mn in ("bclr", "bcctr"):
+        return bool(instr.lk) or (instr.bo & 0x14) != 0x14
+    if instr.mn == "rfi":
+        return False
+    return True
+
+
+def render_function(name, module, start, instrs, entries, relocations_by_site, dol_entries, stats, dol_targets, bodies):
     end = start + 4 * len(instrs)
     tables = {}
     for n, instr in enumerate(instrs):
@@ -213,6 +223,8 @@ def render_function(name, module, start, instrs, entries, relocations_by_site, d
     if emitter.save_sites:
         lines.append(f"    std::jmp_buf wp_jump[{emitter.save_sites}];")
     lines += body
+    if falls_through(instrs[-1]) and end in bodies:
+        lines.append(f"    f_{name}_{end:08x}(c);")
     lines.append("}")
     stats["functions"] += 1
     stats["instructions"] += len(instrs)
@@ -223,14 +235,18 @@ def render_function(name, module, start, instrs, entries, relocations_by_site, d
 
 def write_module(name, module, bodies, chunks):
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for old in OUTPUT.glob(f"{name}_*"):
-        old.unlink()
-    for old in OUTPUT.glob(f"{name}.h"):
-        old.unlink()
+    written = set()
+
+    def emit(file_name, text):
+        path = OUTPUT / file_name
+        written.add(file_name)
+        if not path.exists() or path.read_text() != text:
+            path.write_text(text)
+
     section_count = len(module.sections)
     header = ["#pragma once", '#include "wp/cpu.h"', "", f"extern uint32_t g_{name}_bases[{section_count}];", ""]
     header += [f"void f_{name}_{a:08x}(wp::Cpu& c);" for a in sorted(bodies)]
-    (OUTPUT / f"{name}.h").write_text("\n".join(header) + "\n")
+    emit(f"{name}.h", "\n".join(header) + "\n")
     for index, chunk in enumerate(chunks):
         text = [
             '#include "wp/cpu.h"',
@@ -240,7 +256,7 @@ def write_module(name, module, bodies, chunks):
             f'#include "{name}.h"',
             "",
         ] + chunk
-        (OUTPUT / f"{name}_{index:03d}.cpp").write_text("\n".join(text) + "\n")
+        emit(f"{name}_{index:03d}.cpp", "\n".join(text) + "\n")
     table = ['#include "wp/modules.h"', f'#include "{name}.h"', "", f"uint32_t g_{name}_bases[{section_count}];", "", "namespace wp {", ""]
     table.append(f"const ModuleFunction g_{name}_functions[] = {{")
     for address in sorted(bodies):
@@ -254,7 +270,10 @@ def write_module(name, module, bodies, chunks):
         "",
         "}",
     ]
-    (OUTPUT / f"{name}_module.cpp").write_text("\n".join(table) + "\n")
+    emit(f"{name}_module.cpp", "\n".join(table) + "\n")
+    for old in list(OUTPUT.glob(f"{name}_*")) + list(OUTPUT.glob(f"{name}.h")):
+        if old.name not in written:
+            old.unlink()
 
 
 def write_table():
@@ -285,7 +304,7 @@ def generate(name, dol_entries):
     chunks = []
     current = []
     for start in sorted(bodies):
-        current.extend(render_function(name, module, start, bodies[start], entries, by_site, dol_entries, stats, dol_targets))
+        current.extend(render_function(name, module, start, bodies[start], entries, by_site, dol_entries, stats, dol_targets, bodies))
         current.append("")
         if len(current) >= LINES_PER_FILE:
             chunks.append(current)
