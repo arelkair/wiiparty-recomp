@@ -188,3 +188,10 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - `IOSSendRequest` asíncrono sobre `/dev/stm/eventhook` se completaba al instante, así que el SDK lo reenviaba sin parar (cientos de líneas de log y tiempo de CPU). Ahora esa petición queda pendiente para siempre (`ios::never_completes`), como en IOS real hasta que hay un evento de reinicio o apagado. Los avisos de ioctl sin manejar se registran una sola vez por dispositivo y comando.
 - Nuevo diagnóstico `WP_LOG_FPS=1`: imprime una vez por segundo las copias EFB a XFB (fotogramas reales del juego). Medición con el menú principal: 50 fps al inicio y baja de forma sostenida hasta unos 20 fps en 30 s, así que hay una degradación con el tiempo (sospechas: fibras terminadas sin liberar, caché de texturas, coste por dibujo). Sin investigar todavía.
 - `/shared2/menu/FaceLib/RFL_DB.dat` no existe en la NAND virtual: la base de datos de Miis está vacía (sin verificar si eso influye en los Miis que faltan).
+
+## Plataformas objetivo y decisión sobre aurora (2026-09-21)
+
+- Objetivo del usuario para versiones finales: Windows 10 y 11 (32 y 64 bits respectivamente, x86 y ARM), Linux y macOS.
+- Estado actual, todo específico de Windows: ventana GDI (`src/video.cpp`), Direct3D 11 con HLSL (`src/gx_render.cpp`), hilos como fibras de Windows (`src/threads.cpp`), compilación con GCC de MinGW-w64.
+- Consecuencias: para Linux y macOS hacen falta un backend gráfico multiplataforma (WebGPU con Dawn o similar), una capa de ventana y entrada portable (SDL3) y corrutinas portables. Windows 11 no existe en 32 bits; un ejecutable de 32 bits con ~320 MB de memoria de invitado y ~300 MB de código es el objetivo más arriesgado y queda para el final.
+- Decisión: aurora (MIT) no se adopta entero ahora. Se mantiene el renderizador Direct3D 11 para conseguir un juego funcional y se conserva `include/wp/gx_render.h` como frontera estrecha (dibujar, copiar, limpiar, cargar paleta) para poder añadir después un backend WebGPU. Piezas sin dependencias gráficas de aurora (conversión de texturas) pueden incorporarse con su licencia MIT cuando aporten.
