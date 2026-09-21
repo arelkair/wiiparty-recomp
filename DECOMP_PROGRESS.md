@@ -250,3 +250,8 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Verificado: con la base de datos de Miis del usuario (`RFL_DB.dat`, en una NAND temporal no versionada) el juego termina la inicialización de RFL (abre, posiciona, lee y cierra el archivo), muestra en el título los Miis de esa base, sigue a 50 fps y llega a la presentación de Party Phil con los colores rosas correctos de su ropa. Con la NAND por defecto sigue llegando al menú. ctest 3/3.
 - Efecto general: cualquier código del juego o del SDK que dependa de alarmas (temporizadores de DVD, `OSSleepTicks`, botones de inicio, RFL) ahora funciona; antes fallaba en silencio.
 - Sin verificar: los colores de los paneles del menú principal con los Miis reales, y el impacto del DEC en otras pantallas.
+
+## Diagnósticos de entrada y de cierre (2026-09-21)
+
+- `WP_LOG_INPUT=1` imprime la ventana enfocada y cada cambio de botones que lee el juego. Sirvió para confirmar que teclado y foco funcionaban (el fallo de entrada que notó el usuario venía de una instancia antigua de la ventana).
+- Informador de fallos (`src/main.cpp`): un filtro de excepciones imprime el código de la excepción, la dirección del anfitrión, la dirección de acceso y las pilas de llamadas del invitado (hilo actual y resto de hilos) antes de terminar. Se añadió porque un cierre del proceso al entrar en una partida del primer tablero no dejó ningún mensaje.

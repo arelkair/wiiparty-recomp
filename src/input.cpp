@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <cstdio>
 #include <cstdlib>
 
 #include "wp/video.h"
@@ -42,6 +43,15 @@ Sample sample(uint32_t channel) {
         return result;
     }
     HWND window = static_cast<HWND>(video::window_handle());
+    static const bool log_input = std::getenv("WP_LOG_INPUT") != nullptr;
+    static bool logged_focus = false;
+    bool focused = window != nullptr && GetForegroundWindow() == window;
+    if (log_input && channel == 0 && (focused != logged_focus || !logged_focus)) {
+        logged_focus = focused;
+        std::fprintf(stderr, "input window=%p focused=%d foreground=%p", static_cast<void*>(window), focused ? 1 : 0,
+                     static_cast<void*>(GetForegroundWindow()));
+        std::fputc(10, stderr);
+    }
     if (channel != 0 || window == nullptr || GetForegroundWindow() != window) {
         return result;
     }
@@ -49,6 +59,12 @@ Sample sample(uint32_t channel) {
         if (pressed(binding.key)) {
             result.buttons |= binding.button;
         }
+    }
+    static uint32_t logged_buttons = 0;
+    if (log_input && result.buttons != logged_buttons) {
+        logged_buttons = result.buttons;
+        std::fprintf(stderr, "input buttons=%04x", result.buttons);
+        std::fputc(10, stderr);
     }
     POINT cursor;
     RECT client;

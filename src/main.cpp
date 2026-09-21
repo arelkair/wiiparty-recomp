@@ -1,3 +1,5 @@
+#include <windows.h>
+
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -13,7 +15,26 @@
 #include "wp/video.h"
 #include "wp/watch.h"
 
+namespace {
+
+LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
+    const EXCEPTION_RECORD* record = info->ExceptionRecord;
+    std::fprintf(stderr, "crash: exception %08lx at host address %p", record->ExceptionCode, record->ExceptionAddress);
+    if (record->NumberParameters >= 2 && (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)) {
+        std::fprintf(stderr, ", %s address %p", record->ExceptionInformation[0] ? "writing" : "reading",
+                     reinterpret_cast<void*>(record->ExceptionInformation[1]));
+    }
+    std::fputc(10, stderr);
+    wp::print_call_stack();
+    wp::print_thread_stacks();
+    std::fflush(stderr);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+}
+
 int main(int argc, char** argv) {
+    SetUnhandledExceptionFilter(report_crash);
     std::string extracted = argc > 1 ? argv[1] : "extracted";
     int timeout_seconds = argc > 2 ? std::atoi(argv[2]) : 0;
 
