@@ -292,3 +292,10 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Sin resolver: comprobar si el juego real usa 16:9 anamórfico en Dolphin con la misma SYSCONF (podría leer el aspecto por otra vía). `nand::widescreen()` se conserva para esa investigación.
 - Resolución interna por defecto: nativa (`WP_SCALE=1`); `WP_SCALE` 2 a 6 multiplica.
 - Fallo al terminar la explicación del tablero: `0x80042140` llama a una función virtual de un layout NW4R (`0x8012aa70`) con un puntero nulo devuelto al construir el layout tras cargar `layout/inst/cont012.arc.lz` y `cont013.arc.lz`. Los recuadros negros de la explicación son vídeos `.mv` (`inst/thumbnail/mg408.mv`, `mg410.mv`) que aún no se decodifican. `missing_function` imprime ahora registros y vtable del objeto.
+
+## Objetivo: pantallas ultrapanorámicas sin bandas
+
+- Meta: que el juego llene ventanas 21:9 y 32:9 sin bandas negras.
+- Plan: imagen interna con la proporción de la ventana; campo de visión horizontal ampliado modificando la proyección de las escenas 3D; en los layouts 2D anclar cada elemento a un borde o al centro y extender los fondos.
+- Orden: después de corregir colores, Miis planos y texturas; no se implementa todavía.
+- Licencias: Dolphin y el fork RecompCore son GPL v2 o posterior, no MIT; se usan solo como referencia de comportamiento, sin copiar código.
