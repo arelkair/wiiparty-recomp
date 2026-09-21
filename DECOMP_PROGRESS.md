@@ -1,308 +1,308 @@
 # Decomp progress
 
-## Estado
+## State
 
-- Toolchain: CMake 4.4, Ninja, GCC 15.2 (MinGW-w64), Rust/Cargo, Python 3.12, JDK 25, nodtool 1.4.4. Sin cross-compiler PPC (no hace falta: es recompilación, no matching)
-- Ghidra 12.1.3 en `ghidra/install/` (ignorada por Git)
-- Disco: `game/wiiparty.rvz` extraído en `extracted/` (ID SUPP01, PAL)
-- Binario: DOL parseado (`tools/dol.py`); 115 REL descomprimidos a `build/rel/` con `tools/lz11.py` (todos válidos, formato REL v3, parser en `tools/rel.py`)
-- Ghidra: DOL cargado con `ghidra/scripts/LoadDol.java` y el procesador `PowerPC:BE:32:Gekko_Broadway` del GameCube Loader; `tools/ghidra_import.py` importa, analiza, aplica `analysis/symbols.csv` y exporta la lista de funciones
-- MCP de Ghidra: puente 6.0.0 instalado en `.venv/`, extensión en `%APPDATA%\ghidra\ghidra_12.1.3_PUBLIC\Extensions\GhidraMCP` (compilada para 12.1.2, versión parcheada a 12.1.3); pendiente activarla en el CodeBrowser
-- Funciones identificadas por Ghidra: 6115 (`analysis/dol_functions.csv`), 94,8 % del código cubierto (75,4 % con el procesador genérico); `FindFunctions.java` añade 812
-- Funciones implementadas: 0
-- Lifter: `tools/recomp.py` genera C++ para 7014 funciones del DOL (473 789 instrucciones, 20 archivos en `build/recomp/`) y compila sin errores ni avisos con GCC
-- Build: CMake + Ninja (`build/out`), librerías `wp_runtime` y `wp_dol`
-- Tests: 3 suites en CTest (traductor Python, runtime C++, función lifteada del DOL contra referencia escrita a partir del decompilador de Ghidra)
-- Próximo objetivo: traducir el resto de módulos REL (`python tools/recomp_rel.py --all`), la capa GX (gráficos), DSP/audio y entrada
+- Toolchain: CMake 4.4, Ninja, GCC 15.2 (MinGW-w64), Rust/Cargo, Python 3.12, JDK 25, nodtool 1.4.4. No PPC cross-compiler (not needed: this is recompilation, not matching)
+- Ghidra 12.1.3 in `ghidra/install/` (ignored by Git)
+- Disc: `game/wiiparty.rvz` extracted to `extracted/` (ID SUPP01, PAL)
+- Binary: DOL parsed (`tools/dol.py`); 115 RELs decompressed to `build/rel/` with `tools/lz11.py` (all valid, REL v3 format, parser in `tools/rel.py`)
+- Ghidra: DOL loaded with `ghidra/scripts/LoadDol.java` and the `PowerPC:BE:32:Gekko_Broadway` processor from the GameCube Loader; `tools/ghidra_import.py` imports, analyses, applies `analysis/symbols.csv` and exports the function list
+- Ghidra MCP: 6.0.0 bridge installed in `.venv/`, extension in `%APPDATA%\ghidra\ghidra_12.1.3_PUBLIC\Extensions\GhidraMCP` (built for 12.1.2, version patched to 12.1.3); still to be enabled in the CodeBrowser
+- Functions identified by Ghidra: 6115 (`analysis/dol_functions.csv`), 94.8% of the code covered (75.4% with the generic processor); `FindFunctions.java` adds 812
+- Functions implemented: 0
+- Lifter: `tools/recomp.py` generates C++ for 7014 DOL functions (473,789 instructions, 20 files in `build/recomp/`) and compiles with no errors or warnings under GCC
+- Build: CMake + Ninja (`build/out`), libraries `wp_runtime` and `wp_dol`
+- Tests: 3 suites in CTest (Python translator, C++ runtime, a lifted DOL function against a reference written from the Ghidra decompiler)
+- Next objective: translate the remaining REL modules (`python tools/recomp_rel.py --all`), the GX layer (graphics), DSP/audio and input
 
-## Arquitectura objetivo
+## Target architecture
 
-- CPU: PowerPC 750CL (Broadway), 32 bits, big-endian, con paired singles
-- ABI: PowerPC EABI (Wii/GameCube SDK); r1 pila, r2/r13 small data areas
-- Enfoque: lifter DOL/REL -> C++ + runtime que reimplemente RVL SDK (OS, VI, GX, PAD/WPAD, DVD)
+- CPU: PowerPC 750CL (Broadway), 32-bit, big-endian, with paired singles
+- ABI: PowerPC EABI (Wii/GameCube SDK); r1 stack, r2/r13 small data areas
+- Approach: DOL/REL lifter to C++ plus a runtime that reimplements the RVL SDK (OS, VI, GX, PAD/WPAD, DVD)
 
-## Binarios
+## Binaries
 
-- `sys/main.dol`: 2 294 304 bytes, entrada `0x80004050`, SDK RVL de 2009-2010
-- Texto: `0x80004000` (0x2720) y `0x800070e0` (0x1d5f20)
-- Datos: `0x80006720`, `0x80006bc0`, `0x801dd000`, `0x801dd0c0`, `0x801dd0e0`, `0x80207f80`, `0x802f5440`, `0x802f6900`
-- BSS: `0x80231980`, tamaño `0xc6e88`
-- `files/rel/*.rel.lz`: 115 módulos comprimidos con LZ11 (cabecera `0x11` + tamaño). Incluyen `boot`, `menu`, `loading`, `openmess`, `ranking`, `inst`, `mg1xx`-`mg5xx` (minijuegos), `mr*` (tableros/modos) y `ms*`
-- Sin mapa de símbolos en el disco
+- `sys/main.dol`: 2,294,304 bytes, entry `0x80004050`, RVL SDK from 2009-2010
+- Text: `0x80004000` (0x2720) and `0x800070e0` (0x1d5f20)
+- Data: `0x80006720`, `0x80006bc0`, `0x801dd000`, `0x801dd0c0`, `0x801dd0e0`, `0x80207f80`, `0x802f5440`, `0x802f6900`
+- BSS: `0x80231980`, size `0xc6e88`
+- `files/rel/*.rel.lz`: 115 modules compressed with LZ11 (header `0x11` + size). They include `boot`, `menu`, `loading`, `openmess`, `ranking`, `inst`, `mg1xx`-`mg5xx` (minigames), `mr*` (boards and modes) and `ms*`
+- No symbol map on the disc
 
-## Ejecución (Hito 1)
+## Execution (Milestone 1)
 
-- `build/out/wiiparty.exe extracted [segundos]` carga el DOL, prepara la memoria baja y ejecuta `entry`; si no avanza imprime la pila de llamadas
-- Con los datos de arranque reales (`src/boot.cpp`, contrastados con volcados de RAM de Dolphin en `reference/ram-dumps/`), `OSInit` sigue el camino verdadero, comprueba la unidad de disco (`0x8015bb60`) y termina. El juego llega a `main`, pasa varios retrace de vídeo, crea hilos, lee datos del disco, inicializa GX, VI, LYT, G3D, EF y RFL, carga y enlaza `boot.rel`, ejecuta su `_prolog`, lee `locale/en_EU/boot/strap.arc.lz` y entra en el bucle de tareas de la escena (`0x80069ee0`), sin bloquearse
-- Con datos de arranque incompletos llegó a `main` (`0x800070e0`) y esperaba el retrace vertical en `VIWaitForRetrace` (`0x80147860`)
-- Estrategia: no se simula el hardware del SDK, se sustituyen funciones por manejadores del runtime (`analysis/hle_functions.csv` lista los nombres, `analysis/symbols.csv` los resuelve a direcciones, `src/hle.cpp` los implementa)
-- Sustituidos hasta ahora: `EXIInit/Lock/Unlock/Probe/GetID` (bus EXI sin dispositivos), `__OSInitAudioSystem` (DSP), `OSRealModeCall` (BAT), `IOSSendRequest` (todo IPC con IOS, simulado en `src/ios.cpp`: dispositivos `/dev/stm`, `/dev/fs`, `/dev/es`, `/dev/di` y archivos NAND)
-- `sc` es un no-op (solo vacía cachés en este SDK)
-- Dispositivo `/dev/di` (en `src/ios.cpp`): responde como una unidad normal. Inquiry (0x12) devuelve ceros, lectura sin cifrar (0x8d) fuera del disco da error 0x52100, ReportKey (0xa4) da error 0x53100 y RequestError (0xe0) entrega el último error; los demás comandos devuelven éxito
-- Interrupciones: `WP_POLL` en cada salto hacia atrás cada 16384 vueltas llama a `poll_interrupts` (`src/interrupts.cpp`); si el juego tiene EE activado y toca el retrace (periodo fijo de 20 ms de momento), activa los indicadores de `0xCC002030/34` y llama al manejador de la tabla `0x80003040 + 4*24` con el contexto actual en `r4`, y después a `OSSelectThread` (`0x8013fad0`)
-- Hilos (`src/threads.cpp`): cada hilo del juego es una fibra de Windows. Las llamadas a `OSSaveContext` (`0x80138290`) se traducen con `setjmp` (`wp_jump`) y `OSLoadContext` (`0x80138310`, sustituido) vuelve a ese punto con `longjmp` o arranca una fibra nueva si el contexto salió de `OSInitContext`; los registros se guardan en el propio `OSContext` del juego. `OSSwitchFiber` (`0x80138400`) cambia el `r1` y llama a la función. Solo Windows por ahora
-- Mandos: `WPADInit` y `KPADInit` (`0x8017b5a0`, `0x80193cf0`) están sustituidos por versiones vacías (sin mandos conectados). Diseño previsto: capa neutra con el estado de un mando y backends enchufables (teclado y ratón primero; mandos genéricos y Wii Remotes reales después)
-- `OSReport` (`0x80138880`) y `OSPanic` (`0x80138900`) están sustituidos y muestran el texto formateado por el juego (`src/format.cpp`)
-- REL (`tools/recomp_rel.py NOMBRE...` o `--all`, salida en `build/rel_code/`): el juego descomprime y enlaza cada módulo con su propio `OSLink`. Cada módulo se traduce con direcciones sintéticas (`sección << 24 | desplazamiento`); las relocaciones se resuelven al generar: llamadas al DOL directas (`f_XXXXXXXX`), llamadas internas directas (`f_<módulo>_<dirección>`), direcciones de datos como `g_<módulo>_bases[sección] + adición` y a otros módulos con `wp::external_address`. `src/modules.cpp` identifica el módulo cargado por una firma (identificador, secciones y tamaño de bss) y actualiza sus bases al primer salto. Los destinos del DOL que piden los módulos se guardan en `build/rel_dol_targets.csv` y `recomp.py` los añade como entradas
-- Módulo `boot` (identificador 1): 5 funciones, 248 instrucciones; sus 31 llamadas al DOL, 18 direcciones de datos propias y 2 punteros en datos se resuelven correctamente
-- NAND virtual (`src/nand.cpp`, carpeta `game/nand`, ignorada): `SYSCONF` por defecto (inglés, 4:3) generado al montar, archivos de partidas y ajustes con lectura, escritura y búsqueda, y órdenes de `/dev/fs` (crear archivo y carpeta, borrar, renombrar, atributos, listar)
-- Estado de vídeo inicial (`src/boot.cpp`): registro de control `0xCC002002 = 0x0101` (PAL, activo) y registros de interrupción `0xCC002030/34 = 0x1001`. Si la pantalla no está activa `VIInit` programa NTSC y el juego elige `/locale/en_US`
-- Depuración: `WP_LOG_DISC=1` muestra las lecturas del disco, `WP_DUMP=archivo` vuelca la memoria al fallar
-- Pendiente: derivar la frecuencia del retrace del modo de vídeo que configure el juego, liberar fibras de hilos terminados, y lectura real de datos del disco, hilos del SO, tiempo, DVD real, lectura de archivos NAND (SYSCONF, `play_rec.dat`)
+- `build/out/wiiparty.exe extracted [seconds]` loads the DOL, prepares low memory and runs `entry`; if it stops making progress it prints the call stack
+- With the real boot data (`src/boot.cpp`, checked against Dolphin RAM dumps in `reference/ram-dumps/`), `OSInit` follows the true path, checks the disc drive (`0x8015bb60`) and finishes. The game reaches `main`, passes several video retraces, creates threads, reads data from the disc, initializes GX, VI, LYT, G3D, EF and RFL, loads and links `boot.rel`, runs its `_prolog`, reads `locale/en_EU/boot/strap.arc.lz` and enters the scene task loop (`0x80069ee0`), without blocking
+- With incomplete boot data it reached `main` (`0x800070e0`) and waited for the vertical retrace in `VIWaitForRetrace` (`0x80147860`)
+- Strategy: the SDK hardware is not simulated; functions are replaced by runtime handlers (`analysis/hle_functions.csv` lists the names, `analysis/symbols.csv` resolves them to addresses, `src/hle.cpp` implements them)
+- Replaced so far: `EXIInit/Lock/Unlock/Probe/GetID` (EXI bus without devices), `__OSInitAudioSystem` (DSP), `OSRealModeCall` (BAT), `IOSSendRequest` (all IPC with IOS, simulated in `src/ios.cpp`: devices `/dev/stm`, `/dev/fs`, `/dev/es`, `/dev/di` and NAND files)
+- `sc` is a no-op (it only flushes caches in this SDK)
+- `/dev/di` device (in `src/ios.cpp`): answers as a normal drive. Inquiry (0x12) returns zeros, unencrypted read (0x8d) outside the disc gives error 0x52100, ReportKey (0xa4) gives error 0x53100 and RequestError (0xe0) returns the last error; the other commands return success
+- Interrupts: `WP_POLL` on every backward jump, every 16384 iterations, calls `poll_interrupts` (`src/interrupts.cpp`); if the game has EE enabled and the retrace is due (fixed 20 ms period for now), it sets the flags at `0xCC002030/34` and calls the handler in the table at `0x80003040 + 4*24` with the current context in `r4`, then `OSSelectThread` (`0x8013fad0`)
+- Threads (`src/threads.cpp`): each game thread is a Windows fiber. Calls to `OSSaveContext` (`0x80138290`) are translated with `setjmp` (`wp_jump`) and `OSLoadContext` (`0x80138310`, replaced) returns to that point with `longjmp` or starts a new fiber if the context came from `OSInitContext`; registers are saved in the game's own `OSContext`. `OSSwitchFiber` (`0x80138400`) changes `r1` and calls the function. Windows only for now
+- Controllers: `WPADInit` and `KPADInit` (`0x8017b5a0`, `0x80193cf0`) are replaced by empty versions (no controllers connected). Planned design: a neutral layer holding the state of one controller and pluggable backends (keyboard and mouse first; generic gamepads and real Wii Remotes later)
+- `OSReport` (`0x80138880`) and `OSPanic` (`0x80138900`) are replaced and show the text formatted by the game (`src/format.cpp`)
+- REL (`tools/recomp_rel.py NAME...` or `--all`, output in `build/rel_code/`): the game decompresses and links each module with its own `OSLink`. Each module is translated with synthetic addresses (`section << 24 | offset`); relocations are resolved at generation time: calls into the DOL are direct (`f_XXXXXXXX`), internal calls are direct (`f_<module>_<address>`), data addresses are `g_<module>_bases[section] + addend`, and addresses in other modules use `wp::external_address`. `src/modules.cpp` identifies the loaded module by a signature (identifier, sections and bss size) and updates its bases at the first jump. The DOL targets requested by modules are stored in `build/rel_dol_targets.csv` and `recomp.py` adds them as entries
+- `boot` module (identifier 1): 5 functions, 248 instructions; its 31 calls into the DOL, 18 own data addresses and 2 pointers in data resolve correctly
+- Virtual NAND (`src/nand.cpp`, folder `game/nand`, ignored): default `SYSCONF` (English, 4:3) generated on mount, save and settings files with read, write and seek, and `/dev/fs` commands (create file and folder, delete, rename, attributes, list)
+- Initial video state (`src/boot.cpp`): control register `0xCC002002 = 0x0101` (PAL, active) and interrupt registers `0xCC002030/34 = 0x1001`. If the display is not active `VIInit` programs NTSC and the game picks `/locale/en_US`
+- Debugging: `WP_LOG_DISC=1` shows disc reads, `WP_DUMP=file` dumps memory on failure
+- Pending: derive the retrace rate from the video mode the game configures, free the fibers of finished threads, and real disc data reads, OS threads, time, real DVD, NAND file reads (SYSCONF, `play_rec.dat`)
 
 ## Lifter
 
-- `tools/ppc/decoder.py`: decodificador de instrucciones PowerPC/Gekko, incluidos paired singles. Decodifica 472 251 de 472 265 palabras de código; las 14 restantes son datos incrustados
-- `tools/ppc/emit.py`: traduce cada instrucción a C++ sobre `wp::Cpu`
-- `tools/ppc/cfg.py`: etiquetas de salto y tablas de saltos (104 resueltas)
-- `include/wp/cpu.h`, `include/wp/memory.h`, `src/runtime.cpp`: contexto de CPU, memoria big-endian y semántica de instrucciones
-- Cada función es `f_XXXXXXXX(wp::Cpu&)`; `bl` a función conocida es llamada directa, el resto pasa por `wp::call` (búsqueda en `g_function_table`)
-- Instrucciones sin soporte: solo `rfi` (39 usos, manejadores de excepción)
+- `tools/ppc/decoder.py`: PowerPC/Gekko instruction decoder, including paired singles. It decodes 472,251 of 472,265 code words; the remaining 14 are embedded data
+- `tools/ppc/emit.py`: translates each instruction to C++ on `wp::Cpu`
+- `tools/ppc/cfg.py`: jump labels and jump tables (104 resolved)
+- `include/wp/cpu.h`, `include/wp/memory.h`, `src/runtime.cpp`: CPU context, big-endian memory and instruction semantics
+- Each function is `f_XXXXXXXX(wp::Cpu&)`; `bl` to a known function is a direct call, the rest go through `wp::call` (lookup in `g_function_table`)
+- Unsupported instructions: only `rfi` (39 uses, exception handlers)
 
-## Herramientas locales
+## Local tools
 
-- `reference/dtk/dtk-windows-x86_64.exe` (decomp-toolkit 1.8.4, Apache-2.0): `dol info` y `rel info` confirman el formato de DOL y REL leído por `tools/dol.py` y `tools/rel.py`
-- `tools/merge_rels.py`: fusiona el DOL con un módulo en `build/elf/<módulo>.elf` (todos con `--all`, 87 s), para abrirlos en Ghidra con las relocaciones resueltas. Un único ELF con los 106 módulos es inviable: dtk crece de forma desproporcionada (10 módulos 5 s, 20 módulos 29 s, 40 módulos más de 100 s)
-- 8 grupos de módulos comparten identificador interno (`mg103`/`mg418`, `mg110`/`mg411`, `mg111`/`mg417`, `mg210`/`mg504`, `mg215`/`mg408`, `mg216`/`mg506`, `mg507`/`mg508`/`mg509`, `ms601`/`ms602`), por eso no se pueden cargar a la vez
-- `tools/ghidra_decompile.py 0xDIRECCION ...`: decompila funciones sin abrir Ghidra (necesita el proyecto cerrado)
+- `reference/dtk/dtk-windows-x86_64.exe` (decomp-toolkit 1.8.4, Apache-2.0): `dol info` and `rel info` confirm the DOL and REL format read by `tools/dol.py` and `tools/rel.py`
+- `tools/merge_rels.py`: merges the DOL with one module into `build/elf/<module>.elf` (all of them with `--all`, 87 s), to open them in Ghidra with relocations resolved. A single ELF with the 106 modules is not feasible: dtk grows disproportionately (10 modules 5 s, 20 modules 29 s, 40 modules over 100 s)
+- 8 groups of modules share an internal identifier (`mg103`/`mg418`, `mg110`/`mg411`, `mg111`/`mg417`, `mg210`/`mg504`, `mg215`/`mg408`, `mg216`/`mg506`, `mg507`/`mg508`/`mg509`, `ms601`/`ms602`), so they cannot be loaded at the same time
+- `tools/ghidra_decompile.py 0xADDRESS ...`: decompiles functions without opening Ghidra (needs the project closed)
 
-## Estructuras, símbolos y offsets
+## Structures, symbols and offsets
 
-- Memoria baja real (de un volcado propio): FST al final de MEM1 (`0x81800000` menos el tamaño de `fst.bin`), BI2 justo debajo, MEM2 termina en `0x93600000` con el heap de IOS en los últimos `0x20000`, tabla de manejadores de interrupciones en `0x80003000`, modo de vídeo PAL = 1
+- Real low memory (from our own dump): FST at the end of MEM1 (`0x81800000` minus the size of `fst.bin`), BI2 just below, MEM2 ends at `0x93600000` with the IOS heap in the last `0x20000`, interrupt handler table at `0x80003000`, PAL video mode = 1
 
-- Símbolos: `analysis/symbols.csv` guarda los nombres puestos a mano (versionado); `reference/symbols/SUPP01.map` es el mapa exportado de Dolphin con su base de firmas (`Sys/totaldb.dsy`), local y sin versionar, y `tools/import_map.py` lo convierte a `build/dolphin_symbols.csv` (2544 nombres reales, 5280 entradas sin nombre). Los 22 nombres manuales coinciden con el mapa en todos los casos donde este tiene nombre. La pila de llamadas del runtime imprime los nombres
-- Petición IPC de IOS: `+0x00` orden, `+0x04` resultado, `+0x08` descriptor, `+0x0C` argumentos, `+0x20` callback, `+0x24` argumento del callback; comandos 1 open, 2 close, 6 ioctl, 7 ioctlv
-- Puntero al heap IPC: `r13-0x78e4`; liberar petición: `0x80177300`
-- Retrace de vídeo: contador en `r13-0x713c`, cola de hilos en `r13-0x7160`
+- Symbols: `analysis/symbols.csv` holds the names set by hand (versioned); `reference/symbols/SUPP01.map` is the map exported from Dolphin with its signature database (`Sys/totaldb.dsy`), local and not versioned, and `tools/import_map.py` converts it to `build/dolphin_symbols.csv` (2544 real names, 5280 unnamed entries). The 22 manual names match the map in every case where the map has a name. The runtime call stack prints the names
+- IOS IPC request: `+0x00` command, `+0x04` result, `+0x08` descriptor, `+0x0C` arguments, `+0x20` callback, `+0x24` callback argument; commands 1 open, 2 close, 6 ioctl, 7 ioctlv
+- Pointer to the IPC heap: `r13-0x78e4`; free a request: `0x80177300`
+- Video retrace: counter at `r13-0x713c`, thread queue at `r13-0x7160`
 
-## Hipótesis y problemas conocidos
+## Hypotheses and known problems
 
-- Lifter: el bit OE (desbordamiento) se ignora; `fres`/`frsqrte` usan `1/x` en vez de la tabla de estimación de Broadway; `blrl` y llamadas indirectas dependen de `g_function_table`
-- Lifter: 172 `bctr` sin tabla de saltos detectada; 158 son llamadas virtuales (`lwz`+`mtctr`+`bctr`), tratadas como salto indirecto y retorno; quedan 14 por revisar
-- Lifter: además de `dol_functions.csv`, descubre entradas por destinos de `bl`, saltos externos, punteros en datos, constantes de dirección `lis`+`addi` y destinos de tablas; una función que cae en la siguiente la enlaza con una llamada final
-- Lifter: límites de función = siguiente entrada de `dol_functions.csv`; sin runtime todavía (memoria sin inicializar, hardware, `sc`, excepciones)
+- Lifter: the OE (overflow) bit is ignored; `fres`/`frsqrte` use `1/x` instead of the Broadway estimate table; `blrl` and indirect calls depend on `g_function_table`
+- Lifter: 172 `bctr` without a detected jump table; 158 are virtual calls (`lwz`+`mtctr`+`bctr`), treated as an indirect jump and return; 14 remain to be reviewed
+- Lifter: besides `dol_functions.csv`, it discovers entries from `bl` targets, external jumps, pointers in data, `lis`+`addi` address constants and table targets; a function that falls into the next one is linked with a final call
+- Lifter: function bounds = next entry of `dol_functions.csv`; no runtime yet (uninitialized memory, hardware, `sc`, exceptions)
 
-- Ghidra 12.1.3 no trae el procesador Gekko/Broadway; se usa el del GameCube Loader (instalado en `%APPDATA%\ghidra\ghidra_12.1.3_PUBLIC\Extensions\`, fuente en `ghidra/extensions/`)
-- Los nombres de funciones muy pequeñas del mapa de Dolphin pueden ser incorrectos (por ejemplo `OSGetCurrentContext` en varios getters distintos), porque la base de firmas asigna el mismo nombre a cuerpos idénticos
-- Ghidra no tiene ABI EABI; se usa el `default` (System V PPC 32)
-- La BSS de la cabecera solapa con `.data5`-`.data7`; `LoadDol.java` solo crea bloques BSS en los huecos
+- Ghidra 12.1.3 does not ship the Gekko/Broadway processor; the one from the GameCube Loader is used (installed in `%APPDATA%\ghidra\ghidra_12.1.3_PUBLIC\Extensions\`, source in `ghidra/extensions/`)
+- Names of very small functions in the Dolphin map can be wrong (for example `OSGetCurrentContext` on several different getters), because the signature database gives the same name to identical bodies
+- Ghidra has no EABI ABI; the `default` (System V PPC 32) is used
+- The header BSS overlaps `.data5`-`.data7`; `LoadDol.java` only creates BSS blocks in the gaps
 
-- La lógica del juego vive sobre todo en los REL: el recompilador tendrá que soportar carga dinámica y relocaciones de REL, no solo el DOL
-- El DOL contiene el SDK y el motor común; los REL se cargan por escena
+- The game logic lives mostly in the RELs: the recompiler has to support dynamic loading and REL relocations, not only the DOL
+- The DOL holds the SDK and the common engine; the RELs are loaded per scene
 
 ## Plan
 
-1. Revisar cobertura del análisis del DOL
-2. Importar los REL en Ghidra con relocaciones
-3. Identificar funciones del SDK y tabla de símbolos en `analysis/`
-4. Lifter de instrucciones PPC y sistema de build CMake
-5. Extender el lifter a los REL
+1. Review the coverage of the DOL analysis
+2. Import the RELs into Ghidra with relocations
+3. Identify SDK functions and the symbol table in `analysis/`
+4. PPC instruction lifter and CMake build system
+5. Extend the lifter to the RELs
 
-## Estado tras traducir todos los módulos
+## State after translating all modules
 
-- Los 115 módulos REL se traducen (`python tools/recomp_rel.py --all`, unos 650 MB de C++) y el ejecutable completo compila (unos 316 MB). Recompilar todo tarda del orden de 15 minutos con 12 hilos.
-- Perfilador de diagnóstico: `WP_PROFILE=1` muestrea la función más interna cada milisegundo y la imprime al vencer el temporizador; con `WP_DUMP=archivo` vuelca también la memoria del invitado.
-- El motor de tareas del juego (0x80069af0-0x8006a96c) usa `setjmp` (0x801c8a1c) y `longjmp` (0x801c8b20) como corrutinas. El lifter emite `setjmp` nativo en las llamadas a `setjmp` y el runtime reemplaza `longjmp` por un cambio de fibra; un búfer cuyo enlace o pila difieren del guardado se trata como contexto nuevo y arranca una fibra en la dirección guardada. Los módulos se tienen que regenerar para incluir este cambio.
-- La caché bloqueada (0xE0000000-0xE0003FFF) tiene una región propia en el búfer de memoria. Antes se solapaba con la memoria baja y `LCEnable` borraba las variables globales del sistema, incluida la tabla de interrupciones.
-- `GXDrawDone` (0x8014fe50) está reemplazada: como no hay GPU, termina al instante activando la bandera que esperaba.
-- El periodo del retrace se deduce del registro de configuración de vídeo (0xCC002002): PAL 20 ms, resto 16,683 ms.
-- Estado actual: el juego ejecuta fotogramas de forma estable a unos 50 por segundo, con el hilo principal y el hilo de fotogramas, y carga los datos de arranque. Sin salida gráfica todavía no se puede saber en qué pantalla está; la lista de módulos cargados está vacía en ese punto.
-- Auditoría de `main.dol`: las 14 palabras ilegales son datos dentro de la zona de código (cadena "Metrowerks" y tablas de constantes junto a 0x80006680), los 169 saltos indirectos sin tabla son saltos por puntero a función o tabla virtual y se resuelven en ejecución con `wp::call`, y los 37 `rfi` están en los vectores de excepción y en funciones ya reemplazadas o solo alcanzables por excepciones reales. No queda código alcanzable por traducir en `main.dol`.
-- Salida de vídeo: `src/video.cpp` abre una ventana Win32 y, en cada retrace, convierte el framebuffer externo (YCbCr 4:2:2, dirección y ancho tomados de los registros de VI) a RGB. El framebuffer sigue vacío porque la GPU aún no se emula; el juego escribe en el FIFO de GX (0xCC008000) con instrucciones normales, así que el siguiente paso es capturar esas escrituras.
-- Corrección del decodificador: en las instrucciones de formato D (`ori`, `xori`, `addi`...) el último bit pertenece al inmediato y no es el bit de registro. Se leía como bit de registro y se sobrescribía cr0. Ahora solo los códigos de operación 4, 20, 21, 23, 30, 31, 59 y 63 aceptan el bit de registro. Se comprueba con un test del decodificador y con un test de la función 0x80039510 (borrado de nodo en árbol rojo-negro) contra `_Rb_tree_insert_and_rebalance` de libstdc++ en `tests/lifted_tests.cpp`.
-- Captura del FIFO de GX: las escrituras a 0xCC008000 (incluidas las de `psq_st`) se acumulan en `src/gx.cpp` y se decodifican comando a comando (registros CP, XF, BP, listas de visualización y dibujado); con `WP_LOG_GX=1` se imprime un resumen por cada copia de EFB al framebuffer.
-- Diagnóstico por hilo: cada fibra tiene su propia traza de llamadas; con el temporizador se imprime la pila de todas las fibras, y `WP_WATCH=direccion` informa de los cambios de una palabra de memoria.
-- El decodificador del FIFO de GX ya interpreta sin errores el flujo del juego (0 comandos desconocidos). Los pares de floats de `psq_st` van los dos al FIFO. Con `WP_LOG_GX=2` se listan los dibujados (vértices, VCD y VAT) y con `3` los primeros comandos. Cada fotograma del estado actual contiene tres cuadriláteros y una copia de EFB al framebuffer.
-- Renderizador GX en Direct3D 11 (`src/gx_render.cpp`, estado y vértices en `src/gx.cpp`): decodificación de vértices por VCD/VAT con atributos directos o indexados, transformación por las matrices de XF (proyección, ventana, generación de coordenadas de textura), ubershader con las etapas TEV, decodificación de texturas (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, CMPR), mezcla, profundidad, tijera y copia del EFB al framebuffer externo convirtiendo a YCbCr 4:2:2. La primera pantalla del juego (aviso de la correa) se dibuja correctamente. Con `WP_SAVE_FRAME=archivo.png` se guarda cada 100 fotogramas la imagen presentada.
-- Detalles verificados: el cull mode 1 del juego equivale a descartar las caras con giro antihorario en pantalla; los cuatro registros BP con máscara (0xFE) se aplican al registro siguiente; las constantes TEV KONST comparten direcciones 0xE0-0xE7 con los registros de color y se distinguen por el bit 23.
-- Pendiente de GX: iluminación, texturas indirectas, líneas y puntos, recorte en el plano cercano, escalado interno, copias del EFB en formatos de intensidad.
-- Pendiente: gráficos (GX), audio (DSP), entrada (WPAD/KPAD), liberar las fibras de hilos terminados y contabilizar la profundidad de la traza tras un `longjmp`.
-- Entrada con Wiimote real: Windows pide PIN al emparejarlo por la interfaz normal (con 1+2 y con SYNC). El emparejamiento se hará dentro del programa con la API Bluetooth de Windows, usando como PIN los 6 bytes de la dirección Bluetooth del equipo, y la lectura de los informes HID después. Mando genérico tipo Pro Controller: SDL2. Monitor del usuario: ultrawide 2K a 75 Hz.
+- The 115 REL modules are translated (`python tools/recomp_rel.py --all`, about 650 MB of C++) and the full executable compiles (about 316 MB). Recompiling everything takes on the order of 15 minutes with 12 threads.
+- Diagnostic profiler: `WP_PROFILE=1` samples the innermost function every millisecond and prints it when the timer expires; with `WP_DUMP=file` it also dumps the guest memory.
+- The game's task engine (0x80069af0-0x8006a96c) uses `setjmp` (0x801c8a1c) and `longjmp` (0x801c8b20) as coroutines. The lifter emits a native `setjmp` at calls to `setjmp` and the runtime replaces `longjmp` with a fiber switch; a buffer whose link or stack differs from the saved one is treated as a new context and starts a fiber at the saved address. Modules must be regenerated to include this change.
+- The locked cache (0xE0000000-0xE0003FFF) has its own region in the memory buffer. It used to overlap low memory and `LCEnable` erased the system globals, including the interrupt table.
+- `GXDrawDone` (0x8014fe50) is replaced: with no GPU, it finishes immediately by setting the flag it was waiting for.
+- The retrace period is derived from the video configuration register (0xCC002002): PAL 20 ms, otherwise 16.683 ms.
+- Current state: the game runs frames stably at about 50 per second, with the main thread and the frame thread, and loads the boot data. Without graphics output it is not yet possible to tell which screen it is on; the list of loaded modules is empty at that point.
+- Audit of `main.dol`: the 14 illegal words are data inside the code area (the string "Metrowerks" and constant tables next to 0x80006680), the 169 indirect jumps without a table are jumps through a function pointer or virtual table and are resolved at run time with `wp::call`, and the 37 `rfi` are in the exception vectors and in functions already replaced or reachable only by real exceptions. No reachable code is left to translate in `main.dol`.
+- Video output: `src/video.cpp` opens a Win32 window and, on each retrace, converts the external framebuffer (YCbCr 4:2:2, address and width taken from the VI registers) to RGB. The framebuffer stays empty because the GPU is not emulated yet; the game writes to the GX FIFO (0xCC008000) with ordinary instructions, so the next step is to capture those writes.
+- Decoder fix: in D-form instructions (`ori`, `xori`, `addi`...) the last bit belongs to the immediate and is not the record bit. It was read as the record bit and overwrote cr0. Now only opcodes 4, 20, 21, 23, 30, 31, 59 and 63 accept the record bit. Checked with a decoder test and with a test of function 0x80039510 (red-black tree node erase) against libstdc++ `_Rb_tree_insert_and_rebalance` in `tests/lifted_tests.cpp`.
+- GX FIFO capture: writes to 0xCC008000 (including those from `psq_st`) accumulate in `src/gx.cpp` and are decoded command by command (CP, XF, BP registers, display lists and draws); with `WP_LOG_GX=1` a summary is printed for each EFB copy to the framebuffer.
+- Per-thread diagnostics: each fiber has its own call trace; the timer prints the stack of all fibers, and `WP_WATCH=address` reports changes of one memory word.
+- The GX FIFO decoder now interprets the game's stream with no errors (0 unknown commands). Both floats of a `psq_st` pair go to the FIFO. `WP_LOG_GX=2` lists the draws (vertices, VCD and VAT) and `3` the first commands. Each frame in the current state contains three quads and one EFB copy to the framebuffer.
+- GX renderer on Direct3D 11 (`src/gx_render.cpp`, state and vertices in `src/gx.cpp`): vertex decoding by VCD/VAT with direct or indexed attributes, transformation by the XF matrices (projection, viewport, texture coordinate generation), ubershader with the TEV stages, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, CMPR), blending, depth, scissor and EFB copy to the external framebuffer converting to YCbCr 4:2:2. The first game screen (the strap notice) is drawn correctly. `WP_SAVE_FRAME=file.png` saves the presented image every 100 frames.
+- Verified details: the game's cull mode 1 is equivalent to discarding faces with counter-clockwise winding on screen; the four masked BP registers (0xFE) apply to the next register; the TEV KONST constants share addresses 0xE0-0xE7 with the color registers and are told apart by bit 23.
+- GX pending: lighting, indirect textures, lines and points, near-plane clipping, internal scaling, EFB copies in intensity formats.
+- Pending: graphics (GX), audio (DSP), input (WPAD/KPAD), freeing the fibers of finished threads and accounting for the trace depth after a `longjmp`.
+- Input with a real Wiimote: Windows asks for a PIN when pairing through the normal interface (with 1+2 and with SYNC). Pairing will be done inside the program with the Windows Bluetooth API, using the 6 bytes of the host Bluetooth address as the PIN, and reading the HID reports afterwards. Generic Pro Controller type gamepad: SDL2. User's monitor: ultrawide 2K at 75 Hz.
 
-## Objetivos del usuario
+## User goals
 
-- Salida a 1080p con el juego a 60 Hz. El juego PAL elige 50 o 60 Hz según el ajuste `IPL.E60` de SYSCONF; se activará desde la configuración del programa.
-- Resolución interna multiplicada por 3 o 4, dentro del renderizador propio.
-- Frecuencias superiores a 60 Hz (por ejemplo 120 Hz) mediante interpolación de las matrices de los objetos entre pasos de la lógica; experimental y posterior al renderizador. El monitor del usuario es de 75 Hz, que no es múltiplo de 60.
-- Juego en línea sin servidor, con un cuarto botón verde "Online" en la fila de tres botones inferiores de la selección de minijuegos. Requiere sincronización de entradas por pasos, semilla de aleatorios y reloj compartidos, intercambio de datos de Miis y conexión directa. El botón se añadirá en memoria al cargar el módulo del menú, sin modificar los recursos del juego.
-- Mejoras de calidad de vida: pantalla completa sin bordes con F11, panorámico 16:9 y ultrawide, omisión de avisos y logos, mapeo de mandos, contador de fotogramas y archivo de configuración.
-- Distribución: el programa no incluirá el juego; usará los archivos extraídos de la copia del usuario, con un lanzador mínimo para elegir la carpeta o el disco.
+- Output at 1080p with the game at 60 Hz. The PAL game picks 50 or 60 Hz from the `IPL.E60` setting in SYSCONF; it will be enabled from the program's settings.
+- Internal resolution multiplied by 3 or 4, inside the project's own renderer.
+- Rates above 60 Hz (for example 120 Hz) by interpolating object matrices between logic steps; experimental and after the renderer. The user's monitor is 75 Hz, which is not a multiple of 60.
+- Online play without a server, with a fourth green "Online" button in the row of three lower buttons of the minigame selection. It needs step-based input synchronization, a shared random seed and clock, exchange of Mii data and a direct connection. The button will be added in memory when the menu module is loaded, without modifying the game's resources.
+- Quality-of-life improvements: borderless full screen with F11, 16:9 widescreen and ultrawide, skipping notices and logos, controller mapping, frame counter and a configuration file.
+- Distribution: the program will not include the game; it will use the extracted files of the user's copy, with a minimal launcher to choose the folder or the disc.
 
-## Dolphin de referencia
+## Reference Dolphin
 
-- El Dolphin 2606-374 trae un servidor GDB: con `GDBPort = 2159` en `[General]` de `Dolphin.ini` escucha en el puerto 2159 y admite un único cliente por arranque. `tools/dolphin_gdb.py` implementa el cliente del protocolo GDB (registros, memoria, puntos de ruptura y de vigilancia, pasos) y con `--launch` reinicia Dolphin en cada llamada. Comprobado: parada en el punto de entrada 0x80004050, lectura de memoria y parada en un punto de ruptura de 0x80069ee0.
-- Usos previstos: volcar la memoria de Dolphin en el aviso de la correa del Wiimote y comparar estados y registros con los de `wiiparty.exe` en las mismas funciones.
+- Dolphin 2606-374 ships a GDB server: with `GDBPort = 2159` under `[General]` in `Dolphin.ini` it listens on port 2159 and accepts a single client per boot. `tools/dolphin_gdb.py` implements the GDB protocol client (registers, memory, breakpoints and watchpoints, steps) and with `--launch` restarts Dolphin on each call. Checked: stop at the entry point 0x80004050, memory read and stop at a breakpoint at 0x80069ee0.
+- Planned uses: dump Dolphin's memory at the Wiimote strap notice and compare states and registers with those of `wiiparty.exe` in the same functions.
 
-## Estado verificado el 2026-09-21 (auditoría del bloqueo tras la pantalla de la correa)
+## Verified state on 2026-09-21 (audit of the block after the strap screen)
 
-Verificado ejecutando `wiiparty.exe` y guardando capturas con `WP_SAVE_FRAME=ruta_%02d.png` (una cada 100 retraces):
+Verified by running `wiiparty.exe` and saving captures with `WP_SAVE_FRAME=path_%02d.png` (one every 100 retraces):
 
-- Sin ninguna pulsación, el juego sale solo de la pantalla de la correa (temporizador del propio juego), muestra el título y entra en la secuencia de presentación del anfitrión.
-- Con A y B mantenidos (`WP_INPUT_BUTTONS=0C00`, activos tras 150 lecturas), llega al menú principal (Party Games, Pair Games, House Party y los tres botones inferiores) y se queda estable. La entrada por `KPADReadEx` llega al juego.
-- Causas del bloqueo anterior, todas resueltas y comprobadas por ejecución: (1) las finalizaciones asíncronas de IOS se ejecutaban dentro de la propia petición y el DVD del juego fallaba con `freeDvdContext.inUse`; ahora se encolan y se entregan como interrupción de IPC (`ipc_deliver`); (2) la calibración del audio esperaba el contador de muestras de AI (0xCD006C08), ahora emulado en `src/audio.cpp`; (3) el arranque del DSP esperaba a un procesador que no se emula: las 22 funciones públicas del núcleo AX (0x8015ea40-0x80160b10) se sustituyen por versiones que devuelven cero (`HleZero_*`).
-- Lectura del mando: `KPADReadEx` (0x801934d0, estructura de 0xF0 bytes) y `WPADProbe` (0x8017c9e0) están sustituidas; solo el canal 0 está conectado. Mapeo de teclado y ratón en `src/input.cpp`. Los mandos genéricos y el Wiimote real están pendientes.
+- With no button pressed, the game leaves the strap screen on its own (the game's own timer), shows the title and enters the host presentation sequence.
+- With A and B held (`WP_INPUT_BUTTONS=0C00`, active after 150 reads), it reaches the main menu (Party Games, Pair Games, House Party and the three lower buttons) and stays stable. Input through `KPADReadEx` reaches the game.
+- Causes of the earlier block, all fixed and checked by running: (1) asynchronous IOS completions ran inside the request itself and the game's DVD failed with `freeDvdContext.inUse`; they are now queued and delivered as an IPC interrupt (`ipc_deliver`); (2) audio calibration waited for the AI sample counter (0xCD006C08), now emulated in `src/audio.cpp`; (3) DSP startup waited for a processor that is not emulated: the 22 public functions of the AX core (0x8015ea40-0x80160b10) are replaced by versions that return zero (`HleZero_*`).
+- Controller reading: `KPADReadEx` (0x801934d0, 0xF0-byte structure) and `WPADProbe` (0x8017c9e0) are replaced; only channel 0 is connected. Keyboard and mouse mapping in `src/input.cpp`. Generic gamepads and the real Wiimote are pending.
 
-Estado por componente:
+State by component:
 
-- Implementado y probado: lectura de teclado y ratón como Wiimote, entrega diferida de IPC, contador de muestras de AI, renderizado del menú principal con la mayoría de elementos.
-- Stub: núcleo de audio AX (sin sonido) y DSP.
-- Parcial: GX. Faltan iluminación, texturas indirectas, líneas/puntos y copias del EFB en formatos de intensidad. 
-- Pendiente: audio real (mezclador AX en el lado del PC), mandos genéricos y Wiimote, resolución interna, liberar las fibras de hilos terminados (aparecen decenas de fibras de `OSExitThread` sin liberar).
-- No verificado: que los cuatro canales de KPAD den el estado esperado por los minijuegos; que el título se muestre correctamente a 16:9.
+- Implemented and tested: keyboard and mouse reading as a Wiimote, deferred IPC delivery, AI sample counter, rendering of the main menu with most elements.
+- Stub: AX audio core (no sound) and DSP.
+- Partial: GX. Missing lighting, indirect textures, lines/points and EFB copies in intensity formats.
+- Pending: real audio (AX mixer on the PC side), generic gamepads and Wiimote, internal resolution, freeing the fibers of finished threads (dozens of `OSExitThread` fibers appear unfreed).
+- Not verified: that the four KPAD channels give the state the minigames expect; that the title displays correctly at 16:9.
 
-Coste de compilación: cada alta de una función sustituida regenera `functions.h` y recompila todos los módulos (unos 15 minutos). Pendiente separar esa declaración de los módulos.
+Build cost: each addition of a replaced function regenerates `functions.h` and recompiles all modules (about 15 minutes). Separating that declaration from the modules is pending.
 
-## Texturas con paleta y copias del EFB (2026-09-21)
+## Palette textures and EFB copies (2026-09-21)
 
-- Implementado en `src/gx.cpp` y `src/gx_render.cpp`: carga de TLUT (BP 0x64/0x65, memoria TMEM de paletas de 512 KB copiada en el momento de la carga), formatos C4, C8 y C14X2 con paleta IA8, RGB565 o RGB5A3 (registro BP 0x98/0xB8 por mapa), y copias del EFB a textura (BP 0x52 sin el bit de XFB) para los formatos RGB565, RGB5A3 y RGBA8 mediante `CopySubresourceRegion` en la GPU.
-- La textura copiada se asocia a su dirección de destino y solo se usa si el tamaño coincide y una muestra de 32 palabras de la memoria de invitado no ha cambiado (si el juego escribe otra textura en esa dirección, se descarta).
-- Verificado ejecutando con A+B: el menú principal muestra las miniaturas animadas de los minijuegos y ya no hay cuadrados magenta ni el aviso `unsupported texture format`. ctest 3/3.
-- Limitaciones: la copia con bit de reducción a la mitad usa la textura a tamaño completo (se muestrea con UV normalizadas); RGB565 no fuerza alfa a 1; los formatos de intensidad (R4, Y8, RA4, RA8, A8, R8...) no se copian (se registra `unsupported EFB copy format`).
-- Sigue visible: un cuadro blanco sobre "Pair Games", el panel de House Party oscuro y el fondo negro del menú. Causa sin investigar.
+- Implemented in `src/gx.cpp` and `src/gx_render.cpp`: TLUT loading (BP 0x64/0x65, 512 KB palette TMEM copied at load time), formats C4, C8 and C14X2 with IA8, RGB565 or RGB5A3 palette (BP register 0x98/0xB8 per map), and EFB copies to texture (BP 0x52 without the XFB bit) for RGB565, RGB5A3 and RGBA8 through `CopySubresourceRegion` on the GPU.
+- The copied texture is associated with its destination address and used only if the size matches and a 32-word sample of the guest memory has not changed (if the game writes another texture at that address, it is discarded).
+- Verified by running with A+B: the main menu shows the animated minigame thumbnails and there are no more magenta squares or `unsupported texture format` warning. ctest 3/3.
+- Limitations: the copy with the half-size reduction bit uses the full-size texture (sampled with normalized UVs); RGB565 does not force alpha to 1; intensity formats (R4, Y8, RA4, RA8, A8, R8...) are not copied (`unsupported EFB copy format` is logged).
+- Still visible: a white box over "Pair Games", the dark House Party panel and the black menu background. Cause not investigated.
 
-## Listas de visualización y cierre del fallo intermitente (2026-09-21)
+## Display lists and closing the intermittent failure (2026-09-21)
 
-- Causa: `GXBeginDisplayList` redirige el pipe de escritura (0xCC008000) a un búfer de memoria cambiando los registros PI (base 0xCC00300C, puntero de escritura 0xCC003014) mientras los registros CP (0xCC000020/22) siguen apuntando al FIFO principal. El runtime enviaba esos bytes al GP en vez de a la memoria, así que los comandos se ejecutaban en el momento de grabarse y la lista guardada quedaba con basura. Al llamarla después (comando 0x40) el analizador leía direcciones y longitudes absurdas: segfault intermitente (4 de 6 ejecuciones) y textos ausentes.
-- Solución (`record_display_list` en `src/gx.cpp`): si la base PI difiere de la base CP, los bytes se escriben en memoria en el puntero PI y este avanza. Además, una llamada a lista fuera de rango se descarta con el aviso `GX display list out of range`.
-- Verificado: 6 ejecuciones seguidas de 25 s sin fallos (antes 4 de 6 con segfault), ctest 3/3, y el menú principal muestra ya los textos (Suggestions, Rankings, Minigames, 1 to 4 players, About 45 min.).
-- Diagnóstico nuevo: `WP_LOG_FROM=N` con `WP_LOG_GX=2` empieza el registro de dibujos tras la copia número N; se muestran mapas de textura y arrays de vértices.
-- Sigue pendiente: fondo negro del menú (los dibujos 3D del fondo salen con vértices inválidos, causa sin investigar; las listas mal grabadas podrían haber sido la razón, por reverificar) y panel House Party parcial.
+- Cause: `GXBeginDisplayList` redirects the write pipe (0xCC008000) to a memory buffer by changing the PI registers (base 0xCC00300C, write pointer 0xCC003014) while the CP registers (0xCC000020/22) still point to the main FIFO. The runtime sent those bytes to the GP instead of to memory, so the commands executed at the time they were recorded and the saved list held garbage. When it was called later (command 0x40) the parser read absurd addresses and lengths: intermittent segfault (4 of 6 runs) and missing text.
+- Fix (`record_display_list` in `src/gx.cpp`): if the PI base differs from the CP base, the bytes are written to memory at the PI pointer and it advances. Also, a list call out of range is discarded with the warning `GX display list out of range`.
+- Verified: 6 consecutive runs of 25 s with no failures (before, 4 of 6 with a segfault), ctest 3/3, and the main menu now shows the text (Suggestions, Rankings, Minigames, 1 to 4 players, About 45 min.).
+- New diagnostic: `WP_LOG_FROM=N` with `WP_LOG_GX=2` starts the draw log after copy number N; texture maps and vertex arrays are shown.
+- Still pending: black menu background (the 3D background draws come out with invalid vertices, cause not investigated; the badly recorded lists may have been the reason, to be rechecked) and partial House Party panel.
 
-## Reverificación tras las listas de visualización (2026-09-21)
+## Recheck after the display lists (2026-09-21)
 
-- Con `WP_LOG_FROM=1200` los dibujos del fondo ya no salen con vértices inválidos: eran consecuencia de las listas mal grabadas.
-- Sin ninguna entrada, el juego pasa por la animación del logotipo, muestra el título (logotipo "Wii Party" a tamaño y encuadre correctos, "Press A and B together", "(c)2010 Nintendo") y llega solo al menú principal (capturas `t_05` a `t_08` de `WP_SAVE_FRAME`). El encuadre erróneo del título anotado antes no se reproduce.
-- Sin verificar contra Dolphin: si el fondo negro del menú es el original.
-- Defecto visible (corregido el 2026-09-21): la vista previa de House Party debe mostrar 4 Miis y el título debe mostrar el fondo rosa con personajes 3D; ambos son modelos 3D con esqueleto y no se dibujan bien.
+- With `WP_LOG_FROM=1200` the background draws no longer come out with invalid vertices: they were a consequence of the badly recorded lists.
+- With no input, the game goes through the logo animation, shows the title ("Wii Party" logo at the correct size and framing, "Press A and B together", "(c)2010 Nintendo") and reaches the main menu on its own (captures `t_05` to `t_08` of `WP_SAVE_FRAME`). The wrong title framing noted earlier does not reproduce.
+- Not verified against Dolphin: whether the black menu background is the original.
+- Visible defect (fixed on 2026-09-21): the House Party preview must show 4 Miis and the title must show the pink background with 3D characters; both are skeletal 3D models and are not drawn correctly.
 
-## Modelos 3D con esqueleto: diagnóstico (2026-09-21)
+## Skeletal 3D models: diagnosis (2026-09-21)
 
-- Referencia de Dolphin aportada por el usuario: el título tiene fondo rosa/blanco con Miis y animales 3D, el menú tiene fondo rosa degradado, paneles rojo/naranja/verde y botones morado/azul/amarillo, y House Party muestra 4 Miis. Nuestro render: fondo negro, sin modelos 3D y colores de paneles distintos (azul/morado/verde, botones turquesa/lima/morado).
-- Evidencia: los dibujos de modelos (comandos 0x90/0x98/0xA0 con matriz de posición por vértice) llegan con posiciones brutas correctas, pero las matrices de XF que usan (índices 3, 6, 15, 27...) valen cero. Se cargan con cargas indexadas (comandos 0x20 y 0x30) desde arrays de 48 bytes por matriz (bases distintas por modelo en MEM1) y el contenido de esos arrays es cero también cuando el FIFO se procesa en el momento de escribirse (umbral de vaciado de 64 bytes probado y revertido). Por tanto no es un problema del retraso del análisis.
-- Descartado: `PSMTXConcat` (0x8014b100) se compara con una multiplicación de matrices de referencia con 50 casos aleatorios y coincide (prueba añadida en `tests/lifted_tests.cpp`); la constante `(0,1)` que usa está en 0x802f58d0.
-- Pendiente: averiguar qué código debería escribir esos arrays (cálculo de matrices mundo de los modelos) y por qué no lo hace o guarda ceros; hipótesis: una función reemplazada por HLE, un hilo/corrutina que no llega a ejecutarse, o datos del esqueleto sin cargar.
-- Sin investigar todavía: diferencia de colores del menú y rendimiento (el usuario percibe 30-40 fps con caídas).
+- Dolphin reference provided by the user: the title has a pink/white background with 3D Miis and animals, the menu has a pink gradient background, red/orange/green panels and purple/blue/yellow buttons, and House Party shows 4 Miis. Our render: black background, no 3D models and different panel colors (blue/purple/green, turquoise/lime/purple buttons).
+- Evidence: the model draws (commands 0x90/0x98/0xA0 with a position matrix per vertex) arrive with correct raw positions, but the XF matrices they use (indices 3, 6, 15, 27...) are zero. They are loaded with indexed loads (commands 0x20 and 0x30) from arrays of 48 bytes per matrix (different bases per model in MEM1), and the contents of those arrays are zero also when the FIFO is processed at the moment it is written (a flush threshold of 64 bytes was tried and reverted). So it is not a problem of delayed parsing.
+- Ruled out: `PSMTXConcat` (0x8014b100) is compared with a reference matrix multiplication with 50 random cases and matches (test added in `tests/lifted_tests.cpp`); the constant `(0,1)` it uses is at 0x802f58d0.
+- Pending: find which code should write those arrays (computation of the models' world matrices) and why it does not, or stores zeros; hypothesis: a function replaced by HLE, a thread/coroutine that never runs, or skeleton data not loaded.
+- Not investigated yet: menu color difference and performance (the user perceives 30-40 fps with drops).
 
-## Eventhook de STM, ruido de log y medición de fps (2026-09-21)
+## STM eventhook, log noise and fps measurement (2026-09-21)
 
-- `IOSSendRequest` asíncrono sobre `/dev/stm/eventhook` se completaba al instante, así que el SDK lo reenviaba sin parar (cientos de líneas de log y tiempo de CPU). Ahora esa petición queda pendiente para siempre (`ios::never_completes`), como en IOS real hasta que hay un evento de reinicio o apagado. Los avisos de ioctl sin manejar se registran una sola vez por dispositivo y comando.
-- Nuevo diagnóstico `WP_LOG_FPS=1`: imprime una vez por segundo las copias EFB a XFB (fotogramas reales del juego). Medición con el menú principal: 50 fps al inicio y baja de forma sostenida hasta unos 20 fps en 30 s, así que hay una degradación con el tiempo (sospechas: fibras terminadas sin liberar, caché de texturas, coste por dibujo). Sin investigar todavía.
-- `/shared2/menu/FaceLib/RFL_DB.dat` no existe en la NAND virtual: la base de datos de Miis está vacía (sin verificar si eso influye en los Miis que faltan).
+- An asynchronous `IOSSendRequest` on `/dev/stm/eventhook` completed instantly, so the SDK resent it endlessly (hundreds of log lines and CPU time). That request now stays pending forever (`ios::never_completes`), as in real IOS until there is a reset or power-off event. Warnings about unhandled ioctls are logged once per device and command.
+- New diagnostic `WP_LOG_FPS=1`: prints once per second the EFB to XFB copies (real game frames). Measurement with the main menu: 50 fps at the start, dropping steadily to about 20 fps in 30 s, so there is a degradation over time (suspects: unfreed finished fibers, texture cache, per-draw cost). Not investigated yet.
+- `/shared2/menu/FaceLib/RFL_DB.dat` does not exist in the virtual NAND: the Mii database is empty (not verified whether this affects the missing Miis).
 
-## Plataformas objetivo y decisión sobre aurora (2026-09-21)
+## Target platforms and the decision on aurora (2026-09-21)
 
-- Objetivo del usuario para versiones finales: Windows 10 y 11 (32 y 64 bits respectivamente, x86 y ARM), Linux y macOS.
-- Estado actual, todo específico de Windows: ventana GDI (`src/video.cpp`), Direct3D 11 con HLSL (`src/gx_render.cpp`), hilos como fibras de Windows (`src/threads.cpp`), compilación con GCC de MinGW-w64.
-- Consecuencias: para Linux y macOS hacen falta un backend gráfico multiplataforma (WebGPU con Dawn o similar), una capa de ventana y entrada portable (SDL3) y corrutinas portables. Windows 11 no existe en 32 bits; un ejecutable de 32 bits con ~320 MB de memoria de invitado y ~300 MB de código es el objetivo más arriesgado y queda para el final.
-- Decisión: aurora (MIT) no se adopta entero ahora. Se mantiene el renderizador Direct3D 11 para conseguir un juego funcional y se conserva `include/wp/gx_render.h` como frontera estrecha (dibujar, copiar, limpiar, cargar paleta) para poder añadir después un backend WebGPU. Piezas sin dependencias gráficas de aurora (conversión de texturas) pueden incorporarse con su licencia MIT cuando aporten.
+- User's goal for final versions: Windows 10 and 11 (32 and 64 bits respectively, x86 and ARM), Linux and macOS.
+- Current state, all Windows-specific: GDI window (`src/video.cpp`), Direct3D 11 with HLSL (`src/gx_render.cpp`), threads as Windows fibers (`src/threads.cpp`), build with GCC from MinGW-w64.
+- Consequences: Linux and macOS need a cross-platform graphics backend (WebGPU with Dawn or similar), a portable window and input layer (SDL3) and portable coroutines. Windows 11 does not exist in 32 bits; a 32-bit executable with about 320 MB of guest memory and about 300 MB of code is the riskiest target and is left for the end.
+- Decision: aurora (MIT) is not adopted whole for now. The Direct3D 11 renderer is kept to get a working game, and `include/wp/gx_render.h` is kept as a narrow boundary (draw, copy, clear, load palette) so a WebGPU backend can be added later. Pieces of aurora without graphics dependencies (texture conversion) can be incorporated under its MIT license when they help.
 
-## DMA de la caché bloqueada: causa de los modelos 3D ausentes (2026-09-21)
+## Locked cache DMA: cause of the missing 3D models (2026-09-21)
 
-- Causa: el juego mueve matrices y otros datos con DMA de la caché bloqueada (`LCLoadBlocks` en 0x80137c40 y `LCStoreBlocks` en 0x80137c70, escritura a los registros SPR 922/923 DMA_U y DMA_L). El runtime guardaba la escritura sin hacer la copia, así que los arrays de matrices de esqueleto quedaban a cero. En el volcado de RAM de Dolphin esos arrays contenían matrices reales (evidencia de que el juego sí las calcula).
-- Solución: `wp::locked_cache_dma` (`src/runtime.cpp`) ejecuta la copia cuando DMA_L tiene el bit de disparo (memoria a caché con el bit de carga, caché a memoria sin él; longitud en bloques de 32 bytes, 0 significa 128) y limpia los bits de disparo y vaciado. El emisor (`tools/ppc/emit.py`) la invoca tras `mtspr 923`.
-- Herramienta: `tools/recomp.py` ya no reescribe los archivos generados que no han cambiado ni borra los existentes, de modo que una modificación del emisor solo recompila los archivos afectados.
-- Verificado: con el menú principal se ven ahora el fondo 3D y los cuatro Miis de House Party (capturas `d_04`, `d_05`). ctest 3/3.
-- Nuevos problemas visibles: la imagen sale lavada (demasiado clara, con un velo blanco) y los fps bajan a unos 5 con escenas 3D (50 fps en pantallas 2D). Sin investigar.
+- Cause: the game moves matrices and other data with locked cache DMA (`LCLoadBlocks` at 0x80137c40 and `LCStoreBlocks` at 0x80137c70, writes to SPR registers 922/923 DMA_U and DMA_L). The runtime stored the write without doing the copy, so the skeleton matrix arrays stayed at zero. In Dolphin's RAM dump those arrays held real matrices (evidence that the game does compute them).
+- Fix: `wp::locked_cache_dma` (`src/runtime.cpp`) performs the copy when DMA_L has the trigger bit (memory to cache with the load bit, cache to memory without it; length in blocks of 32 bytes, 0 means 128) and clears the trigger and flush bits. The emitter (`tools/ppc/emit.py`) calls it after `mtspr 923`.
+- Tool: `tools/recomp.py` no longer rewrites generated files that have not changed nor deletes existing ones, so a change to the emitter only recompiles the affected files.
+- Verified: with the main menu the 3D background and the four House Party Miis are now visible (captures `d_04`, `d_05`). ctest 3/3.
+- New visible problems: the image looks washed out (too light, with a white veil) and fps drop to about 5 in 3D scenes (50 fps on 2D screens). Not investigated.
 
-## Colores del menú y velo (2026-09-21)
+## Menu colors and veil (2026-09-21)
 
-- El velo blanco visto tras arreglar el DMA era un desvanecido de transición; no es un fallo fijo.
-- Añadidas las tablas de intercambio de canales de TEV (BP 0xF6-0xFD, selección por etapa en los bits 0-3 del registro alfa de cada etapa) al shader; antes se ignoraban. Sin efecto visible en el menú, pero es necesario para texturas de intensidad y otros materiales.
-- El reloj del sistema (`time_base`) parte ahora de la fecha real desde el 2000-01-01 en vez de cero. Hipótesis descartada: los colores del menú no dependen de la fecha.
-- Diagnóstico: `WP_LOG_GX=2` imprime por dibujo los registros de color de TEV (`regs=`), los konst, el orden, el color de material y el control de canales. Con él se ve que para el panel "Party Games" el juego escribe en el registro de color 1 el valor (0, 140, 255, 255), azul; en Dolphin el panel es rojo. La diferencia está por tanto en los datos que el juego decide, no en la conversión del renderizador (que se limita a decodificar lo que recibe).
-- Sin resolver: qué entrada del juego elige el color (candidatos: datos de guardado `/wiiparty.bin` ausentes, base de datos de Miis `RFL_DB.dat` ausente, ajustes de SYSCONF, un cálculo de animación con coma flotante o cuantizado mal lifteado).
+- The white veil seen after fixing the DMA was a transition fade; it is not a fixed defect.
+- Added the TEV channel swap tables (BP 0xF6-0xFD, per-stage selection in bits 0-3 of each stage's alpha register) to the shader; they were ignored before. No visible effect in the menu, but needed for intensity textures and other materials.
+- The system clock (`time_base`) now starts from the real date since 2000-01-01 instead of zero. Hypothesis ruled out: the menu colors do not depend on the date.
+- Diagnostics: `WP_LOG_GX=2` prints per draw the TEV color registers (`regs=`), the konst, the order, the material color and the channel control. With it, for the "Party Games" panel the game writes the value (0, 140, 255, 255), blue, to color register 1; in Dolphin the panel is red. The difference is therefore in the data the game decides, not in the renderer's conversion (which only decodes what it receives).
+- Unresolved: which game input chooses the color (candidates: missing `/wiiparty.bin` save data, missing `RFL_DB.dat` Mii database, SYSCONF settings, a floating-point or quantized animation computation lifted wrongly).
 
-## Rendimiento del renderizador (2026-09-21)
+## Renderer performance (2026-09-21)
 
-- Medición: con `WP_PROFILE=1` casi todo el tiempo estaba en `GXDrawDone` (procesado de GX del anfitrión). El juego emite unos 5.600 dibujos por fotograma en escenas 3D (partículas y Miis) y cada uno costaba unos 30 microsegundos de sobrecarga de Direct3D 11; resultado: 6 fps en 3D y una caída de 50 a 20 fps en el menú.
-- Cambios en `src/gx_render.cpp`: los dibujos consecutivos con el mismo estado (constantes de TEV, texturas, muestreadores, mezcla, profundidad y recorte) se acumulan y se envían con una sola llamada; el lote se vacía antes de cualquier copia del EFB, limpieza o sustitución de textura. Las texturas solo se consultan para los mapas que usan las etapas de TEV, y una textura ya comprobada en el fotograma actual no se vuelve a hashear.
-- Resultado medido con `WP_LOG_FPS=1`: 50 fps estables (el tope de PAL) en título, menú y escenas 3D durante 70 s (antes 6 fps en 3D).
-- Pixelado: la imagen se renderiza a 640x480 (resolución nativa) y se amplía con GDI sin filtrado. La solución prevista es resolución interna escalada (2x, 3x, 4x) y presentación por GPU; pendiente.
+- Measurement: with `WP_PROFILE=1` almost all the time was in `GXDrawDone` (GX processing on the host). The game emits about 5,600 draws per frame in 3D scenes (particles and Miis) and each cost about 30 microseconds of Direct3D 11 overhead; result: 6 fps in 3D and a drop from 50 to 20 fps in the menu.
+- Changes in `src/gx_render.cpp`: consecutive draws with the same state (TEV constants, textures, samplers, blending, depth and scissor) accumulate and are sent with a single call; the batch is flushed before any EFB copy, clear or texture replacement. Textures are only queried for the maps the TEV stages use, and a texture already checked in the current frame is not hashed again.
+- Result measured with `WP_LOG_FPS=1`: stable 50 fps (the PAL cap) in title, menu and 3D scenes for 70 s (before, 6 fps in 3D).
+- Pixelation: the image is rendered at 640x480 (native resolution) and enlarged by GDI without filtering. The planned fix is scaled internal resolution (2x, 3x, 4x) and GPU presentation; pending.
 
-## Objetivos y herramientas sugeridas por el usuario (2026-09-21)
+## Goals and tools suggested by the user (2026-09-21)
 
-- Objetivo extra: lograr una traducción al gallego del juego (texto, sin distribuir recursos del juego).
-- Referencia visual real aportada por el usuario (Dolphin, PAL en español): el título tiene fondo rosa con Miis y animales 3D; en el menú principal los cinco tableros de Party Games son rojos, los de juegos en pareja amarillo anaranjado y House Party verde, con los Miis algo más pequeños que en nuestra versión. Los botones inferiores son morado, azul y amarillo.
-- WinDbg con Time Travel Debugging: útil para grabar un fallo del ejecutable y retroceder; limitaciones: el ejecutable se compila con GCC (símbolos DWARF que WinDbg lee mal), la traza de un emulador intensivo en CPU es enorme y ralentiza mucho la ejecución. Reservado para fallos difíciles de reproducir.
-- RenderDoc: captura de un fotograma de Direct3D 11 con sus llamadas, texturas, búferes y shaders. Encaja directamente con nuestro renderizador y es la herramienta prevista para el pixelado, los colores y las texturas.
+- Extra goal: a Galician translation of the game (text only, without distributing game resources).
+- Real visual reference provided by the user (Dolphin, PAL in Spanish): the title has a pink background with 3D Miis and animals; in the main menu the five Party Games boards are red, the pair games are orange-yellow and House Party is green, with the Miis somewhat smaller than in our version. The lower buttons are purple, blue and yellow.
+- WinDbg with Time Travel Debugging: useful to record a failure of the executable and step backwards; limitations: the executable is built with GCC (DWARF symbols that WinDbg reads poorly), the trace of a CPU-intensive emulator is huge and slows execution a lot. Reserved for hard-to-reproduce failures.
+- RenderDoc: capture of a Direct3D 11 frame with its calls, textures, buffers and shaders. It fits our renderer directly and is the planned tool for the pixelation, colors and textures.
 
-## Resolución interna escalada y presentación por GPU (2026-09-21)
+## Scaled internal resolution and GPU presentation (2026-09-21)
 
-- Causa del pixelado: el EFB se renderizaba a 640x480 y la ventana lo ampliaba con GDI. Ahora el EFB tiene `WP_SCALE` veces la resolución nativa (rango 1 a 6; por defecto 1, resolución nativa, desde 2026-09-21): el viewport y el recorte se multiplican por la escala y las copias EFB a textura conservan la resolución alta.
-- La copia del EFB a XFB ya no se lee a memoria en YUV ni se convierte en la CPU: una copia en la GPU deja el fotograma en una textura (`copy_to_framebuffer`) y `present_frame` lo dibuja en una cadena de intercambio DXGI (flip, sin sincronía vertical) con filtrado lineal, centrado y con bandas negras según la relación de aspecto (16:9 con `IPL.AR=1`). El pintado GDI y el código YUV de `src/video.cpp` se han eliminado; `WP_SAVE_FRAME` guarda ahora el fotograma a resolución interna mediante `read_frame`.
-- Verificado por ejecución: título y menú nítidos (capturas de 1920x1440), 45 a 51 copias por segundo con `WP_LOG_FPS=1` en el menú 3D, ctest 3/3.
-- Limitaciones: la memoria XFB del invitado ya no se rellena (el juego no la lee; no verificado en otros modos); sin vsync (Present(0, 0)); los mipmaps de textura no se generan; las texturas de las caras de los Miis se ven con bloques y no se ha investigado su filtrado.
+- Cause of the pixelation: the EFB was rendered at 640x480 and the window enlarged it with GDI. Now the EFB has `WP_SCALE` times the native resolution (range 1 to 6; default 1, native resolution, since 2026-09-21): the viewport and the scissor are multiplied by the scale and EFB-to-texture copies keep the high resolution.
+- The EFB to XFB copy is no longer read back to memory as YUV or converted on the CPU: a GPU copy leaves the frame in a texture (`copy_to_framebuffer`) and `present_frame` draws it on a DXGI swap chain (flip, no vertical sync) with linear filtering, centered and with black bars according to the aspect ratio (16:9 with `IPL.AR=1`). The GDI painting and the YUV code in `src/video.cpp` have been removed; `WP_SAVE_FRAME` now saves the frame at internal resolution through `read_frame`.
+- Verified by running: sharp title and menu (1920x1440 captures), 45 to 51 copies per second with `WP_LOG_FPS=1` in the 3D menu, ctest 3/3.
+- Limitations: the guest XFB memory is no longer filled (the game does not read it; not verified in other modes); no vsync (Present(0, 0)); texture mipmaps are not generated; the textures of the Mii faces show blocks and their filtering has not been investigated.
 
-## Colores del menú: hipótesis descartadas y hallazgos (2026-09-21)
+## Menu colors: ruled-out hypotheses and findings (2026-09-21)
 
-- Descartado con medición: la hora y la fecha (12 ejecuciones con el reloj desplazado dan capturas idénticas píxel a píxel) y una rotación de canales en los registros de color y konst de TEV (probada y revertida: rompe la piel de los Miis y no cambia los paneles, así que el color de esos paneles no viene de esos registros).
-- Hallazgo: en el volcado de Dolphin y en el nuestro la tabla de colores de jugador está en las mismas direcciones (0x1de148: azul, azul oscuro, rojo, rojo oscuro, verde, verde oscuro, naranja, naranja oscuro, morado, morado oscuro, rosa...), es decir, azul, rojo, verde y naranja son los colores de los jugadores 1 a 4. También hay copias de esos colores junto a los nombres de los Miis del usuario dentro de estructuras de jugador en el volcado de Dolphin (0x6f5bb4 con "Arel Kair").
-- Los paneles de Dolphin son rojo, naranja y verde; los nuestros son colores de otra tabla (turquesa, lima) o rotados; sigue sin explicarse.
-- Con la NAND del usuario (base de datos de Miis `RFL_DB.dat` de 779.968 bytes copiada a una NAND temporal, no versionada) el juego se cuelga inicializando RFL: abre el archivo, hace `seek` a 0, lee 127.456 bytes con éxito (la finalización asíncrona se entrega) y no emite más peticiones; el bucle de espera de 0x8009a4d0 se queda en estado 6 (ocupado). Pendiente de investigar; arreglarlo permitiría usar los Miis reales.
-- Nuevos diagnósticos: `WP_LOG_IOS=1` imprime cada petición IOS y cada finalización asíncrona con su callback.
-- La ventana se abre por defecto a 1920x1080 (reducida para caber en el área de trabajo del monitor).
+- Ruled out by measurement: time and date (12 runs with the clock shifted give pixel-identical captures) and a channel rotation in the TEV color and konst registers (tried and reverted: it breaks the Mii skin and does not change the panels, so the color of those panels does not come from those registers).
+- Finding: in Dolphin's dump and in ours the player color table is at the same addresses (0x1de148: blue, dark blue, red, dark red, green, dark green, orange, dark orange, purple, dark purple, pink...), that is, blue, red, green and orange are the colors of players 1 to 4. There are also copies of those colors next to the names of the user's Miis inside player structures in Dolphin's dump (0x6f5bb4 with "Arel Kair").
+- Dolphin's panels are red, orange and green; ours are colors from another table (turquoise, lime) or rotated; still unexplained.
+- With the user's NAND (Mii database `RFL_DB.dat` of 779,968 bytes copied to a temporary NAND, not versioned) the game hangs initializing RFL: it opens the file, seeks to 0, reads 127,456 bytes successfully (the asynchronous completion is delivered) and issues no more requests; the wait loop at 0x8009a4d0 stays in state 6 (busy). To be investigated; fixing it would allow using the real Miis.
+- New diagnostics: `WP_LOG_IOS=1` prints each IOS request and each asynchronous completion with its callback.
+- The window opens at 1920x1080 by default (reduced to fit the monitor's work area).
 
-## Decrementador y alarmas del SO; base de datos de Miis (2026-09-21)
+## Decrementer and OS alarms; Mii database (2026-09-21)
 
-- Causa del cuelgue de RFL con la base de datos de Miis del usuario: tras la lectura, la siguiente etapa se programa con una alarma del sistema operativo (`OSSetPeriodicAlarm`, unos 19 ms) y el runtime no emulaba el decrementador (DEC) ni sus excepciones, así que ninguna alarma se disparaba jamás. Se descartó antes una condición de carrera (se añadió una latencia mínima de 1 ms a las finalizaciones asíncronas de IPC, que es más realista, pero no era la causa).
-- Solución: `mtspr 22` y `mfspr 22` se emiten como `wp::set_decrementer` y `wp::get_decrementer` (`tools/ppc/emit.py`, `src/runtime.cpp`), con el DEC ligado al reloj de tiempo base. `poll_interrupts` entrega la excepción de decrementador (índice 8 de la tabla de excepciones en 0x80003000) con `save_context` y un punto de reanudación: el manejador del SDK guarda el contexto, procesa las alarmas y termina con `OSLoadContext`, que reanuda el hilo interrumpido o cambia a otro como en hardware. Salir de la interrupción por cambio de fibra limpia el indicador de interrupción.
-- Diagnósticos: `WP_LOG_IRQ=1` imprime cada excepción de decrementador; `WP_LOG_IOS=1` imprime peticiones y finalizaciones de IOS.
-- Verificado: con la base de datos de Miis del usuario (`RFL_DB.dat`, en una NAND temporal no versionada) el juego termina la inicialización de RFL (abre, posiciona, lee y cierra el archivo), muestra en el título los Miis de esa base, sigue a 50 fps y llega a la presentación de Party Phil con los colores rosas correctos de su ropa. Con la NAND por defecto sigue llegando al menú. ctest 3/3.
-- Efecto general: cualquier código del juego o del SDK que dependa de alarmas (temporizadores de DVD, `OSSleepTicks`, botones de inicio, RFL) ahora funciona; antes fallaba en silencio.
-- Sin verificar: los colores de los paneles del menú principal con los Miis reales, y el impacto del DEC en otras pantallas.
+- Cause of the RFL hang with the user's Mii database: after the read, the next stage is scheduled with an operating system alarm (`OSSetPeriodicAlarm`, about 19 ms) and the runtime did not emulate the decrementer (DEC) or its exceptions, so no alarm ever fired. A race condition was ruled out earlier (a minimum latency of 1 ms was added to asynchronous IPC completions, which is more realistic, but it was not the cause).
+- Fix: `mtspr 22` and `mfspr 22` are emitted as `wp::set_decrementer` and `wp::get_decrementer` (`tools/ppc/emit.py`, `src/runtime.cpp`), with the DEC tied to the time base clock. `poll_interrupts` delivers the decrementer exception (index 8 of the exception table at 0x80003000) with `save_context` and a resume point: the SDK handler saves the context, processes the alarms and ends with `OSLoadContext`, which resumes the interrupted thread or switches to another as on hardware. Leaving the interrupt through a fiber switch clears the interrupt flag.
+- Diagnostics: `WP_LOG_IRQ=1` prints each decrementer exception; `WP_LOG_IOS=1` prints IOS requests and completions.
+- Verified: with the user's Mii database (`RFL_DB.dat`, in a temporary unversioned NAND) the game finishes the RFL initialization (opens, seeks, reads and closes the file), shows the Miis from that database in the title, stays at 50 fps and reaches the Party Phil presentation with the correct pink colors of his clothes. With the default NAND it still reaches the menu. ctest 3/3.
+- General effect: any game or SDK code that depends on alarms (DVD timers, `OSSleepTicks`, start buttons, RFL) now works; before it failed silently.
+- Not verified: the colors of the main menu panels with the real Miis, and the impact of the DEC on other screens.
 
-## Diagnósticos de entrada y de cierre (2026-09-21)
+## Input and shutdown diagnostics (2026-09-21)
 
-- `WP_LOG_INPUT=1` imprime la ventana enfocada y cada cambio de botones que lee el juego. Sirvió para confirmar que teclado y foco funcionaban (el fallo de entrada que notó el usuario venía de una instancia antigua de la ventana).
-- Informador de fallos (`src/main.cpp`): un filtro de excepciones imprime el código de la excepción, la dirección del anfitrión, la dirección de acceso y las pilas de llamadas del invitado (hilo actual y resto de hilos) antes de terminar. Se añadió porque un cierre del proceso al entrar en una partida del primer tablero no dejó ningún mensaje.
+- `WP_LOG_INPUT=1` prints the focused window and each button change the game reads. It confirmed that keyboard and focus worked (the input failure the user noticed came from an old instance of the window).
+- Crash reporter (`src/main.cpp`): an exception filter prints the exception code, the host address, the access address and the guest call stacks (current thread and the rest of the threads) before terminating. It was added because a process exit when entering a game on the first board left no message.
 
-## Primer fallo real jugando (2026-09-21)
+## First real failure while playing (2026-09-21)
 
-- El usuario entró en el primer tablero (Board Game Island) y llegó a la selección de Mii. El informador de fallos mostró `exception c0000005 ... reading address` (lectura fuera de la memoria reservada al invitado) tras confirmar el Mii, con hilos de juego y cola de tareas normales. Causa probable: direcciones de textura, de paleta o de arrays de vértices fuera de los 320 MB reservados (una dirección de 24 bits desplazada 5 puede llegar a 512 MB, y la memoria de invitado cubre 320 MB). Sin verificar por ejecución; el usuario debe repetir la prueba.
-- Cambios: `render::guest_range_valid` comprueba rangos antes de leer texturas, paletas y arrays de vértices (los arrays fuera de rango leen ceros); el informador de fallos imprime ahora también el desplazamiento respecto al módulo para localizar la función con `addr2line`; `WP_LOG_INPUT` solo imprime cuando cambia el foco; `WP_LOG_FPS` añade lotes, vértices y tiempo de dibujo del lado de la CPU por segundo para investigar la caída de rendimiento en esta pantalla.
-- Observación: la pila de llamadas impresa muestra repeticiones de `80136f30 -> 80136d00 -> OSLoadContext` (excepciones de decrementador reanudadas con `longjmp`); la traza no se rebobina con `longjmp`, así que es ruido de diagnóstico y no una recursión real.
+- The user entered the first board (Board Game Island) and reached the Mii selection. The crash reporter showed `exception c0000005 ... reading address` (read outside the memory reserved for the guest) after confirming the Mii, with normal game threads and task queue. Probable cause: texture, palette or vertex array addresses outside the 320 MB reserved (a 24-bit address shifted by 5 can reach 512 MB, and the guest memory covers 320 MB). Not verified by running; the user has to repeat the test.
+- Changes: `render::guest_range_valid` checks ranges before reading textures, palettes and vertex arrays (arrays out of range read zeros); the crash reporter now also prints the offset relative to the module to locate the function with `addr2line`; `WP_LOG_INPUT` only prints when the focus changes; `WP_LOG_FPS` adds batches, vertices and CPU-side draw time per second to investigate the performance drop on this screen.
+- Observation: the printed call stack shows repetitions of `80136f30 -> 80136d00 -> OSLoadContext` (decrementer exceptions resumed with `longjmp`); the trace is not rewound by `longjmp`, so it is diagnostic noise and not a real recursion.
 
-## Rendimiento de envío de dibujos y localización del fallo de memcpy (2026-09-21)
+## Draw submission performance and locating the memcpy failure (2026-09-21)
 
-- Medición del usuario con `WP_LOG_FPS`: en la pantalla de selección de Mii los fps bajan a 15 a 23, con 5.000 a 9.800 lotes por segundo y entre 550 y 830 ms de cada segundo gastados en `flush_pending` (envío de dibujos, del lado de la CPU), unos 110 microsegundos por lote.
-- Causa probable: cada lote hacía `Map` con `DISCARD` sobre un búfer de vértices de unos 7 MB (65.536 vértices de 108 bytes), obligando al controlador a renombrar el búfer entero cientos de veces por fotograma. Cambio: anillo de vértices con `NO_OVERWRITE` y cursor (solo `DISCARD` al llenarse), y `Draw` con desplazamiento. Sin medir todavía tras el cambio.
-- Fallo al empezar la partida: el desplazamiento del módulo `0x1d613` corresponde a `f_800043c4` (+3473), el `memcpy` del propio juego, leyendo una dirección de origen fuera de los 320 MB de memoria de invitado. El origen del puntero es anterior; el informador de fallos imprime ahora los registros del invitado (`lr`, `sp`, `r3` a `r7`, `r30`, `r31`), y `lr` indica quién llamó.
-- La profundidad de la traza de llamadas se restaura tras reanudar una excepción de decrementador, así que la pila impresa deja de mostrar repeticiones falsas de `80136f30`.
+- User's measurement with `WP_LOG_FPS`: on the Mii selection screen fps drop to 15 to 23, with 5,000 to 9,800 batches per second and between 550 and 830 ms of each second spent in `flush_pending` (draw submission, CPU side), about 110 microseconds per batch.
+- Probable cause: each batch did `Map` with `DISCARD` on a vertex buffer of about 7 MB (65,536 vertices of 108 bytes), forcing the driver to rename the whole buffer hundreds of times per frame. Change: a vertex ring with `NO_OVERWRITE` and a cursor (`DISCARD` only when full), and `Draw` with an offset. Not measured yet after the change.
+- Failure when starting the game: the module offset `0x1d613` corresponds to `f_800043c4` (+3473), the game's own `memcpy`, reading a source address outside the 320 MB of guest memory. The origin of the pointer is earlier; the crash reporter now prints the guest registers (`lr`, `sp`, `r3` to `r7`, `r30`, `r31`), and `lr` indicates the caller.
+- The call trace depth is restored after resuming a decrementer exception, so the printed stack no longer shows false repetitions of `80136f30`.
 
-## Fallo de memcpy al empezar Board Game Island (2026-09-21)
+## memcpy failure when starting Board Game Island (2026-09-21)
 
-- Medición tras el anillo de vértices: el tiempo de envío de dibujos pasó de 550 a 830 ms por segundo a 5 a 20 ms, con 50 fps estables también en la selección de Mii. Resuelto y verificado por el usuario.
-- El fallo al pulsar Comenzar se repite en la misma función: `f_800043c4` (`memcpy` del juego) leyendo fuera de los 320 MB. Registros en el fallo: `lr=0100f344`, `r3=807054e0`, `r4=40000008`, `r5=c9998d78` (longitud basura de unos 3.400 millones), pila `800043c4 <- 0100f0f0 <- 01002980 <- 01002020 <- 01000410 <- 010001a0 <- 8002b580 <- 80028d90 <- main`. Las direcciones `0100xxxx` son funciones de un módulo REL cargado dinámicamente, llamadas justo después de que una función del ejecutable principal (`8002b580`) enlaza un módulo; encaja con la inicialización de la escena de la partida.
-- Hipótesis principal: una longitud o un puntero calculados a partir de datos del módulo con una relocalización mal resuelta o un dato que el juego lee de un recurso que no cargó. Sin verificar.
-- El informador de fallos imprime ahora también los módulos cargados, con su nombre y la sección y el desplazamiento que contienen `lr`, para identificar la función exacta.
+- Measurement after the vertex ring: draw submission time went from 550 to 830 ms per second to 5 to 20 ms, with stable 50 fps also on the Mii selection. Resolved and verified by the user.
+- The failure when pressing Start repeats in the same function: `f_800043c4` (the game's `memcpy`) reading outside the 320 MB. Registers at the failure: `lr=0100f344`, `r3=807054e0`, `r4=40000008`, `r5=c9998d78` (garbage length of about 3.4 billion), stack `800043c4 <- 0100f0f0 <- 01002980 <- 01002020 <- 01000410 <- 010001a0 <- 8002b580 <- 80028d90 <- main`. The `0100xxxx` addresses are functions of a dynamically loaded REL module, called right after a function of the main executable (`8002b580`) links a module; it fits the initialization of the game scene.
+- Main hypothesis: a length or pointer computed from module data with a wrongly resolved relocation, or data the game reads from a resource that did not load. Not verified.
+- The crash reporter now also prints the loaded modules, with their name and the section and offset that contain `lr`, to identify the exact function.
 
-## Board Game Island carga: fallo del traductor de módulos y del puntero (2026-09-21)
+## Board Game Island loads: module translator and pointer failures (2026-09-21)
 
-- Entrada por guion (`WP_INPUT_SCRIPT`, en milisegundos desde la primera lectura del mando): entradas separadas por `;` con `desde,hasta,botones_hex[,x,y]` (posición del puntero de -1 a 1 sobre la imagen). Permite automatizar pruebas de recorridos completos (el juego usa el guion en lugar del teclado y el ratón).
-- Fallo del puntero: el juego usa la posición vertical del puntero sin el factor 0,75 que aplicaba `kpad_read`; con él, todo lo que está en la parte baja de la pantalla (OK, Start, Minigames) no se podía alcanzar bien. `kPointerHeightScale` pasa a 1,0. Verificado: con el puntero sobre "Minigames" ahora se resalta "Minigames" (antes se resaltaba House Party).
-- Recorrido reproducido: título, menú, Board Game Island, número de jugadores, elección de Mii, dificultad de la CPU (esa pantalla es del propio juego), Start game.
-- Causa del fallo al empezar la partida: el traductor de módulos (`tools/recomp_rel.py`) parte cada módulo en funciones en las direcciones de entrada, incluidas las que aparecen por relocalizaciones (tablas de excepciones de C++), pero al terminar un trozo no continuaba en el siguiente. Funciones como el constructor `0x0100d5d0` de `mr001` quedaban cortadas a la mitad, sin `return`, y devolvían un puntero basura; luego un `push_back` de vector llamaba a `memcpy` con longitud basura y se salía de la memoria.
-- Corrección: si la última instrucción de un trozo puede seguir (no es un salto o retorno incondicional), se emite la llamada al trozo siguiente. Se regeneraron los 115 módulos. `tools/recomp_rel.py` deja de reescribir los archivos que no cambian.
-- Verificado por ejecución: tras el cambio el mismo recorrido llega a la isla en 3D, los cuatro Miis en la entrada y Party Phil ("Since this is your first time playing, I'll explain how this game works."), sin fallos. ctest 3/3.
-- Sin verificar: el resto de módulos (minijuegos y demás tableros) tras la corrección general; el aviso `unsupported EFB copy format 8` (copia de EFB en formato R8) sigue pendiente.
+- Scripted input (`WP_INPUT_SCRIPT`, in milliseconds since the first controller read): entries separated by `;` with `from,to,buttons_hex[,x,y]` (pointer position from -1 to 1 over the image). It allows automating tests of full paths (the game uses the script instead of the keyboard and mouse).
+- Pointer failure: the game uses the vertical pointer position without the 0.75 factor that `kpad_read` applied; with it, everything at the bottom of the screen (OK, Start, Minigames) could not be reached properly. `kPointerHeightScale` becomes 1.0. Verified: with the pointer over "Minigames", "Minigames" is now highlighted (before, House Party was highlighted).
+- Path reproduced: title, menu, Board Game Island, number of players, Mii choice, CPU difficulty (that screen is the game's own), Start game.
+- Cause of the failure when starting the game: the module translator (`tools/recomp_rel.py`) splits each module into functions at the entry addresses, including those that appear from relocations (C++ exception tables), but when a chunk ended it did not continue into the next one. Functions such as the constructor `0x0100d5d0` of `mr001` were cut in half, with no `return`, and returned a garbage pointer; then a vector `push_back` called `memcpy` with a garbage length and went out of memory.
+- Fix: if the last instruction of a chunk can fall through (it is not an unconditional jump or return), a call to the next chunk is emitted. The 115 modules were regenerated. `tools/recomp_rel.py` no longer rewrites files that do not change.
+- Verified by running: after the change the same path reaches the 3D island, the four Miis at the entrance and Party Phil ("Since this is your first time playing, I'll explain how this game works."), with no failures. ctest 3/3.
+- Not verified: the rest of the modules (minigames and other boards) after the general fix; the `unsupported EFB copy format 8` warning (EFB copy in R8 format) is still pending.
 
-## Proporción de imagen y resolución por defecto (2026-09-21)
+## Aspect ratio and default resolution (2026-09-21)
 
-- La imagen se veía estirada: la ventana presentaba en 16:9 (según `IPL.AR` de la SYSCONF) lo que el juego dibuja en 4:3 sin comprimir. Comprobado con dos NAND que solo difieren en `IPL.AR` (0 y 1): el fotograma del menú es idéntico en diseño, así que el juego no reacciona a ese flag tal como se ejecuta ahora. La presentación pasa a ser siempre 4:3 y la ventana inicial es 1280x960 (se reduce manteniendo 4:3).
-- Sin resolver: comprobar si el juego real usa 16:9 anamórfico en Dolphin con la misma SYSCONF (podría leer el aspecto por otra vía). `nand::widescreen()` se conserva para esa investigación.
-- Resolución interna por defecto: nativa (`WP_SCALE=1`); `WP_SCALE` 2 a 6 multiplica.
-- Fallo al terminar la explicación del tablero: `0x80042140` llama a una función virtual de un layout NW4R (`0x8012aa70`) con un puntero nulo devuelto al construir el layout tras cargar `layout/inst/cont012.arc.lz` y `cont013.arc.lz`. Los recuadros negros de la explicación son vídeos `.mv` (`inst/thumbnail/mg408.mv`, `mg410.mv`) que aún no se decodifican. `missing_function` imprime ahora registros y vtable del objeto.
+- The image looked stretched: the window presented at 16:9 (from `IPL.AR` in the SYSCONF) what the game draws at 4:3 without squeezing. Checked with two NANDs that differ only in `IPL.AR` (0 and 1): the menu frame is identical in layout, so the game does not react to that flag as it runs now. Presentation is now always 4:3 and the initial window is 1280x960 (it shrinks keeping 4:3).
+- Unresolved: check whether the real game uses anamorphic 16:9 in Dolphin with the same SYSCONF (it may read the aspect another way). `nand::widescreen()` is kept for that investigation.
+- Default internal resolution: native (`WP_SCALE=1`); `WP_SCALE` 2 to 6 multiplies.
+- Failure at the end of the board explanation: `0x80042140` calls a virtual function of an NW4R layout (`0x8012aa70`) with a null pointer returned when the layout is built after loading `layout/inst/cont012.arc.lz` and `cont013.arc.lz`. The cause of the black boxes in the explanation is not known: the `.mv` files (`inst/thumbnail/mg408.mv`, `mg410.mv`) are read at the end, on the minigame instruction screens, not during the explanation, so the earlier statement that the boxes are `.mv` videos is not supported. `missing_function` now prints the registers and the vtable of the object.
 
-## Objetivo: pantallas ultrapanorámicas sin bandas
+## Goal: ultrawide displays without bars
 
-- Meta: que el juego llene ventanas 21:9 y 32:9 sin bandas negras.
-- Plan: imagen interna con la proporción de la ventana; campo de visión horizontal ampliado modificando la proyección de las escenas 3D; en los layouts 2D anclar cada elemento a un borde o al centro y extender los fondos.
-- Orden: después de corregir colores, Miis planos y texturas; no se implementa todavía.
-- Licencias: Dolphin y el fork RecompCore son GPL v2 o posterior, no MIT; se usan solo como referencia de comportamiento, sin copiar código.
+- Goal: the game fills 21:9 and 32:9 windows without black bars.
+- Plan: internal image with the window's aspect ratio; horizontal field of view widened by modifying the projection of 3D scenes; in 2D layouts anchor each element to an edge or to the center and extend the backgrounds.
+- Order: after fixing colors, flat Miis and textures; not implemented yet.
+- Licenses: Dolphin and the RecompCore fork are GPL v2 or later, not MIT; they are used only as a behavior reference, without copying code.
 
-## Licencia GPL-3.0-or-later (2026-09-21)
+## GPL-3.0-or-later license (2026-09-21)
 
-- El proyecto adopta GPL-3.0-or-later como licencia del código propio. `LICENSE` contiene el texto oficial de la GPLv3; `README.md` y `CLAUDE.md` se actualizan.
-- Nuevo `THIRD_PARTY_NOTICES.md` con las reglas de incorporación, los proyectos revisados como posibles fuentes (Dolphin, WiiCompiled, Aurora, RecompCore) y los elementos propios pendientes de revisión.
-- La reutilización de código externo queda condicionada a una revisión individual de licencia y procedencia. En esta tarea no se ha incorporado código externo ni se ha modificado código del proyecto.
-- No es una auditoría legal completa.
+- The project adopts GPL-3.0-or-later as the license of its own code. `LICENSE` holds the official GPLv3 text; `README.md` and `CLAUDE.md` are updated.
+- New `THIRD_PARTY_NOTICES.md` with the rules for incorporation, the projects reviewed as possible sources (Dolphin, WiiCompiled, Aurora, RecompCore) and the project's own items pending review.
+- Reuse of external code depends on an individual review of license and provenance. No external code has been incorporated and no project code has been modified in this task.
+- This is not a complete legal audit.

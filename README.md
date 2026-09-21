@@ -25,8 +25,8 @@ Not implemented yet:
 
 - Generic gamepads and real Wii Remotes (keyboard and mouse work).
 - Audio: the AX sound layer is stubbed, so the game is silent.
-- Graphics: lighting, indirect textures, lines and points, EFB copies in intensity formats, and internal resolution scaling.
-- Higher frame rates, internal resolution scaling, online play, quality-of-life options and a Galician translation (planned).
+- Graphics: lighting, indirect textures, lines and points, and EFB copies in intensity formats.
+- Higher frame rates, ultrawide display support, online play, quality-of-life options and a Galician translation (planned).
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`.
 

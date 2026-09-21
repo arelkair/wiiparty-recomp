@@ -1,265 +1,265 @@
-# Wii Party — Mejoras de calidad de vida (QoL)
+# Wii Party: quality-of-life features
 
-> Documento de especificación de funcionalidades para la versión nativa de PC.
->
-> **Alcance:** mejoras de presentación, accesibilidad, fluidez, configuración, guardado y conectividad, manteniendo la identidad visual y el comportamiento original del juego siempre que sea posible.
+Specification of features for the native PC version.
 
----
-
-## 1. Vídeo, rendimiento y presentación
-
-### 1.1. Relación de aspecto dinámica
-
-**Objetivo:** adaptar el juego a formatos panorámicos y ultrapanorámicos sin deformar la interfaz ni los elementos 2D.
-
-**Requisitos:**
-- Desvincular la cámara y el campo de visión de las relaciones 4:3 y 16:9 originales.
-- Calcular dinámicamente el encuadre según la resolución de salida.
-- Añadir soporte para formatos como 21:9 y 32:9.
-- Mantener los elementos `.brlyt` correctamente anclados a sus posiciones relativas.
-- Evitar el estiramiento de menús, marcadores y otros elementos de la interfaz.
-
-### 1.2. Alta frecuencia de refresco
-
-**Objetivo:** ofrecer una presentación fluida a 120 Hz, 144 Hz y frecuencias superiores sin alterar la lógica del juego.
-
-**Requisitos:**
-- Separar el ciclo de presentación gráfica de la lógica interna del juego.
-- Tratar `VIWaitForRetrace` de forma compatible con la ejecución desacoplada.
-- Utilizar un control temporal basado en `std::chrono` o una solución equivalente.
-- Mantener independientes la frecuencia de renderizado, la lógica, las físicas y los temporizadores de los minijuegos.
-- Evitar que el aumento de FPS acelere animaciones o mecánicas jugables.
-
-### 1.3. Texturas en alta resolución
-
-**Objetivo:** permitir el uso de texturas personalizadas de mayor resolución.
-
-**Requisitos:**
-- Crear una ruta de sustitución de recursos dentro de `extracted/`.
-- Buscar primero una versión personalizada del recurso en el sistema de archivos del PC.
-- Utilizar la textura HD disponible en lugar del recurso `.brtex` original cuando exista.
-- Mantener un mecanismo de fallback al recurso original.
-- Documentar la convención de nombres y la estructura de directorios.
+Scope: presentation, accessibility, performance, configuration, saving and connectivity. Keep the original look and behavior of the game wherever possible.
 
 ---
 
-## 2. Fluidez y ritmo de juego
+## 1. Video, performance and presentation
 
-### 2.1. Aceleración y omisión de diálogos
+### 1.1. Dynamic aspect ratio
 
-**Objetivo:** reducir el tiempo dedicado a textos y conversaciones repetitivas.
+Goal: fit the game to wide and ultrawide displays without distorting the interface or 2D elements.
 
-**Requisitos:**
-- Permitir avanzar rápidamente los cuadros de diálogo.
-- Añadir una acción configurable para omitir texto de forma instantánea.
-- Permitir, opcionalmente, aumentar la velocidad de aparición de los diálogos.
-- Evitar que la aceleración altere los eventos asociados a la finalización de cada diálogo.
+Requirements:
+- Decouple the camera and field of view from the original 4:3 and 16:9 ratios.
+- Compute the framing from the output resolution.
+- Support formats such as 21:9 and 32:9.
+- Keep `.brlyt` elements anchored to their relative positions.
+- Do not stretch menus, scoreboards or other interface elements.
 
-### 2.2. Omitir introducciones repetitivas
+### 1.2. High refresh rate
 
-**Objetivo:** permitir saltar secuencias introductorias que el jugador ya conoce.
+Goal: present at 120 Hz, 144 Hz and higher without changing the game logic.
 
-**Requisitos:**
-- Añadir una opción para omitir la presentación del anfitrión al iniciar los minijuegos.
-- Permitir omitir animaciones repetitivas del tablón principal cuando proceda.
-- Mantener disponibles las secuencias originales mediante una opción configurable.
-- Garantizar que omitir una animación no impida ejecutar sus eventos de inicialización.
+Requirements:
+- Separate the presentation loop from the internal game logic.
+- Make `VIWaitForRetrace` compatible with decoupled execution.
+- Use timing based on `std::chrono` or an equivalent.
+- Keep rendering rate, logic, physics and minigame timers independent.
+- A higher frame rate must not speed up animations or gameplay.
 
-### 2.3. Modo de tablero rápido
+### 1.3. High-resolution textures
 
-**Objetivo:** agilizar las partidas de tablero sin modificar sus reglas.
+Goal: allow custom higher-resolution textures.
 
-**Requisitos:**
-- Añadir una opción activable desde la configuración.
-- Acelerar el desplazamiento de los Miis por las casillas.
-- Reducir la duración de las animaciones del lanzamiento de dados.
-- Mantener intactas las reglas, los resultados aleatorios y las condiciones de victoria.
-- Aplicar la aceleración únicamente a las secuencias compatibles.
-
-### 2.4. Precarga de recursos
-
-**Objetivo:** reducir los tiempos de espera entre escenas y minijuegos.
-
-**Requisitos:**
-- Aprovechar la memoria disponible en el PC para precargar recursos.
-- Preparar la carga anticipada de los módulos `.rel` y de los recursos asociados.
-- Sustituir las esperas derivadas del acceso al DVD original por operaciones de almacenamiento local.
-- Ejecutar la precarga en segundo plano cuando no interfiera con la ejecución.
-- Incorporar límites de memoria y mecanismos de liberación de recursos.
+Requirements:
+- Create a resource replacement path inside `extracted/`.
+- Look for a custom version of the resource on the PC file system first.
+- Use the HD texture instead of the original `.brtex` resource when it exists.
+- Fall back to the original resource.
+- Document the naming convention and the directory structure.
 
 ---
 
-## 3. IA y sistema de Miis
+## 2. Pace of play
 
-### 3.1. Dificultad global de la CPU
+### 2.1. Dialog speed-up and skipping
 
-**Objetivo:** permitir establecer una dificultad fija para los Miis controlados por la IA.
+Goal: reduce the time spent on repeated text and conversations.
 
-**Requisitos:**
-- Añadir una opción global de dificultad.
-- Permitir seleccionar niveles como `Experto` o `Maestro`, si están disponibles en la lógica del juego.
-- Aplicar la configuración a los modos de juego compatibles.
-- Mantener una opción para utilizar la dificultad original de cada modo.
-- Evitar modificar de forma accidental la dificultad de los jugadores humanos.
+Requirements:
+- Allow dialog boxes to advance quickly.
+- Add a configurable action that skips text instantly.
+- Optionally increase the speed at which dialog text appears.
+- Speed-up must not change the events tied to the end of each dialog.
 
-### 3.2. Corrección del mapeo de dificultad de los Miis
+### 2.2. Skip repeated introductions
 
-**Objetivo:** garantizar que las estadísticas y los niveles de IA se asignen correctamente.
+Goal: allow skipping introduction sequences the player already knows.
 
-**Requisitos:**
-- Revisar las tablas internas relacionadas con los Miis controlados por la CPU.
-- Verificar la correspondencia entre identificadores, estadísticas y niveles de dificultad.
-- Corregir las asignaciones inconsistentes detectadas.
-- Comprobar de forma específica los Miis considerados legendarios, como Matt, Saburo o Elisa.
-- Validar el comportamiento resultante en los modos de juego afectados.
+Requirements:
+- Add an option to skip the host presentation when minigames start.
+- Allow skipping repeated main-menu animations where appropriate.
+- Keep the original sequences available through a setting.
+- Skipping an animation must not prevent its initialization events from running.
 
----
+### 2.3. Fast board mode
 
-## 4. Interfaz, configuración y guardado
+Goal: speed up board games without changing their rules.
 
-### 4.1. Menú de opciones integrado
+Requirements:
+- Add an option enabled from the settings.
+- Speed up the movement of Miis across spaces.
+- Shorten the dice roll animations.
+- Keep the rules, random results and win conditions unchanged.
+- Apply the speed-up only to sequences that support it.
 
-**Objetivo:** ofrecer una configuración accesible desde el propio juego, sin depender de herramientas externas.
+### 2.4. Resource preloading
 
-**Requisitos:**
-- Integrar un menú de opciones en la pantalla de inicio.
-- Mantener la estética visual y la navegación de Wii Party.
-- Permitir configurar:
-  - Resolución de salida.
-  - Volumen.
-  - Filtros gráficos.
-  - Asignación de controles.
-  - Opciones de relación de aspecto y frecuencia de refresco, cuando proceda.
-- Implementar el menú mediante la infraestructura gráfica y de interfaz disponible en la versión nativa.
+Goal: reduce waiting time between scenes and minigames.
 
-### 4.2. Sistema de logros
-
-**Objetivo:** añadir logros opcionales específicos de la versión de PC.
-
-**Requisitos:**
-- Crear un sistema de eventos de logros integrado en el motor.
-- Mostrar notificaciones emergentes durante la partida.
-- Definir logros basados en acciones o desafíos concretos.
-- Guardar el progreso localmente en un archivo `.json`.
-- Evitar que los logros modifiquen las reglas del juego.
-- Permitir desactivar las notificaciones.
-
-### 4.3. Cambio de mandos en caliente
-
-**Objetivo:** gestionar dinámicamente los dispositivos de entrada durante la ejecución.
-
-**Requisitos:**
-- Detectar la conexión y desconexión de mandos.
-- Permitir cambiar entre teclado y mandos de Xbox, PlayStation, Switch u otros dispositivos compatibles.
-- Reasignar dispositivos a los jugadores 1 a 4 sin reiniciar el juego.
-- Mantener una capa de abstracción común para los distintos tipos de mando.
-- Gestionar la pérdida temporal de conexión sin bloquear los hilos de juego.
-
-### 4.4. Perfiles y copias de seguridad
-
-**Objetivo:** sustituir el sistema de guardado único por una gestión flexible de partidas.
-
-**Requisitos:**
-- Implementar perfiles de usuario independientes en el PC.
-- Permitir múltiples ranuras de guardado.
-- Crear copias de seguridad automáticas del progreso.
-- Mantener la compatibilidad con los datos de guardado originales cuando sea viable.
-- Validar los archivos antes de cargarlos.
-- Gestionar archivos dañados o incompatibles de forma segura.
+Requirements:
+- Use the memory available on the PC to preload resources.
+- Prepare early loading of `.rel` modules and their resources.
+- Replace waits caused by original DVD access with local storage operations.
+- Preload in the background when it does not interfere with execution.
+- Set memory limits and release mechanisms.
 
 ---
 
-## 5. Modo online nativo
+## 3. AI and Mii system
 
-> **Principio de diseño:** el modo online debe integrarse en la interfaz original de Wii Party. No se añadirá un lanzador externo ni un menú moderno separado para acceder a esta función.
+### 3.1. Global CPU difficulty
 
-### 5.1. Integración en la interfaz original
+Goal: allow a fixed difficulty for AI-controlled Miis.
 
-**Objetivo:** añadir el acceso al modo online dentro del flujo de selección de minijuegos.
+Requirements:
+- Add a global difficulty option.
+- Allow levels such as `Expert` or `Master`, if the game logic has them.
+- Apply the setting to the game modes that support it.
+- Keep an option to use each mode's original difficulty.
+- Do not change the difficulty of human players by accident.
 
-**Requisitos:**
-- Modificar el layout de la pantalla de selección de minijuegos.
-- Añadir un cuarto botón junto a los tres botones originales.
-- Situar preferentemente el botón en la tercera posición, sujeto a las limitaciones del layout.
-- Conservar las proporciones, animaciones y navegación del diseño original.
+### 3.2. Fix the Mii difficulty mapping
 
-### 5.2. Diseño del botón online
+Goal: make sure AI statistics and levels are assigned correctly.
 
-**Requisitos:**
-- Utilizar una base de color verde coherente con la paleta de Wii Party.
-- Incorporar un icono blanco que combine la silueta de un Mii con un símbolo de conexión a Internet.
-- Mostrar el texto `Online`.
-- Mantener la coherencia tipográfica y visual con el resto de la interfaz.
-- Preparar estados visuales para reposo, selección, pulsación y bloqueo.
-
-### 5.3. Menú de conexión
-
-**Objetivo:** ofrecer una pantalla de conexión integrada visualmente en el juego.
-
-**Requisitos:**
-- Ejecutar una escena HLE nativa en C++ al seleccionar el botón online.
-- Diseñar el menú de conexión desde cero.
-- Reutilizar o reproducir, cuando sea posible, las texturas, sonidos, transiciones y animaciones del juego original.
-- Mantener la navegación y la presentación coherentes con el resto de Wii Party.
-- Separar la lógica de red de la lógica de presentación.
-
-### 5.4. Arquitectura de red
-
-**Objetivo:** permitir partidas entre varios equipos mediante una infraestructura de red específica para la versión de PC.
-
-**Requisitos:**
-- Definir una capa de abstracción para sockets y transporte.
-- Evaluar el código de red de Dolphin como referencia técnica, sin asumir compatibilidad directa.
-- Seleccionar un modelo de red adecuado: servidor, host-cliente o peer-to-peer.
-- Diseñar un sistema de sincronización determinista para los estados relevantes de la partida.
-- Gestionar latencia, pérdida de paquetes, reconexión y abandono de jugadores.
-- Separar la sincronización de la lógica de juego, la presentación y la entrada.
-- Definir mecanismos de validación para evitar estados divergentes entre clientes.
+Requirements:
+- Review the internal tables for CPU-controlled Miis.
+- Check the correspondence between identifiers, statistics and difficulty levels.
+- Fix the inconsistent assignments found.
+- Check the legendary Miis specifically, such as Matt, Saburo and Elisa.
+- Validate the resulting behavior in the affected game modes.
 
 ---
 
-## 6. Prioridades de implementación
+## 4. Interface, settings and saving
 
-### Prioridad 1 — Bloqueos y fundamentos
+### 4.1. Built-in options menu
 
-- [ ] Conectar y validar el sistema de entrada.
-- [ ] Permitir superar la pantalla inicial de la correa del Wiimote.
-- [ ] Sustituir progresivamente los stubs de audio.
-- [ ] Verificar la estabilidad del bucle principal y del renderizado.
-- [ ] Establecer pruebas de regresión básicas.
+Goal: settings reachable from inside the game, without external tools.
 
-### Prioridad 2 — Mejoras de uso inmediato
+Requirements:
+- Add an options menu to the start screen.
+- Keep the visual style and navigation of Wii Party.
+- Allow configuring:
+  - Output resolution.
+  - Volume.
+  - Graphics filters.
+  - Control mapping.
+  - Aspect ratio and refresh rate options, where applicable.
+- Build the menu with the graphics and interface infrastructure of the native version.
 
-- [ ] Implementar el menú de opciones.
-- [ ] Añadir cambio de mandos en caliente.
-- [ ] Implementar perfiles y ranuras de guardado.
-- [ ] Añadir aceleración de diálogos y modo de tablero rápido.
-- [ ] Incorporar la precarga de recursos.
+### 4.2. Achievements
 
-### Prioridad 3 — Mejoras gráficas
+Goal: optional achievements specific to the PC version.
 
-- [ ] Implementar la relación de aspecto dinámica.
-- [ ] Separar renderizado y lógica para soportar altas frecuencias de refresco.
-- [ ] Añadir soporte para texturas HD.
-- [ ] Validar la interfaz 2D en distintas resoluciones.
+Requirements:
+- Create an achievement event system inside the engine.
+- Show pop-up notifications during play.
+- Define achievements based on specific actions or challenges.
+- Save progress locally in a `.json` file.
+- Achievements must not change the game rules.
+- Allow disabling the notifications.
 
-### Prioridad 4 — Funcionalidades extendidas
+### 4.3. Controller hot-swap
 
-- [ ] Implementar el sistema de logros.
-- [ ] Revisar y corregir el sistema de dificultad de la CPU.
-- [ ] Diseñar la interfaz del modo online.
-- [ ] Definir y validar la arquitectura de red.
-- [ ] Implementar el modo online por fases.
+Goal: manage input devices while the game runs.
+
+Requirements:
+- Detect controllers being connected and disconnected.
+- Allow switching between keyboard and Xbox, PlayStation, Switch or other supported controllers.
+- Reassign devices to players 1 to 4 without restarting the game.
+- Keep a common abstraction layer for the controller types.
+- Handle a temporary loss of connection without blocking the game threads.
+
+### 4.4. Profiles and backups
+
+Goal: replace the single save with flexible save management.
+
+Requirements:
+- Implement independent user profiles on the PC.
+- Allow multiple save slots.
+- Create automatic backups of progress.
+- Stay compatible with the original save data where feasible.
+- Validate files before loading them.
+- Handle damaged or incompatible files safely.
 
 ---
 
-## 7. Criterios generales de calidad
+## 5. Native online mode
 
-- Mantener la identidad visual y sonora de Wii Party.
-- Evitar cambios en las reglas originales salvo que una opción lo indique expresamente.
-- Separar las mejoras de PC de la lógica recompilada del juego siempre que sea posible.
-- Documentar cada modificación relevante.
-- Incorporar pruebas de regresión para las funciones afectadas.
-- Priorizar la estabilidad sobre la incorporación de nuevas características.
-- Evitar dependencias innecesarias y mantener tiempos de compilación razonables.
-- Registrar errores y estados de depuración de forma estructurada.
+Design principle: the online mode is integrated into the original Wii Party interface. No external launcher and no separate modern menu will be added to reach it.
+
+### 5.1. Integration into the original interface
+
+Goal: add access to the online mode inside the minigame selection flow.
+
+Requirements:
+- Modify the layout of the minigame selection screen.
+- Add a fourth button next to the three original buttons.
+- Place the button in the third position if the layout allows it.
+- Keep the proportions, animations and navigation of the original design.
+
+### 5.2. Online button design
+
+Requirements:
+- Use a green base consistent with the Wii Party palette.
+- Use a white icon that combines a Mii silhouette with an Internet connection symbol.
+- Show the text `Online`.
+- Keep the typography and visual style consistent with the rest of the interface.
+- Prepare visual states for idle, selected, pressed and locked.
+
+### 5.3. Connection menu
+
+Goal: a connection screen that fits visually into the game.
+
+Requirements:
+- Run a native HLE scene in C++ when the online button is selected.
+- Design the connection menu from scratch.
+- Reuse or reproduce, where possible, the textures, sounds, transitions and animations of the original game.
+- Keep navigation and presentation consistent with the rest of Wii Party.
+- Separate the network logic from the presentation logic.
+
+### 5.4. Network architecture
+
+Goal: allow games between several machines through network infrastructure specific to the PC version.
+
+Requirements:
+- Define an abstraction layer for sockets and transport.
+- Evaluate Dolphin's network code as a technical reference, without assuming direct compatibility.
+- Choose a network model: server, host-client or peer-to-peer.
+- Design a deterministic synchronization system for the relevant game states.
+- Handle latency, packet loss, reconnection and players leaving.
+- Separate synchronization from game logic, presentation and input.
+- Define validation mechanisms to prevent diverging states between clients.
+
+---
+
+## 6. Implementation priorities
+
+### Priority 1: blockers and foundations
+
+- [ ] Connect and validate the input system.
+- [ ] Allow getting past the Wii Remote strap screen.
+- [ ] Replace the audio stubs progressively.
+- [ ] Verify the stability of the main loop and the rendering.
+- [ ] Set up basic regression tests.
+
+### Priority 2: immediate usability
+
+- [ ] Implement the options menu.
+- [ ] Add controller hot-swap.
+- [ ] Implement profiles and save slots.
+- [ ] Add dialog speed-up and fast board mode.
+- [ ] Add resource preloading.
+
+### Priority 3: graphics
+
+- [ ] Implement the dynamic aspect ratio.
+- [ ] Separate rendering and logic to support high refresh rates.
+- [ ] Add HD texture support.
+- [ ] Validate the 2D interface at different resolutions.
+
+### Priority 4: extended features
+
+- [ ] Implement the achievement system.
+- [ ] Review and fix the CPU difficulty system.
+- [ ] Design the online mode interface.
+- [ ] Define and validate the network architecture.
+- [ ] Implement the online mode in phases.
+
+---
+
+## 7. General quality criteria
+
+- Keep the visual and audio identity of Wii Party.
+- Do not change the original rules unless an option says so explicitly.
+- Keep PC improvements separate from the recompiled game logic wherever possible.
+- Document each relevant change.
+- Add regression tests for the affected functions.
+- Prefer stability over new features.
+- Avoid unnecessary dependencies and keep build times reasonable.
+- Log errors and debug state in a structured way.
