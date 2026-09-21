@@ -324,3 +324,7 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - The rotation setters are `0x80053de0`, `0x80053df0` and `0x80053e40`. The next step is to log who calls them with a large Y angle. Object addresses change between runs, so a fixed memory watch does not work; log at the setters instead.
 - Checked and ruled out: the semantics of `ps_sum0` and `ps_muls0` match the PowerPC manual and the Dolphin interpreter.
 - Other findings from the same session, not yet investigated: the barrel in the first minigame does not appear, the dice have no pips, Miis look flat (GX lighting is not implemented, which fits), and round text such as "Round 1" is not drawn.
+
+## Progress image (2026-09-21)
+
+- `analysis/progress.csv` lists seven components with a percentage and the basis for it. `python tools/progress.py` averages them with equal weight and writes `docs/progress.svg`, which the README shows. The figure (47%) is an estimate; update the CSV when a component changes.

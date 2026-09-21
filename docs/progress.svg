@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="390" viewBox="0 0 720 390" role="img" aria-label="Project progress 47 percent">
+<rect width="720" height="390" rx="14" fill="#ffffff" stroke="#d0d0d0"/>
+<text x="24" y="44" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#111111">Wii Party Recomp</text>
+<text x="24" y="70" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#555555">Estimated progress toward a playable native build</text>
+<text x="696" y="52" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#111111">47%</text>
+<text x="24" y="111" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">Recompilation toolchain</text>
+<rect x="274" y="99" width="360" height="16" rx="8" fill="#ececec"/>
+<rect x="274" y="99" width="342" height="16" rx="8" fill="#111111"/>
+<text x="696" y="112" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">95%</text>
+<text x="24" y="145" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">System runtime</text>
+<rect x="274" y="133" width="360" height="16" rx="8" fill="#ececec"/>
+<rect x="274" y="133" width="306" height="16" rx="8" fill="#111111"/>
+<text x="696" y="146" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">85%</text>
+<text x="24" y="179" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">Graphics (GX to Direct3D 11)</text>
+<rect x="274" y="167" width="360" height="16" rx="8" fill="#ececec"/>
+<rect x="274" y="167" width="234" height="16" rx="8" fill="#111111"/>
+<text x="696" y="180" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">65%</text>
+<text x="24" y="213" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">Input</text>
+<rect x="274" y="201" width="360" height="16" rx="8" fill="#ececec"/>
+<rect x="274" y="201" width="144" height="16" rx="8" fill="#111111"/>
+<text x="696" y="214" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">40%</text>
+<text x="24" y="247" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">Audio</text>
+<rect x="274" y="235" width="360" height="16" rx="8" fill="#ececec"/>
+<text x="696" y="248" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">0%</text>
+<text x="24" y="281" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">Game flow</text>
+<rect x="274" y="269" width="360" height="16" rx="8" fill="#ececec"/>
+<rect x="274" y="269" width="126" height="16" rx="8" fill="#111111"/>
+<text x="696" y="282" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">35%</text>
+<text x="24" y="315" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">PC features</text>
+<rect x="274" y="303" width="360" height="16" rx="8" fill="#ececec"/>
+<rect x="274" y="303" width="36" height="16" rx="8" fill="#111111"/>
+<text x="696" y="316" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">10%</text>
+<text x="24" y="358" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#777777">Equal-weight average of the components above. Estimates, not measurements. Basis in analysis/progress.csv.</text>
+</svg>

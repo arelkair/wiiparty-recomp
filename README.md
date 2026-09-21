@@ -2,7 +2,9 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** work in progress. The game runs at a steady 50 fps on PAL, shows the title screen and the main menu with its 3D background and Miis, but is not yet playable.
+> **Status:** work in progress. The game boots, reaches the menu and plays through the start of Board Game Island, including a minigame, but it is not yet playable to the end of a turn.
+
+![Project progress](docs/progress.svg)
 
 ## About
 
@@ -10,25 +12,49 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
-The game runs natively on Windows and reaches its title screen, main menu and the first steps of Board Game Island (player and Mii selection, host tutorial) with keyboard and mouse input. Menus, text, 3D backgrounds and Mii models are drawn, but panel colours differ from the real game, there is no audio and no minigame has been tried, so it is not playable yet.
+The game runs natively on Windows at a steady 50 fps (PAL), with keyboard and mouse input. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
 
-Working today:
+### Progress
 
-- **Recompilation:** the main executable (about 7350 functions) and all 115 REL modules are translated to C++ and compile into one native program of roughly 300 MB. The translator is covered by unit tests, and one game function (a red-black tree erase) is checked against the C++ standard library.
-- **Boot and system:** the Revolution OS initialisation, locked cache DMA, threads (as Windows fibers, including the game's own `setjmp`/`longjmp` coroutines), video retrace interrupts derived from the video mode, module loading and linking.
-- **Disc and storage:** disc reads served from the extracted game files, IOS requests emulated at request level, and a virtual NAND with a default `SYSCONF` (English, widescreen).
-- **Graphics:** the GX command stream is decoded and rendered with Direct3D 11: vertex formats, transforms, an ubershader for the TEV stages (including channel swap tables), display lists recorded through the FIFO, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, palette formats C4, C8 and C14X2, CMPR), blending, depth, scissor and EFB copies to the framebuffer and to textures.
-- **Window:** a resizable window that keeps the aspect ratio, renders internally at the native resolution by default, with an integer multiplier (`WP_SCALE`, 1 to 6) presented through a DXGI swap chain, and shows the game code, build number, graphics API and video region in its title.
-- **Diagnostics:** environment variables such as `WP_LOG_GX`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP` and `WP_SAVE_FRAME`, a per-thread call trace, and a GDB client (`tools/dolphin_gdb.py`) to compare against a real Dolphin.
+The overall figure is the equal-weight average of the components below. They are estimates, not measurements. The values live in `analysis/progress.csv` and `python tools/progress.py` regenerates the image.
 
-Not implemented yet:
+| Component | Progress | Basis |
+| --- | --- | --- |
+| Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
+| System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD and NAND work; free of known blockers except finished fibers not freed |
+| Graphics (GX to Direct3D 11) | 65% | Menus, text, 3D models and Miis draw; no lighting, indirect textures, mipmaps or R8 copies; menu panel colors differ |
+| Input | 40% | Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes |
+| Audio | 0% | AX sound layer is stubbed; the game is silent |
+| Game flow | 35% | Reaches title, menu, Board Game Island, a minigame and the board turn; freezes when the first Mii moves |
+| PC features | 10% | Native resolution multiplier and 4:3 window only; launcher, options menu, ultrawide and online not started |
 
-- Generic gamepads and real Wii Remotes (keyboard and mouse work).
+### Working
+
+- **Recompilation:** the main executable (about 7,350 functions) and all 115 REL modules are translated to C++ and build into one native program of roughly 300 MB. Unit tests cover the translator; one game function is checked against the C++ standard library.
+- **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace and decrementer interrupts, OS alarms, module loading and linking, disc reads from the extracted files, IOS at request level and a virtual NAND. Real Mii databases (`RFL_DB.dat`) load.
+- **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, depth, scissor and EFB copies to textures.
+- **Window:** 4:3, native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain.
+- **Diagnostics:** `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
+
+### Known problems
+
+- The game freezes when the first Mii moves on the board. An object rotation angle grows without limit; the cause is under investigation.
+- The minigame is drawn incorrectly (upside down or black) and the barrel of the first minigame does not appear.
+- The dice show no pips.
+- Miis look flat: GX lighting is not implemented.
+- Text such as "Round 1" is not drawn.
+- The pictures in the board explanation are black rectangles.
+- Menu panel colors differ from the real game (blue instead of red, purple instead of orange). The game chooses a different color id; the source of that id is not found yet.
+- `unsupported EFB copy format 8` (R8 EFB copy) is logged.
+
+### Not implemented
+
 - Audio: the AX sound layer is stubbed, so the game is silent.
-- Graphics: lighting, indirect textures, lines and points, and EFB copies in intensity formats.
-- Higher frame rates, ultrawide display support, online play, quality-of-life options and a Galician translation (planned).
+- Generic gamepads and real Wii Remotes.
+- GX: lighting, indirect textures, mipmaps, lines and points, EFB copies in intensity formats.
+- Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 
-Progress notes and the list of goals are in `DECOMP_PROGRESS.md`.
+Progress notes and the list of goals are in `DECOMP_PROGRESS.md`; planned features are in `FEATURES_QOL.md`.
 
 ## Setup
 
