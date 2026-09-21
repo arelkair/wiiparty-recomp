@@ -159,3 +159,11 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Verificado ejecutando con A+B: el menú principal muestra las miniaturas animadas de los minijuegos y ya no hay cuadrados magenta ni el aviso `unsupported texture format`. ctest 3/3.
 - Limitaciones: la copia con bit de reducción a la mitad usa la textura a tamaño completo (se muestrea con UV normalizadas); RGB565 no fuerza alfa a 1; los formatos de intensidad (R4, Y8, RA4, RA8, A8, R8...) no se copian (se registra `unsupported EFB copy format`).
 - Sigue visible: un cuadro blanco sobre "Pair Games", el panel de House Party oscuro y el fondo negro del menú. Causa sin investigar.
+
+## Listas de visualización y cierre del fallo intermitente (2026-09-21)
+
+- Causa: `GXBeginDisplayList` redirige el pipe de escritura (0xCC008000) a un búfer de memoria cambiando los registros PI (base 0xCC00300C, puntero de escritura 0xCC003014) mientras los registros CP (0xCC000020/22) siguen apuntando al FIFO principal. El runtime enviaba esos bytes al GP en vez de a la memoria, así que los comandos se ejecutaban en el momento de grabarse y la lista guardada quedaba con basura. Al llamarla después (comando 0x40) el analizador leía direcciones y longitudes absurdas: segfault intermitente (4 de 6 ejecuciones) y textos ausentes.
+- Solución (`record_display_list` en `src/gx.cpp`): si la base PI difiere de la base CP, los bytes se escriben en memoria en el puntero PI y este avanza. Además, una llamada a lista fuera de rango se descarta con el aviso `GX display list out of range`.
+- Verificado: 6 ejecuciones seguidas de 25 s sin fallos (antes 4 de 6 con segfault), ctest 3/3, y el menú principal muestra ya los textos (Suggestions, Rankings, Minigames, 1 to 4 players, About 45 min.).
+- Diagnóstico nuevo: `WP_LOG_FROM=N` con `WP_LOG_GX=2` empieza el registro de dibujos tras la copia número N; se muestran mapas de textura y arrays de vértices.
+- Sigue pendiente: fondo negro del menú (los dibujos 3D del fondo salen con vértices inválidos, causa sin investigar; las listas mal grabadas podrían haber sido la razón, por reverificar) y panel House Party parcial.

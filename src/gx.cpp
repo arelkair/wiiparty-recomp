@@ -25,6 +25,11 @@ constexpr uint8_t kCommandDrawMask = 0x80;
 constexpr uint32_t kBpMask = 0xFE;
 constexpr uint32_t kBpCopyExecute = 0x52;
 constexpr uint32_t kBpLoadTlut = 0x65;
+constexpr uint32_t kCpFifoBaseLow = 0xCC000020;
+constexpr uint32_t kCpFifoBaseHigh = 0xCC000022;
+constexpr uint32_t kPiFifoBase = 0xCC00300C;
+constexpr uint32_t kPiFifoWritePointer = 0xCC003014;
+constexpr uint32_t kFifoPhysicalMask = 0x03FFFFFF;
 constexpr uint32_t kCopyToFramebuffer = 1u << 14;
 constexpr uint32_t kCopyClear = 1u << 11;
 constexpr uint32_t kXfSize = 0x1100;
@@ -88,6 +93,8 @@ uint32_t g_bp_mask = 0xFFFFFF;
 uint32_t g_xf[kXfSize] = {};
 Statistics g_stats;
 int g_logged_copies = 0;
+int g_copy_total = 0;
+int g_log_from = std::getenv("WP_LOG_FROM") ? std::atoi(std::getenv("WP_LOG_FROM")) : 0;
 const char* g_log_level = std::getenv("WP_LOG_GX");
 bool g_log = g_log_level != nullptr;
 bool g_log_draws = g_log_level != nullptr && g_log_level[0] == '2';
@@ -497,7 +504,7 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     default:
         break;
     }
-    if (g_log_draws && g_logged_prepared < 12) {
+    if (g_log_draws && g_copy_total >= g_log_from && g_logged_prepared < 40) {
         g_logged_prepared++;
         std::fprintf(stderr, "GX prepared: %zu triangles from %u vertices, stages=%u texgens=%u cull=%u\n", triangles.size() / 3, count,
                      ((g_bp[0x00] >> 10) & 15) + 1, g_bp[0x00] & 15, (g_bp[0x00] >> 14) & 3);
@@ -505,6 +512,12 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
             const ScreenVertex& v = vertices[i].vertex;
             std::fprintf(stderr, "  v%u valid=%d pos=(%.3f %.3f %.3f) c0=(%.2f %.2f %.2f %.2f) uv0=(%.3f %.3f)\n", i, vertices[i].valid, v.x, v.y, v.z,
                          v.color[0][0], v.color[0][1], v.color[0][2], v.color[0][3], v.uv[0][0], v.uv[0][1]);
+        }
+        std::fprintf(stderr, "  arrays pos=%08x/%u tex0=%08x/%u\n", g_array_base[0], g_array_stride[0], g_array_base[4], g_array_stride[4]);
+        for (uint32_t m = 0; m < 2; m++) {
+            uint32_t image0 = g_bp[m == 0 ? 0x88 : 0x89];
+            std::fprintf(stderr, "  map%u fmt=%u %ux%u addr=%08x\n", m, (image0 >> 20) & 15, (image0 & 0x3FF) + 1, ((image0 >> 10) & 0x3FF) + 1,
+                         0x80000000u | ((g_bp[m == 0 ? 0x94 : 0x95] & 0xFFFFFF) << 5));
         }
         std::fprintf(stderr, "  tev0 color=%06x alpha=%06x order=%06x kc=%06x blend=%06x z=%06x proj=%f %f %f %f %f %f ortho=%u\n", g_bp[0xC0], g_bp[0xC1],
                      g_bp[0x28], g_bp[0xF6], g_bp[0x41], g_bp[0x40], xf_float(0x1020), xf_float(0x1021), xf_float(0x1022), xf_float(0x1023),
@@ -525,6 +538,7 @@ void report_copy() {
 }
 
 void execute_copy(uint32_t value) {
+    g_copy_total++;
     report_copy();
     if (!g_render_enabled) {
         return;
@@ -657,6 +671,11 @@ size_t parse_one(const uint8_t* data, size_t size, bool list) {
         uint32_t address = be32(data + 1);
         uint32_t length = be32(data + 5);
         g_stats.lists++;
+        if (static_cast<uint64_t>(address & 0x1FFFFFFF) + length > kPhysicalSize) {
+            std::fprintf(stderr, "GX display list out of range: address=%08x length=%08x list=%d\n", address, length, list);
+            g_stats.unknown++;
+            return 9;
+        }
         if (!list) {
             parse(host(address), length, true);
         }
@@ -679,7 +698,7 @@ size_t parse_one(const uint8_t* data, size_t size, bool list) {
         if (size < total) {
             return 0;
         }
-        if (g_log_draws && g_logged_draws < 60) {
+        if (g_log_draws && g_copy_total >= g_log_from && g_logged_draws < 60) {
             g_logged_draws++;
             std::fprintf(stderr, "GX draw %02x count=%u size=%u vcd=%08x/%08x\n", command, count, layout.size, g_vcd_low, g_vcd_high);
         }
@@ -723,7 +742,25 @@ void last_framebuffer_size(uint32_t& width, uint32_t& height) {
     height = g_copy_height;
 }
 
+bool record_display_list(uint64_t value, unsigned bytes) {
+    uint32_t pi_base = rd32(kPiFifoBase) & kFifoPhysicalMask;
+    uint32_t cp_base = (rd16(kCpFifoBaseLow) | (static_cast<uint32_t>(rd16(kCpFifoBaseHigh)) << 16)) & kFifoPhysicalMask;
+    if (cp_base == 0 || pi_base == cp_base) {
+        return false;
+    }
+    uint32_t pointer = rd32(kPiFifoWritePointer);
+    uint32_t address = pointer & kFifoPhysicalMask;
+    for (unsigned i = 0; i < bytes; i++) {
+        *host(kRamBase | (address + i)) = static_cast<uint8_t>(value >> (8 * (bytes - 1 - i)));
+    }
+    wr32(kPiFifoWritePointer, (pointer & ~kFifoPhysicalMask) | (address + bytes));
+    return true;
+}
+
 void push(uint64_t value, unsigned bytes) {
+    if (record_display_list(value, bytes)) {
+        return;
+    }
     for (unsigned i = 0; i < bytes; i++) {
         g_fifo.push_back(static_cast<uint8_t>(value >> (8 * (bytes - 1 - i))));
     }
