@@ -43,6 +43,7 @@ constexpr float kEfbHeight = 528.0f;
 constexpr float kDepthRange = 16777215.0f;
 constexpr int kMaxLoggedCopies = 60;
 constexpr uint32_t kTexCoordCount = 8;
+constexpr size_t kArrayReadMargin = 256;
 
 enum Attribute : uint32_t { kNone = 0, kDirect = 1, kIndex8 = 2, kIndex16 = 3 };
 
@@ -271,7 +272,13 @@ void read_color(const uint8_t* p, uint32_t format, float* out) {
 }
 
 const uint8_t* array_element(uint32_t array, uint32_t index) {
-    return host(kRamBase | (g_array_base[array] & kArrayAddressMask)) + static_cast<size_t>(index) * g_array_stride[array];
+    uint32_t address = kRamBase | (g_array_base[array] & kArrayAddressMask);
+    size_t offset = static_cast<size_t>(index) * g_array_stride[array];
+    if (!render::guest_range_valid(address + offset, kArrayReadMargin)) {
+        static const uint8_t zeros[kArrayReadMargin] = {};
+        return zeros;
+    }
+    return host(address) + offset;
 }
 
 const uint8_t* fetch(const Element& element, uint32_t array, const uint8_t*& stream) {
@@ -551,7 +558,11 @@ void execute_copy(uint32_t value) {
             auto now = std::chrono::steady_clock::now();
             double seconds = std::chrono::duration<double>(now - g_fps_start).count();
             if (seconds >= 1.0) {
-                std::fprintf(stderr, "fps %.1f", g_frames / seconds);
+                uint32_t batches = 0;
+                uint32_t vertices = 0;
+                double batch_seconds = 0.0;
+                render::take_statistics(batches, vertices, batch_seconds);
+                std::fprintf(stderr, "fps %.1f batches %u vertices %u cpu-side draw time %.0f ms", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
                 std::fputc(10, stderr);
                 g_frames = 0;
                 g_fps_start = now;

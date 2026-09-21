@@ -19,7 +19,8 @@ namespace {
 
 LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
-    std::fprintf(stderr, "crash: exception %08lx at host address %p", record->ExceptionCode, record->ExceptionAddress);
+    std::fprintf(stderr, "crash: exception %08lx at host address %p (module offset %llx)", record->ExceptionCode, record->ExceptionAddress,
+                 static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(record->ExceptionAddress) - reinterpret_cast<uintptr_t>(GetModuleHandle(nullptr))));
     if (record->NumberParameters >= 2 && (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)) {
         std::fprintf(stderr, ", %s address %p", record->ExceptionInformation[0] ? "writing" : "reading",
                      reinterpret_cast<void*>(record->ExceptionInformation[1]));

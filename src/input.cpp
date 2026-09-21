@@ -45,9 +45,11 @@ Sample sample(uint32_t channel) {
     HWND window = static_cast<HWND>(video::window_handle());
     static const bool log_input = std::getenv("WP_LOG_INPUT") != nullptr;
     static bool logged_focus = false;
+    static HWND logged_foreground = nullptr;
     bool focused = window != nullptr && GetForegroundWindow() == window;
-    if (log_input && channel == 0 && (focused != logged_focus || !logged_focus)) {
+    if (log_input && channel == 0 && (focused != logged_focus || GetForegroundWindow() != logged_foreground)) {
         logged_focus = focused;
+        logged_foreground = GetForegroundWindow();
         std::fprintf(stderr, "input window=%p focused=%d foreground=%p", static_cast<void*>(window), focused ? 1 : 0,
                      static_cast<void*>(GetForegroundWindow()));
         std::fputc(10, stderr);

@@ -5,6 +5,7 @@
 #include <dxgi1_2.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -401,6 +402,9 @@ bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
 uint8_t g_tlut[kTlutSize];
 int g_scale = 1;
+uint32_t g_batches = 0;
+uint32_t g_batch_vertices = 0;
+double g_batch_seconds = 0.0;
 
 int scaled(int value) {
     return value * g_scale;
@@ -747,6 +751,9 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     uint32_t padded_width = (width + layout.block_width - 1) / layout.block_width * layout.block_width;
     uint32_t padded_height = (height + layout.block_height - 1) / layout.block_height * layout.block_height;
     size_t size = static_cast<size_t>(padded_width / layout.block_width) * (padded_height / layout.block_height) * block_bytes(format);
+    if (!guest_range_valid(address, size)) {
+        return nullptr;
+    }
     const uint8_t* source = host(address);
     auto copied = g_device.copies.find(address);
     if (copied != g_device.copies.end() && copied->second.logical_width == width && copied->second.logical_height == height &&
@@ -957,6 +964,9 @@ void flush_pending() {
     if (pending.vertices.empty()) {
         return;
     }
+    auto started = std::chrono::steady_clock::now();
+    g_batches++;
+    g_batch_vertices += static_cast<uint32_t>(pending.vertices.size());
     ID3D11DeviceContext* context = g_device.context;
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (SUCCEEDED(context->Map(g_device.constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
@@ -1007,6 +1017,7 @@ void flush_pending() {
         offset += batch;
     }
     pending.vertices.clear();
+    g_batch_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
 }
 
 }
@@ -1055,9 +1066,25 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
     pending.vertices.insert(pending.vertices.end(), vertices, vertices + count);
 }
 
+void take_statistics(uint32_t& batches, uint32_t& vertices, double& seconds) {
+    batches = g_batches;
+    vertices = g_batch_vertices;
+    seconds = g_batch_seconds;
+    g_batches = 0;
+    g_batch_vertices = 0;
+    g_batch_seconds = 0.0;
+}
+
+bool guest_range_valid(uint32_t address, size_t size) {
+    return static_cast<size_t>(address & kAddressMask) + size <= kPhysicalSize;
+}
+
 void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes) {
     tmem_offset &= kTlutMask;
     bytes = std::min(bytes, kTlutSize - tmem_offset);
+    if (!guest_range_valid(address, bytes)) {
+        return;
+    }
     std::memcpy(g_tlut + tmem_offset, host(address), bytes);
 }
 
@@ -1113,7 +1140,7 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     entry.logical_width = half ? std::max(1u, w / 2) : w;
     entry.logical_height = half ? std::max(1u, h / 2) : h;
     entry.bytes = entry.logical_width * entry.logical_height * (format == 6 ? 4 : 2);
-    entry.guest_hash = sample_hash(host(address), entry.bytes);
+    entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
 }
 
 void copy_to_framebuffer(int x, int y, int width, int height) {

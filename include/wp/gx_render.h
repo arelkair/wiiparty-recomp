@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -20,6 +21,9 @@ const uint32_t* xf_registers();
 }
 
 namespace wp::gx::render {
+
+bool guest_range_valid(uint32_t address, size_t size);
+void take_statistics(uint32_t& batches, uint32_t& vertices, double& seconds);
 
 const char* api_name();
 void draw(const ScreenVertex* vertices, uint32_t count);
