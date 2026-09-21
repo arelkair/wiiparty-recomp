@@ -146,7 +146,7 @@ Estado por componente:
 
 - Implementado y probado: lectura de teclado y ratón como Wiimote, entrega diferida de IPC, contador de muestras de AI, renderizado del menú principal con la mayoría de elementos.
 - Stub: núcleo de audio AX (sin sonido) y DSP.
-- Parcial: GX. Faltan iluminación, texturas indirectas, líneas/puntos y copias del EFB en formatos de intensidad. El título se dibuja con un encuadre incorrecto (logotipo ampliado y recortado); causa sin investigar.
+- Parcial: GX. Faltan iluminación, texturas indirectas, líneas/puntos y copias del EFB en formatos de intensidad. 
 - Pendiente: audio real (mezclador AX en el lado del PC), mandos genéricos y Wiimote, resolución interna, liberar las fibras de hilos terminados (aparecen decenas de fibras de `OSExitThread` sin liberar).
 - No verificado: que los cuatro canales de KPAD den el estado esperado por los minijuegos; que el título se muestre correctamente a 16:9.
 
@@ -167,3 +167,10 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Verificado: 6 ejecuciones seguidas de 25 s sin fallos (antes 4 de 6 con segfault), ctest 3/3, y el menú principal muestra ya los textos (Suggestions, Rankings, Minigames, 1 to 4 players, About 45 min.).
 - Diagnóstico nuevo: `WP_LOG_FROM=N` con `WP_LOG_GX=2` empieza el registro de dibujos tras la copia número N; se muestran mapas de textura y arrays de vértices.
 - Sigue pendiente: fondo negro del menú (los dibujos 3D del fondo salen con vértices inválidos, causa sin investigar; las listas mal grabadas podrían haber sido la razón, por reverificar) y panel House Party parcial.
+
+## Reverificación tras las listas de visualización (2026-09-21)
+
+- Con `WP_LOG_FROM=1200` los dibujos del fondo ya no salen con vértices inválidos: eran consecuencia de las listas mal grabadas.
+- Sin ninguna entrada, el juego pasa por la animación del logotipo, muestra el título (logotipo "Wii Party" a tamaño y encuadre correctos, "Press A and B together", "(c)2010 Nintendo") y llega solo al menú principal (capturas `t_05` a `t_08` de `WP_SAVE_FRAME`). El encuadre erróneo del título anotado antes no se reproduce.
+- Sin verificar contra Dolphin: si el fondo negro del menú es el original.
+- Defecto visible: la vista previa de House Party (esquina inferior derecha del menú) muestra polígonos verdes, rojos y azules sin forma reconocible; la cara del Mii del título se ve oscura. Causa sin investigar.
