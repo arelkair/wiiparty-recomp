@@ -508,7 +508,7 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     default:
         break;
     }
-    if (g_log_draws && g_copy_total >= g_log_from && g_logged_prepared < 300) {
+    if (g_log_draws && g_copy_total >= g_log_from && g_logged_prepared < 4000) {
         g_logged_prepared++;
         uint32_t image0 = g_bp[0x88];
         const ScreenVertex& v0 = vertices[0].vertex;
@@ -516,6 +516,10 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
                      g_copy_total, command, count, triangles.size() / 3, ((g_bp[0x00] >> 10) & 15) + 1, g_bp[0x00] & 15, (g_bp[0x00] >> 14) & 3,
                      g_bp[0x41], g_bp[0x40], (image0 >> 20) & 15, (image0 & 0x3FF) + 1, ((image0 >> 10) & 0x3FF) + 1, v0.x, v0.y, v0.z,
                      vertices[0].valid ? "" : " INVALID", g_bp[0xC0], g_bp[0xC1]);
+        std::fprintf(stderr, "  regs=%06x %06x %06x %06x %06x %06x %06x %06x konst=%06x %06x %06x %06x order=%06x ksel=%06x c0=(%.2f %.2f %.2f %.2f) mat=%08x ctl=%08x\n",
+                     g_bp[0xE0], g_bp[0xE1], g_bp[0xE2], g_bp[0xE3], g_bp[0xE4], g_bp[0xE5], g_bp[0xE6], g_bp[0xE7], g_konst[0], g_konst[1], g_konst[2],
+                     g_konst[3], g_bp[0x28], g_bp[0xF6], vertices[0].vertex.color[0][0], vertices[0].vertex.color[0][1], vertices[0].vertex.color[0][2],
+                     vertices[0].vertex.color[0][3], g_xf[0x100C], g_xf[0x100E]);
     }
     render::draw(triangles.data(), static_cast<uint32_t>(triangles.size()));
 }

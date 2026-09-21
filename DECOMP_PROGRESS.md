@@ -203,3 +203,11 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Herramienta: `tools/recomp.py` ya no reescribe los archivos generados que no han cambiado ni borra los existentes, de modo que una modificación del emisor solo recompila los archivos afectados.
 - Verificado: con el menú principal se ven ahora el fondo 3D y los cuatro Miis de House Party (capturas `d_04`, `d_05`). ctest 3/3.
 - Nuevos problemas visibles: la imagen sale lavada (demasiado clara, con un velo blanco) y los fps bajan a unos 5 con escenas 3D (50 fps en pantallas 2D). Sin investigar.
+
+## Colores del menú y velo (2026-09-21)
+
+- El velo blanco visto tras arreglar el DMA era un desvanecido de transición; no es un fallo fijo.
+- Añadidas las tablas de intercambio de canales de TEV (BP 0xF6-0xFD, selección por etapa en los bits 0-3 del registro alfa de cada etapa) al shader; antes se ignoraban. Sin efecto visible en el menú, pero es necesario para texturas de intensidad y otros materiales.
+- El reloj del sistema (`time_base`) parte ahora de la fecha real desde el 2000-01-01 en vez de cero. Hipótesis descartada: los colores del menú no dependen de la fecha.
+- Diagnóstico: `WP_LOG_GX=2` imprime por dibujo los registros de color de TEV (`regs=`), los konst, el orden, el color de material y el control de canales. Con él se ve que para el panel "Party Games" el juego escribe en el registro de color 1 el valor (0, 140, 255, 255), azul; en Dolphin el panel es rojo. La diferencia está por tanto en los datos que el juego decide, no en la conversión del renderizador (que se limita a decodificar lo que recibe).
+- Sin resolver: qué entrada del juego elige el color (candidatos: datos de guardado `/wiiparty.bin` ausentes, base de datos de Miis `RFL_DB.dat` ausente, ajustes de SYSCONF, un cálculo de animación con coma flotante o cuantizado mal lifteado).

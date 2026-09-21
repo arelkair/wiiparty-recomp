@@ -6,6 +6,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <map>
 #include <string>
 #include <thread>
@@ -209,11 +210,22 @@ void locked_cache_dma(Cpu& c) {
     c.spr[923] &= ~kDmaClear;
 }
 
+uint64_t wall_clock_ticks() {
+    constexpr int64_t kSecondsFrom1970To2000 = 946684800;
+    std::time_t now = std::time(nullptr);
+    std::tm local = *std::localtime(&now);
+    std::tm utc = *std::gmtime(&now);
+    utc.tm_isdst = local.tm_isdst;
+    int64_t offset = static_cast<int64_t>(std::difftime(std::mktime(&local), std::mktime(&utc)));
+    return static_cast<uint64_t>(static_cast<int64_t>(now) - kSecondsFrom1970To2000 + offset) * kTimeBaseHz;
+}
+
 uint64_t time_base() {
     using clock = std::chrono::steady_clock;
     static const clock::time_point origin = clock::now();
+    static const uint64_t start = wall_clock_ticks();
     auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - origin).count();
-    return static_cast<uint64_t>(elapsed) * kTimeBaseHz / 1000000000ull;
+    return start + static_cast<uint64_t>(elapsed) * kTimeBaseHz / 1000000000ull;
 }
 
 }

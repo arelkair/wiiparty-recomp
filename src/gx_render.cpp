@@ -29,6 +29,7 @@ cbuffer Constants : register(b0) {
     float4 konst[4];
     uint4 stage[16];
     uint4 header;
+    uint4 swaps;
 };
 
 Texture2D t0 : register(t0);
@@ -192,6 +193,12 @@ bool compare_alpha(uint mode, uint value, uint reference) {
     }
 }
 
+float4 apply_swap(float4 value, uint table) {
+    uint packed = swaps[table];
+    float components[4] = {value.r, value.g, value.b, value.a};
+    return float4(components[packed & 3], components[(packed >> 2) & 3], components[(packed >> 4) & 3], components[(packed >> 6) & 3]);
+}
+
 float4 pixel_main(PixelInput p) : SV_Target {
     float4 r[4];
     r[0] = initial[0];
@@ -209,7 +216,7 @@ float4 pixel_main(PixelInput p) : SV_Target {
         uint ksel = stage[i].w;
         float4 tex = float4(1, 1, 1, 1);
         if ((order & 0x40) != 0) {
-            tex = sample_map(order & 7, select_uv(p, (order >> 3) & 7));
+            tex = apply_swap(sample_map(order & 7, select_uv(p, (order >> 3) & 7)), (ae >> 2) & 3);
         }
         float4 ras = float4(0, 0, 0, 0);
         uint chan = (order >> 7) & 7;
@@ -218,6 +225,7 @@ float4 pixel_main(PixelInput p) : SV_Target {
         } else if (chan == 1) {
             ras = p.c1;
         }
+        ras = apply_swap(ras, ae & 3);
         float3 kc = konst_color(ksel & 31);
         float ka = konst_alpha((ksel >> 5) & 31);
         float3 a = color_input((ce >> 12) & 15, r[0], r[1], r[2], r[3], tex, ras, kc);
@@ -280,6 +288,7 @@ struct Constants {
     float konst[4][4];
     uint32_t stage[kMaxStages][4];
     uint32_t header[4];
+    uint32_t swaps[4];
 };
 
 template <typename T>
@@ -859,6 +868,11 @@ void fill_constants(Constants& constants) {
     uint32_t stages = ((bp[0x00] >> 10) & 15) + 1;
     constants.header[0] = stages;
     constants.header[1] = bp[0xF3];
+    for (uint32_t table = 0; table < 4; table++) {
+        uint32_t low = bp[0xF6 + 2 * table];
+        uint32_t high = bp[0xF7 + 2 * table];
+        constants.swaps[table] = (low & 3) | (((low >> 2) & 3) << 2) | ((high & 3) << 4) | (((high >> 2) & 3) << 6);
+    }
     for (uint32_t i = 0; i < stages && i < kMaxStages; i++) {
         uint32_t order_word = bp[0x28 + i / 2];
         uint32_t order = (i & 1) ? (order_word >> 12) : order_word;
