@@ -106,13 +106,23 @@ void describe_loaded_modules(uint32_t address) {
     for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
         uint32_t count = rd32(info + kInfoSectionCount);
         uint32_t table = section_table(info);
-        std::fprintf(stderr, "  module id %u at %08x signature %08x, %u sections:", rd32(info + kInfoIdentifier), info,
+        const char* name = "?";
+        for (size_t m = 0; m < g_module_count; m++) {
+            if (g_module_table[m]->identifier == rd32(info + kInfoIdentifier)) {
+                name = g_module_table[m]->name;
+            }
+        }
+        std::fprintf(stderr, "  module %s id %u at %08x signature %08x, %u sections:", name, rd32(info + kInfoIdentifier), info,
                      signature_of(info), count);
         for (uint32_t i = 0; i < count; i++) {
-            std::fprintf(stderr, " [%u]%08x+%x", i, rd32(table + i * kSectionEntrySize) & ~1u,
-                         rd32(table + i * kSectionEntrySize + 4));
+            uint32_t base = rd32(table + i * kSectionEntrySize) & ~1u;
+            uint32_t size = rd32(table + i * kSectionEntrySize + 4);
+            std::fprintf(stderr, " [%u]%08x+%x", i, base, size);
+            if (address >= base && address < base + size) {
+                std::fprintf(stderr, "<-contains %08x (section %u offset %x)", address, i, address - base);
+            }
         }
-        std::fputc('\n', stderr);
+        std::fputc(10, stderr);
     }
 }
 
