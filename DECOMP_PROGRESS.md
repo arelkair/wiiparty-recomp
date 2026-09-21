@@ -306,3 +306,12 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - New `THIRD_PARTY_NOTICES.md` with the rules for incorporation, the projects reviewed as possible sources (Dolphin, WiiCompiled, Aurora, RecompCore) and the project's own items pending review.
 - Reuse of external code depends on an individual review of license and provenance. No external code has been incorporated and no project code has been modified in this task.
 - This is not a complete legal audit.
+
+## Relocations in immediate compare and carry instructions (2026-09-21)
+
+- Symptom: the game crashed with a call to address 0 (or a write outside memory) after the Board Game Island explanation, when the instruction module (`inst`) asked an NW4R layout accessor for a resource. The name of the resource arrived empty or as garbage (`0x80700000` instead of a pointer to a string).
+- Cause: the module translator applied relocations only to the instructions that used `simm_expr` or `uimm_expr`. `addic`, `addic.`, `subfic`, `mulli`, `cmpi` and `cmpli` used the raw immediate. The compiler emits `lis rX, sym@ha` followed by `addic. rY, rX, sym@l` to load an address, so the low half of the address was lost and the pointer was truncated.
+- Fix: those six instructions in `tools/ppc/emit.py` now go through `simm_expr` and `uimm_expr`, which apply relocations in modules and give the same result in the DOL. The 115 modules were regenerated (`python tools/recomp_rel.py --all`). New test `test_low_relocation_in_addic_record` in `tests/test_ppc.py`; it fails without the fix.
+- Verified by running the scripted path (title, menu, Board Game Island, players, Mii, CPU skill, Start, then A presses) for 280 s with no crash. The game shows the explanation, the "Maze Daze" instruction screen (Rules, Controls, Practice, Start), starts the minigame, shows the play order ("Megan, Hiroshi, Luca, Guest A") and reaches the board turn screen. ctest 3/3.
+- Still wrong: the explanation pictures are black rectangles; the minigame itself is drawn upside down or black; `unsupported EFB copy format 8` (R8 EFB copy) is still logged; the menu panel colors are unresolved (see the color sections above).
+- Not verified: other modules and minigames; the crash earlier seen in `memset` after the same scenes did not reappear in this run, but it was not investigated separately.

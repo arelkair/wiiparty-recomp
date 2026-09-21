@@ -284,16 +284,16 @@ class Emitter:
         return [f"{reg(i.rd)} = {reg(i.ra)} + {self.simm_expr(i, 16)};"]
 
     def op_addic(self, i):
-        return [f"{reg(i.rd)} = wp::add_carry(c, {reg(i.ra)}, {u32(i.simm)}, 0);"]
+        return [f"{reg(i.rd)} = wp::add_carry(c, {reg(i.ra)}, {self.simm_expr(i)}, 0);"]
 
     def op_addic_dot(self, i):
         return self.op_addic(i) + self.record(i, reg(i.rd), True)
 
     def op_subfic(self, i):
-        return [f"{reg(i.rd)} = wp::sub_carry(c, {reg(i.ra)}, {u32(i.simm)});"]
+        return [f"{reg(i.rd)} = wp::sub_carry(c, {reg(i.ra)}, {self.simm_expr(i)});"]
 
     def op_mulli(self, i):
-        return [f"{reg(i.rd)} = {reg(i.ra)} * {u32(i.simm)};"]
+        return [f"{reg(i.rd)} = {reg(i.ra)} * {self.simm_expr(i)};"]
 
     def op_add(self, i):
         return self.assign(i, reg(i.rd), f"{reg(i.ra)} + {reg(i.rb)}")
@@ -380,10 +380,10 @@ class Emitter:
         return self.assign(i, reg(i.ra), expression)
 
     def op_cmpi(self, i):
-        return [f"wp::compare_signed(c, {i.crfd}, {reg(i.ra)}, {u32(i.simm)});"]
+        return [f"wp::compare_signed(c, {i.crfd}, {reg(i.ra)}, {self.simm_expr(i)});"]
 
     def op_cmpli(self, i):
-        return [f"wp::compare_unsigned(c, {i.crfd}, {reg(i.ra)}, {u32(i.uimm)});"]
+        return [f"wp::compare_unsigned(c, {i.crfd}, {reg(i.ra)}, {self.uimm_expr(i)});"]
 
     def op_cmp(self, i):
         return [f"wp::compare_signed(c, {i.crfd}, {reg(i.ra)}, {reg(i.rb)});"]

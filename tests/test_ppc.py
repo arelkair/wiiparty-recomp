@@ -217,6 +217,11 @@ class ModuleEmitterTests(unittest.TestCase):
         lines = lift_module(d_form(24, 4, 3, 0), 0x20, {(1, 0x22): reloc})
         self.assertEqual(lines, ["c.r[3] = c.r[4] | ((g_boot_bases[5] + 0x10u) & 0xFFFFu);"])
 
+    def test_low_relocation_in_addic_record(self):
+        reloc = rel.Relocation(1, 1, 0x22, rel.R_PPC_ADDR16_LO, 6, 0x478)
+        lines = lift_module(d_form(13, 4, 0, 0), 0x20, {(1, 0x22): reloc})
+        self.assertEqual(lines[0], "c.r[4] = wp::add_carry(c, c.r[0], wp::sign_extend16((g_boot_bases[6] + 0x478u) & 0xFFFFu), 0);")
+
     def test_call_into_the_dol(self):
         reloc = rel.Relocation(0, 1, 0x30, rel.R_PPC_REL24, 0, 0x80075F70)
         self.assertEqual(
