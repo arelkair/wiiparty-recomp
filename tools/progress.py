@@ -3,47 +3,54 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WIDTH = 720
-ROW = 34
-TOP = 96
-LEFT = 24
-LABEL = 250
-BAR = 360
+LABEL = "progress"
+HEIGHT = 20
+CHAR_WIDTH = 6.6
+PADDING = 10
+LABEL_COLOR = "#555555"
+VALUE_COLOR = "#1f6fbf"
 
 
-def read_rows():
+def read_percentages():
     with open(ROOT / "analysis" / "progress.csv", newline="", encoding="utf-8") as handle:
-        return [(row["component"], int(row["percent"])) for row in csv.DictReader(handle)]
+        return [int(row["percent"]) for row in csv.DictReader(handle)]
 
 
-def render(rows):
-    overall = round(sum(percent for _, percent in rows) / len(rows))
-    height = TOP + ROW * len(rows) + 56
-    out = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{height}" viewBox="0 0 {WIDTH} {height}" role="img" aria-label="Project progress {overall} percent">',
-        f'<rect width="{WIDTH}" height="{height}" rx="14" fill="#ffffff" stroke="#d0d0d0"/>',
-        f'<text x="{LEFT}" y="44" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#111111">Wii Party Recomp</text>',
-        f'<text x="{LEFT}" y="70" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#555555">Estimated progress toward a playable native build</text>',
-        f'<text x="{WIDTH - LEFT}" y="52" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#111111">{overall}%</text>',
-    ]
-    for index, (name, percent) in enumerate(rows):
-        y = TOP + index * ROW
-        fill = round(BAR * percent / 100)
-        out.append(f'<text x="{LEFT}" y="{y + 15}" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">{name}</text>')
-        out.append(f'<rect x="{LEFT + LABEL}" y="{y + 3}" width="{BAR}" height="16" rx="8" fill="#ececec"/>')
-        if fill > 0:
-            out.append(f'<rect x="{LEFT + LABEL}" y="{y + 3}" width="{max(fill, 16)}" height="16" rx="8" fill="#111111"/>')
-        out.append(f'<text x="{WIDTH - LEFT}" y="{y + 16}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">{percent}%</text>')
-    footer = TOP + ROW * len(rows) + 24
-    out.append(f'<text x="{LEFT}" y="{footer}" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#777777">Equal-weight average of the components above. Estimates, not measurements. Basis in analysis/progress.csv.</text>')
-    out.append("</svg>")
-    return "\n".join(out) + "\n", overall
+def text_width(text):
+    return round(len(text) * CHAR_WIDTH) + PADDING * 2
+
+
+def render(value):
+    left = text_width(LABEL)
+    right = text_width(value)
+    total = left + right
+    font = 'font-family="Verdana, DejaVu Sans, sans-serif" font-size="11" text-anchor="middle"'
+    return "\n".join(
+        [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{total}" height="{HEIGHT}" role="img" aria-label="{LABEL}: {value}">',
+            f'<title>{LABEL}: {value}</title>',
+            '<linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>',
+            f'<clipPath id="r"><rect width="{total}" height="{HEIGHT}" rx="3" fill="#fff"/></clipPath>',
+            '<g clip-path="url(#r)">',
+            f'<rect width="{left}" height="{HEIGHT}" fill="{LABEL_COLOR}"/>',
+            f'<rect x="{left}" width="{right}" height="{HEIGHT}" fill="{VALUE_COLOR}"/>',
+            f'<rect width="{total}" height="{HEIGHT}" fill="url(#s)"/>',
+            "</g>",
+            '<g fill="#fff">',
+            f'<text x="{left / 2}" y="15" fill="#010101" fill-opacity=".3" {font}>{LABEL}</text>',
+            f'<text x="{left / 2}" y="14" {font}>{LABEL}</text>',
+            f'<text x="{left + right / 2}" y="15" fill="#010101" fill-opacity=".3" {font}>{value}</text>',
+            f'<text x="{left + right / 2}" y="14" {font}>{value}</text>',
+            "</g>",
+            "</svg>",
+        ]
+    ) + "\n"
 
 
 def main():
-    text, overall = render(read_rows())
-    target = ROOT / "docs" / "progress.svg"
-    target.write_text(text, encoding="utf-8")
+    percentages = read_percentages()
+    overall = round(sum(percentages) / len(percentages))
+    (ROOT / "docs" / "progress.svg").write_text(render(f"{overall}%"), encoding="utf-8")
     print(f"overall {overall}%")
     return 0
 
