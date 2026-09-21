@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** work in progress. The game reaches and draws its first screen but is not yet playable.
+> **Status:** work in progress. The game reaches and draws its main menu but is not yet playable.
 
 ## About
 
@@ -10,7 +10,7 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
-The game runs natively on Windows up to its first screen. The recompiled program opens a window and draws the wrist strap warning with the game's own textures, at the display aspect ratio chosen by the virtual console settings (16:9 by default). The game does not go further yet because controller input is not implemented.
+The game runs natively on Windows and reaches its main menu (Party Games, Pair Games and House Party) with keyboard and mouse input. Parts of the interface are still missing because some GX features and all audio are not implemented yet, so it is not playable.
 
 Working today:
 
@@ -23,9 +23,9 @@ Working today:
 
 Not implemented yet:
 
-- Controller input (keyboard, generic gamepads and real Wii Remotes).
-- Audio (DSP).
-- Graphics: lighting, indirect textures, palette textures, texture copies from the EFB, lines and points, and internal resolution scaling.
+- Generic gamepads and real Wii Remotes (keyboard and mouse work).
+- Audio: the AX sound layer is stubbed, so the game is silent.
+- Graphics: palette textures, texture copies from the EFB, lighting, indirect textures, lines and points, and internal resolution scaling.
 - Higher frame rates, online play and quality-of-life options.
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`.

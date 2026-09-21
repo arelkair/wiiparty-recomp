@@ -132,3 +132,22 @@
 
 - El Dolphin 2606-374 trae un servidor GDB: con `GDBPort = 2159` en `[General]` de `Dolphin.ini` escucha en el puerto 2159 y admite un único cliente por arranque. `tools/dolphin_gdb.py` implementa el cliente del protocolo GDB (registros, memoria, puntos de ruptura y de vigilancia, pasos) y con `--launch` reinicia Dolphin en cada llamada. Comprobado: parada en el punto de entrada 0x80004050, lectura de memoria y parada en un punto de ruptura de 0x80069ee0.
 - Usos previstos: volcar la memoria de Dolphin en el aviso de la correa del Wiimote y comparar estados y registros con los de `wiiparty.exe` en las mismas funciones.
+
+## Estado verificado el 2026-09-21 (auditoría del bloqueo tras la pantalla de la correa)
+
+Verificado ejecutando `wiiparty.exe` y guardando capturas con `WP_SAVE_FRAME=ruta_%02d.png` (una cada 100 retraces):
+
+- Sin ninguna pulsación, el juego sale solo de la pantalla de la correa (temporizador del propio juego), muestra el título y entra en la secuencia de presentación del anfitrión.
+- Con A y B mantenidos (`WP_INPUT_BUTTONS=0C00`, activos tras 150 lecturas), llega al menú principal (Party Games, Pair Games, House Party y los tres botones inferiores) y se queda estable. La entrada por `KPADReadEx` llega al juego.
+- Causas del bloqueo anterior, todas resueltas y comprobadas por ejecución: (1) las finalizaciones asíncronas de IOS se ejecutaban dentro de la propia petición y el DVD del juego fallaba con `freeDvdContext.inUse`; ahora se encolan y se entregan como interrupción de IPC (`ipc_deliver`); (2) la calibración del audio esperaba el contador de muestras de AI (0xCD006C08), ahora emulado en `src/audio.cpp`; (3) el arranque del DSP esperaba a un procesador que no se emula: las 22 funciones públicas del núcleo AX (0x8015ea40-0x80160b10) se sustituyen por versiones que devuelven cero (`HleZero_*`).
+- Lectura del mando: `KPADReadEx` (0x801934d0, estructura de 0xF0 bytes) y `WPADProbe` (0x8017c9e0) están sustituidas; solo el canal 0 está conectado. Mapeo de teclado y ratón en `src/input.cpp`. Los mandos genéricos y el Wiimote real están pendientes.
+
+Estado por componente:
+
+- Implementado y probado: lectura de teclado y ratón como Wiimote, entrega diferida de IPC, contador de muestras de AI, renderizado del menú principal con la mayoría de elementos.
+- Stub: núcleo de audio AX (sin sonido) y DSP.
+- Parcial: GX. Faltan texturas con paleta (formato 9, C8; aparecen cuadrados magenta), copias del EFB a textura (fondos negros), iluminación, texturas indirectas y líneas/puntos. El título se dibuja con un encuadre incorrecto (logotipo ampliado y recortado); causa sin investigar.
+- Pendiente: audio real (mezclador AX en el lado del PC), mandos genéricos y Wiimote, resolución interna, liberar las fibras de hilos terminados (aparecen decenas de fibras de `OSExitThread` sin liberar).
+- No verificado: que los cuatro canales de KPAD den el estado esperado por los minijuegos; que el título se muestre correctamente a 16:9.
+
+Coste de compilación: cada alta de una función sustituida regenera `functions.h` y recompila todos los módulos (unos 15 minutos). Pendiente separar esa declaración de los módulos.

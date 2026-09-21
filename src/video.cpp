@@ -288,7 +288,9 @@ void present() {
     const char* save = std::getenv("WP_SAVE_FRAME");
     if (save && ++frames % 100 == 0) {
         std::lock_guard<std::mutex> guard(g_lock);
-        save_png(save, g_pixels, g_width, g_height);
+        char path[512];
+        std::snprintf(path, sizeof path, save, frames / 100);
+        save_png(path, g_pixels, g_width, g_height);
     }
     InvalidateRect(window, nullptr, FALSE);
 }

@@ -35,7 +35,10 @@ bool connected(uint32_t channel) {
 Sample sample(uint32_t channel) {
     Sample result;
     if (const char* forced = std::getenv("WP_INPUT_BUTTONS")) {
-        result.buttons = static_cast<uint32_t>(std::strtoul(forced, nullptr, 16));
+        static int frames = 0;
+        if (frames++ > 150) {
+            result.buttons = static_cast<uint32_t>(std::strtoul(forced, nullptr, 16));
+        }
         return result;
     }
     HWND window = static_cast<HWND>(video::window_handle());
