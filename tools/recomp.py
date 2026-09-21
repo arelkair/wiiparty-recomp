@@ -163,24 +163,31 @@ def render_function(start, instrs, entries, dol, stats, replacements, save_conte
 
 def write_sources(output, chunks, entries, names):
     output.mkdir(parents=True, exist_ok=True)
-    for old in output.glob("*.cpp"):
-        old.unlink()
-    for old in output.glob("*.h"):
-        old.unlink()
+    written = set()
+
+    def emit(name, text):
+        path = output / name
+        written.add(name)
+        if not path.exists() or path.read_text() != text:
+            path.write_text(text)
+
     for index, chunk in enumerate(chunks):
         body = ['#include "wp/cpu.h"', '#include "wp/hle.h"', '#include "wp/threads.h"', '#include "functions.h"', ""] + chunk
-        (output / f"dol_{index:03d}.cpp").write_text("\n".join(body) + "\n")
+        emit(f"dol_{index:03d}.cpp", "\n".join(body) + "\n")
     declarations = ["#pragma once", '#include "wp/cpu.h"', ""]
     declarations += [f"void {function_name(a)}(wp::Cpu& c);" for a in entries]
-    (output / "functions.h").write_text("\n".join(declarations) + "\n")
+    emit("functions.h", "\n".join(declarations) + "\n")
     table = ['#include "wp/function_table.h"', '#include "functions.h"', "", "namespace wp {", "", "const FunctionEntry g_function_table[] = {"]
     table += [f"    {{{u32(a)}, {function_name(a)}}}," for a in entries]
     table += ["};", "", f"const size_t g_function_count = {len(entries)};", "", "}"]
-    (output / "function_table.cpp").write_text("\n".join(table) + "\n")
+    emit("function_table.cpp", "\n".join(table) + "\n")
     listing = ['#include "wp/function_table.h"', "", "namespace wp {", "", "const NameEntry g_name_table[] = {"]
     listing += [f'    {{{u32(a)}, "{n}"}},' for a, n in sorted(names.items())]
     listing += ['    {0, ""},', "};", "", f"const size_t g_name_count = {len(names)};", "", "}"]
-    (output / "names.cpp").write_text("\n".join(listing) + "\n")
+    emit("names.cpp", "\n".join(listing) + "\n")
+    for old in list(output.glob("*.cpp")) + list(output.glob("*.h")):
+        if old.name not in written:
+            old.unlink()
 
 
 def main():

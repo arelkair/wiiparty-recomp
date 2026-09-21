@@ -179,6 +179,36 @@ void trap(Cpu&, uint32_t address) {
 
 void system_call(Cpu&) {}
 
+void locked_cache_dma(Cpu& c) {
+    constexpr uint32_t kDmaTrigger = 2;
+    constexpr uint32_t kDmaLoad = 0x10;
+    constexpr uint32_t kDmaClear = 3;
+    constexpr uint32_t kBlockSize = 32;
+    constexpr uint32_t kMaxBlocks = 128;
+    uint32_t dmal = c.spr[923];
+    if (!(dmal & kDmaTrigger)) {
+        return;
+    }
+    uint32_t dmau = c.spr[922];
+    uint32_t blocks = ((dmau & 0x1F) << 2) | ((dmal >> 2) & 3);
+    if (blocks == 0) {
+        blocks = kMaxBlocks;
+    }
+    uint32_t memory = (dmau & 0xFFFFFFE0) & kAddressMask;
+    uint32_t cache = dmal & 0xFFFFFFE0;
+    uint32_t bytes = blocks * kBlockSize;
+    uint32_t cache_offset = cache & (kLockedCacheSize - 1);
+    if (cache_offset + bytes > kLockedCacheSize || memory + bytes > kPhysicalSize) {
+        fail("locked cache DMA out of range: memory=%08x cache=%08x blocks=%u", memory, cache, blocks);
+    }
+    if (dmal & kDmaLoad) {
+        std::memcpy(host(cache), host(memory), bytes);
+    } else {
+        std::memcpy(host(memory), host(cache), bytes);
+    }
+    c.spr[923] &= ~kDmaClear;
+}
+
 uint64_t time_base() {
     using clock = std::chrono::steady_clock;
     static const clock::time_point origin = clock::now();

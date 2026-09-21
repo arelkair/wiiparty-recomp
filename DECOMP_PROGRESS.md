@@ -195,3 +195,11 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Estado actual, todo específico de Windows: ventana GDI (`src/video.cpp`), Direct3D 11 con HLSL (`src/gx_render.cpp`), hilos como fibras de Windows (`src/threads.cpp`), compilación con GCC de MinGW-w64.
 - Consecuencias: para Linux y macOS hacen falta un backend gráfico multiplataforma (WebGPU con Dawn o similar), una capa de ventana y entrada portable (SDL3) y corrutinas portables. Windows 11 no existe en 32 bits; un ejecutable de 32 bits con ~320 MB de memoria de invitado y ~300 MB de código es el objetivo más arriesgado y queda para el final.
 - Decisión: aurora (MIT) no se adopta entero ahora. Se mantiene el renderizador Direct3D 11 para conseguir un juego funcional y se conserva `include/wp/gx_render.h` como frontera estrecha (dibujar, copiar, limpiar, cargar paleta) para poder añadir después un backend WebGPU. Piezas sin dependencias gráficas de aurora (conversión de texturas) pueden incorporarse con su licencia MIT cuando aporten.
+
+## DMA de la caché bloqueada: causa de los modelos 3D ausentes (2026-09-21)
+
+- Causa: el juego mueve matrices y otros datos con DMA de la caché bloqueada (`LCLoadBlocks` en 0x80137c40 y `LCStoreBlocks` en 0x80137c70, escritura a los registros SPR 922/923 DMA_U y DMA_L). El runtime guardaba la escritura sin hacer la copia, así que los arrays de matrices de esqueleto quedaban a cero. En el volcado de RAM de Dolphin esos arrays contenían matrices reales (evidencia de que el juego sí las calcula).
+- Solución: `wp::locked_cache_dma` (`src/runtime.cpp`) ejecuta la copia cuando DMA_L tiene el bit de disparo (memoria a caché con el bit de carga, caché a memoria sin él; longitud en bloques de 32 bytes, 0 significa 128) y limpia los bits de disparo y vaciado. El emisor (`tools/ppc/emit.py`) la invoca tras `mtspr 923`.
+- Herramienta: `tools/recomp.py` ya no reescribe los archivos generados que no han cambiado ni borra los existentes, de modo que una modificación del emisor solo recompila los archivos afectados.
+- Verificado: con el menú principal se ven ahora el fondo 3D y los cuatro Miis de House Party (capturas `d_04`, `d_05`). ctest 3/3.
+- Nuevos problemas visibles: la imagen sale lavada (demasiado clara, con un velo blanco) y los fps bajan a unos 5 con escenas 3D (50 fps en pantallas 2D). Sin investigar.

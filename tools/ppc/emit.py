@@ -455,7 +455,12 @@ class Emitter:
 
     def op_mtspr(self, i):
         source = reg(i.rs)
-        special = {1: f"wp::mtxer(c, {source});", 8: f"c.lr = {source};", 9: f"c.ctr = {source};"}
+        special = {
+            1: f"wp::mtxer(c, {source});",
+            8: f"c.lr = {source};",
+            9: f"c.ctr = {source};",
+            923: f"c.spr[923] = {source}; wp::locked_cache_dma(c);",
+        }
         return [special.get(i.spr, f"c.spr[{i.spr}] = {source};")]
 
     def op_mftb(self, i):

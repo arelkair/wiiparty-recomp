@@ -39,6 +39,7 @@ void call(Cpu& c, uint32_t address);
 void trap(Cpu& c, uint32_t address);
 void system_call(Cpu& c);
 uint64_t time_base();
+void locked_cache_dma(Cpu& c);
 
 void print_call_stack();
 void start_profiler();
