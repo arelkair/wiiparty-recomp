@@ -2,10 +2,12 @@
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
+#include <dxgi1_2.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <vector>
@@ -22,6 +24,28 @@ constexpr uint32_t kMaxStages = 16;
 constexpr uint32_t kTextureMaps = 8;
 constexpr uint32_t kVertexCapacity = 1 << 16;
 constexpr float kScissorOffset = 342.0f;
+
+const char* kPresentShaderSource = R"HLSL(
+Texture2D frame : register(t0);
+SamplerState frame_sampler : register(s0);
+
+struct Output {
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+Output vertex_main(uint id : SV_VertexID) {
+    Output output;
+    float2 uv = float2((id << 1) & 2, id & 2);
+    output.position = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
+    output.uv = uv;
+    return output;
+}
+
+float4 pixel_main(Output input) : SV_Target {
+    return float4(frame.Sample(frame_sampler, input.uv).rgb, 1);
+}
+)HLSL";
 
 const char* kShaderSource = R"HLSL(
 cbuffer Constants : register(b0) {
@@ -332,7 +356,18 @@ struct Device {
     ID3D11RenderTargetView* target_view = nullptr;
     ID3D11Texture2D* depth = nullptr;
     ID3D11DepthStencilView* depth_view = nullptr;
-    ID3D11Texture2D* staging = nullptr;
+    ID3D11Texture2D* frame = nullptr;
+    ID3D11ShaderResourceView* frame_view = nullptr;
+    uint32_t frame_width = 0;
+    uint32_t frame_height = 0;
+    IDXGISwapChain1* swapchain = nullptr;
+    ID3D11RenderTargetView* backbuffer_view = nullptr;
+    UINT swapchain_width = 0;
+    UINT swapchain_height = 0;
+    ID3D11VertexShader* present_vertex = nullptr;
+    ID3D11PixelShader* present_pixel = nullptr;
+    ID3D11SamplerState* present_sampler = nullptr;
+    ID3D11RasterizerState* present_rasterizer = nullptr;
     ID3D11RasterizerState* rasterizer = nullptr;
     std::map<uint32_t, ID3D11BlendState*> blend_states;
     std::map<uint32_t, ID3D11DepthStencilState*> depth_states;
@@ -365,10 +400,15 @@ bool g_logged_palette = false;
 bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
 uint8_t g_tlut[kTlutSize];
+int g_scale = 1;
 
-bool compile(const char* entry, const char* profile, ID3DBlob** blob) {
+int scaled(int value) {
+    return value * g_scale;
+}
+
+bool compile(const char* source, const char* entry, const char* profile, ID3DBlob** blob) {
     ID3DBlob* errors = nullptr;
-    HRESULT result = D3DCompile(kShaderSource, std::strlen(kShaderSource), "gx", nullptr, nullptr, entry, profile, 0, 0, blob, &errors);
+    HRESULT result = D3DCompile(source, std::strlen(source), "gx", nullptr, nullptr, entry, profile, 0, 0, blob, &errors);
     if (FAILED(result)) {
         if (errors) {
             std::fprintf(stderr, "shader compile error: %s\n", static_cast<const char*>(errors->GetBufferPointer()));
@@ -382,8 +422,8 @@ bool compile(const char* entry, const char* profile, ID3DBlob** blob) {
 
 bool create_target() {
     D3D11_TEXTURE2D_DESC description{};
-    description.Width = kEfbWidth;
-    description.Height = kEfbHeight;
+    description.Width = scaled(kEfbWidth);
+    description.Height = scaled(kEfbHeight);
     description.MipLevels = 1;
     description.ArraySize = 1;
     description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -400,17 +440,13 @@ bool create_target() {
         FAILED(g_device.device->CreateDepthStencilView(g_device.depth, nullptr, &g_device.depth_view))) {
         return false;
     }
-    description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    description.BindFlags = 0;
-    description.Usage = D3D11_USAGE_STAGING;
-    description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    return SUCCEEDED(g_device.device->CreateTexture2D(&description, nullptr, &g_device.staging));
+    return true;
 }
 
 bool create_pipeline() {
     ID3DBlob* vertex_code = nullptr;
     ID3DBlob* pixel_code = nullptr;
-    if (!compile("vertex_main", "vs_5_0", &vertex_code) || !compile("pixel_main", "ps_5_0", &pixel_code)) {
+    if (!compile(kShaderSource, "vertex_main", "vs_5_0", &vertex_code) || !compile(kShaderSource, "pixel_main", "ps_5_0", &pixel_code)) {
         return false;
     }
     bool ok = SUCCEEDED(g_device.device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, &g_device.vertex_shader)) &&
@@ -460,6 +496,8 @@ bool initialize() {
     if (g_device.failed) {
         return false;
     }
+    const char* scale_text = std::getenv("WP_SCALE");
+    g_scale = scale_text ? std::clamp(std::atoi(scale_text), 1, 6) : 3;
     D3D_FEATURE_LEVEL level;
     HRESULT result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &g_device.device, &level,
                                        &g_device.context);
@@ -927,7 +965,7 @@ void flush_pending() {
     }
     context->PSSetShaderResources(0, kTextureMaps, pending.views);
     context->PSSetSamplers(0, kTextureMaps, pending.samplers);
-    D3D11_VIEWPORT viewport{0, 0, static_cast<float>(kEfbWidth), static_cast<float>(kEfbHeight), 0.0f, 1.0f};
+    D3D11_VIEWPORT viewport{0, 0, static_cast<float>(scaled(kEfbWidth)), static_cast<float>(scaled(kEfbHeight)), 0.0f, 1.0f};
     context->RSSetViewports(1, &viewport);
     D3D11_RECT scissor;
     scissor.left = static_cast<LONG>(((pending.top_left >> 12) & 0x7FF) - kScissorOffset);
@@ -938,6 +976,10 @@ void flush_pending() {
     scissor.top = std::max<LONG>(scissor.top, 0);
     scissor.right = std::min<LONG>(scissor.right, kEfbWidth);
     scissor.bottom = std::min<LONG>(scissor.bottom, kEfbHeight);
+    scissor.left *= g_scale;
+    scissor.top *= g_scale;
+    scissor.right *= g_scale;
+    scissor.bottom *= g_scale;
     context->RSSetScissorRects(1, &scissor);
     context->RSSetState(g_device.rasterizer);
     context->OMSetRenderTargets(1, &g_device.target_view, g_device.depth_view);
@@ -1042,12 +1084,14 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     CopiedTexture& entry = g_device.copies[address];
     uint32_t w = static_cast<uint32_t>(width);
     uint32_t h = static_cast<uint32_t>(height);
-    if (!entry.texture || entry.width != w || entry.height != h) {
+    uint32_t physical_width = w * g_scale;
+    uint32_t physical_height = h * g_scale;
+    if (!entry.texture || entry.width != physical_width || entry.height != physical_height) {
         release(entry.view);
         release(entry.texture);
         D3D11_TEXTURE2D_DESC description{};
-        description.Width = w;
-        description.Height = h;
+        description.Width = physical_width;
+        description.Height = physical_height;
         description.MipLevels = 1;
         description.ArraySize = 1;
         description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1061,10 +1105,10 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
             g_device.copies.erase(address);
             return;
         }
-        entry.width = w;
-        entry.height = h;
+        entry.width = physical_width;
+        entry.height = physical_height;
     }
-    D3D11_BOX box{static_cast<UINT>(x), static_cast<UINT>(y), 0, static_cast<UINT>(x + width), static_cast<UINT>(y + height), 1};
+    D3D11_BOX box{static_cast<UINT>(scaled(x)), static_cast<UINT>(scaled(y)), 0, static_cast<UINT>(scaled(x + width)), static_cast<UINT>(scaled(y + height)), 1};
     g_device.context->CopySubresourceRegion(entry.texture, 0, 0, 0, 0, g_device.target, 0, &box);
     entry.logical_width = half ? std::max(1u, w / 2) : w;
     entry.logical_height = half ? std::max(1u, h / 2) : h;
@@ -1072,13 +1116,12 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     entry.guest_hash = sample_hash(host(address), entry.bytes);
 }
 
-void copy_to_framebuffer(uint32_t address, uint32_t stride, int x, int y, int width, int height) {
+void copy_to_framebuffer(int x, int y, int width, int height) {
     if (!initialize()) {
         return;
     }
     flush_pending();
     g_frame++;
-    ID3D11DeviceContext* context = g_device.context;
     x = std::max(0, x);
     y = std::max(0, y);
     width = std::min(width, kEfbWidth - x);
@@ -1086,29 +1129,185 @@ void copy_to_framebuffer(uint32_t address, uint32_t stride, int x, int y, int wi
     if (width <= 0 || height <= 0) {
         return;
     }
-    context->CopyResource(g_device.staging, g_device.target);
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    if (SUCCEEDED(context->Map(g_device.staging, 0, D3D11_MAP_READ, 0, &mapped))) {
-        for (int row = 0; row < height; row++) {
-            const uint8_t* source = static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(y + row) * mapped.RowPitch + x * 4;
-            uint8_t* destination = host(address) + static_cast<size_t>(row) * stride;
-            for (int column = 0; column + 1 < width; column += 2) {
-                float r0 = source[column * 4], g0 = source[column * 4 + 1], b0 = source[column * 4 + 2];
-                float r1 = source[column * 4 + 4], g1 = source[column * 4 + 5], b1 = source[column * 4 + 6];
-                float y0 = 16.0f + 0.257f * r0 + 0.504f * g0 + 0.098f * b0;
-                float y1 = 16.0f + 0.257f * r1 + 0.504f * g1 + 0.098f * b1;
-                float r = (r0 + r1) * 0.5f, g = (g0 + g1) * 0.5f, b = (b0 + b1) * 0.5f;
-                float u = 128.0f - 0.148f * r - 0.291f * g + 0.439f * b;
-                float v = 128.0f + 0.439f * r - 0.368f * g - 0.071f * b;
-                auto clamp8 = [](float value) { return static_cast<uint8_t>(value < 0 ? 0 : value > 255 ? 255 : value + 0.5f); };
-                destination[column * 2] = clamp8(y0);
-                destination[column * 2 + 1] = clamp8(u);
-                destination[column * 2 + 2] = clamp8(y1);
-                destination[column * 2 + 3] = clamp8(v);
+    uint32_t physical_width = static_cast<uint32_t>(scaled(width));
+    uint32_t physical_height = static_cast<uint32_t>(scaled(height));
+    if (!g_device.frame || g_device.frame_width != physical_width || g_device.frame_height != physical_height) {
+        release(g_device.frame_view);
+        release(g_device.frame);
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = physical_width;
+        description.Height = physical_height;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &g_device.frame)) ||
+            FAILED(g_device.device->CreateShaderResourceView(g_device.frame, nullptr, &g_device.frame_view))) {
+            release(g_device.frame_view);
+            release(g_device.frame);
+            return;
+        }
+        g_device.frame_width = physical_width;
+        g_device.frame_height = physical_height;
+    }
+    D3D11_BOX box{static_cast<UINT>(scaled(x)), static_cast<UINT>(scaled(y)), 0, static_cast<UINT>(scaled(x + width)),
+                  static_cast<UINT>(scaled(y + height)), 1};
+    g_device.context->CopySubresourceRegion(g_device.frame, 0, 0, 0, 0, g_device.target, 0, &box);
+}
+
+bool create_present_pipeline() {
+    ID3DBlob* vertex_code = nullptr;
+    ID3DBlob* pixel_code = nullptr;
+    if (!compile(kPresentShaderSource, "vertex_main", "vs_5_0", &vertex_code) || !compile(kPresentShaderSource, "pixel_main", "ps_5_0", &pixel_code)) {
+        return false;
+    }
+    bool ok = SUCCEEDED(g_device.device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, &g_device.present_vertex)) &&
+              SUCCEEDED(g_device.device->CreatePixelShader(pixel_code->GetBufferPointer(), pixel_code->GetBufferSize(), nullptr, &g_device.present_pixel));
+    release(vertex_code);
+    release(pixel_code);
+    if (!ok) {
+        return false;
+    }
+    D3D11_SAMPLER_DESC sampler{};
+    sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.MaxLOD = D3D11_FLOAT32_MAX;
+    D3D11_RASTERIZER_DESC raster{};
+    raster.FillMode = D3D11_FILL_SOLID;
+    raster.CullMode = D3D11_CULL_NONE;
+    raster.DepthClipEnable = FALSE;
+    return SUCCEEDED(g_device.device->CreateSamplerState(&sampler, &g_device.present_sampler)) &&
+           SUCCEEDED(g_device.device->CreateRasterizerState(&raster, &g_device.present_rasterizer));
+}
+
+bool ensure_swapchain(HWND window, UINT width, UINT height) {
+    if (!g_device.swapchain) {
+        IDXGIDevice* dxgi_device = nullptr;
+        IDXGIAdapter* adapter = nullptr;
+        IDXGIFactory2* factory = nullptr;
+        bool ok = SUCCEEDED(g_device.device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgi_device))) &&
+                  SUCCEEDED(dxgi_device->GetAdapter(&adapter)) &&
+                  SUCCEEDED(adapter->GetParent(__uuidof(IDXGIFactory2), reinterpret_cast<void**>(&factory)));
+        if (ok) {
+            DXGI_SWAP_CHAIN_DESC1 description{};
+            description.Width = width;
+            description.Height = height;
+            description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            description.SampleDesc.Count = 1;
+            description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+            description.BufferCount = 2;
+            description.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+            ok = SUCCEEDED(factory->CreateSwapChainForHwnd(g_device.device, window, &description, nullptr, nullptr, &g_device.swapchain));
+            if (ok) {
+                factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);
             }
         }
-        context->Unmap(g_device.staging, 0);
+        release(factory);
+        release(adapter);
+        release(dxgi_device);
+        if (!ok || !create_present_pipeline()) {
+            release(g_device.swapchain);
+            g_device.failed = true;
+            return false;
+        }
+        g_device.swapchain_width = width;
+        g_device.swapchain_height = height;
+    } else if (width != g_device.swapchain_width || height != g_device.swapchain_height) {
+        release(g_device.backbuffer_view);
+        if (FAILED(g_device.swapchain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0))) {
+            return false;
+        }
+        g_device.swapchain_width = width;
+        g_device.swapchain_height = height;
     }
+    if (!g_device.backbuffer_view) {
+        ID3D11Texture2D* buffer = nullptr;
+        if (FAILED(g_device.swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&buffer)))) {
+            return false;
+        }
+        HRESULT result = g_device.device->CreateRenderTargetView(buffer, nullptr, &g_device.backbuffer_view);
+        release(buffer);
+        return SUCCEEDED(result);
+    }
+    return true;
+}
+
+bool present_frame(void* window_handle, double aspect) {
+    if (!g_device.ready || !g_device.frame_view || !window_handle) {
+        return false;
+    }
+    HWND window = static_cast<HWND>(window_handle);
+    RECT client;
+    GetClientRect(window, &client);
+    if (client.right <= 0 || client.bottom <= 0 || !ensure_swapchain(window, static_cast<UINT>(client.right), static_cast<UINT>(client.bottom))) {
+        return false;
+    }
+    flush_pending();
+    ID3D11DeviceContext* context = g_device.context;
+    float black[4] = {0, 0, 0, 1};
+    context->OMSetRenderTargets(1, &g_device.backbuffer_view, nullptr);
+    context->ClearRenderTargetView(g_device.backbuffer_view, black);
+    double width = client.right;
+    double height = width / aspect;
+    if (height > client.bottom) {
+        height = client.bottom;
+        width = height * aspect;
+    }
+    D3D11_VIEWPORT viewport{static_cast<float>((client.right - width) / 2), static_cast<float>((client.bottom - height) / 2),
+                            static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f};
+    context->RSSetViewports(1, &viewport);
+    context->RSSetState(g_device.present_rasterizer);
+    context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+    context->OMSetDepthStencilState(nullptr, 0);
+    context->IASetInputLayout(nullptr);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(g_device.present_vertex, nullptr, 0);
+    context->PSSetShader(g_device.present_pixel, nullptr, 0);
+    context->PSSetShaderResources(0, 1, &g_device.frame_view);
+    context->PSSetSamplers(0, 1, &g_device.present_sampler);
+    context->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    context->PSSetShaderResources(0, 1, &none);
+    g_device.swapchain->Present(0, 0);
+    return true;
+}
+
+bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height) {
+    if (!g_device.ready || !g_device.frame) {
+        return false;
+    }
+    flush_pending();
+    D3D11_TEXTURE2D_DESC description{};
+    g_device.frame->GetDesc(&description);
+    description.BindFlags = 0;
+    description.Usage = D3D11_USAGE_STAGING;
+    description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ID3D11Texture2D* staging = nullptr;
+    if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &staging))) {
+        return false;
+    }
+    g_device.context->CopyResource(staging, g_device.frame);
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    bool ok = SUCCEEDED(g_device.context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped));
+    if (ok) {
+        width = description.Width;
+        height = description.Height;
+        pixels.resize(static_cast<size_t>(width) * height);
+        for (uint32_t row = 0; row < height; row++) {
+            const uint8_t* source = static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch;
+            for (uint32_t column = 0; column < width; column++) {
+                pixels[static_cast<size_t>(row) * width + column] = (static_cast<uint32_t>(source[column * 4]) << 16) |
+                                                                    (static_cast<uint32_t>(source[column * 4 + 1]) << 8) | source[column * 4 + 2];
+            }
+        }
+        g_device.context->Unmap(staging, 0);
+    }
+    release(staging);
+    return ok;
 }
 
 void clear() {

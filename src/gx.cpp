@@ -101,8 +101,6 @@ bool g_log = g_log_level != nullptr;
 bool g_log_draws = g_log_level != nullptr && g_log_level[0] == '2';
 int g_logged_draws = 0;
 int g_logged_prepared = 0;
-uint32_t g_copy_width = 0;
-uint32_t g_copy_height = 0;
 bool g_render_enabled = std::getenv("WP_NO_RENDER") == nullptr;
 bool g_log_fps = std::getenv("WP_LOG_FPS") != nullptr;
 int g_frames = 0;
@@ -548,8 +546,6 @@ void execute_copy(uint32_t value) {
         int y = static_cast<int>((source >> 10) & 0x3FF);
         int width = static_cast<int>(size & 0x3FF) + 1;
         int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
-        uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
-        uint32_t stride = (g_bp[0x4D] & 0x3FF) << 5;
         if (g_log_fps) {
             g_frames++;
             auto now = std::chrono::steady_clock::now();
@@ -561,9 +557,7 @@ void execute_copy(uint32_t value) {
                 g_fps_start = now;
             }
         }
-        g_copy_width = static_cast<uint32_t>(width);
-        g_copy_height = static_cast<uint32_t>(height);
-        render::copy_to_framebuffer(address, stride, x, y, width, height);
+        render::copy_to_framebuffer(x, y, width, height);
     } else {
         uint32_t source = g_bp[0x49];
         uint32_t size = g_bp[0x4A];
@@ -744,11 +738,6 @@ const uint32_t* konst_registers() {
 
 const uint32_t* xf_registers() {
     return g_xf;
-}
-
-void last_framebuffer_size(uint32_t& width, uint32_t& height) {
-    width = g_copy_width;
-    height = g_copy_height;
 }
 
 bool record_display_list(uint64_t value, unsigned bytes) {
