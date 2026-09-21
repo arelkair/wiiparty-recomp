@@ -24,6 +24,7 @@ constexpr uint8_t kCommandLoadBp = 0x61;
 constexpr uint8_t kCommandDrawMask = 0x80;
 constexpr uint32_t kBpMask = 0xFE;
 constexpr uint32_t kBpCopyExecute = 0x52;
+constexpr uint32_t kBpLoadTlut = 0x65;
 constexpr uint32_t kCopyToFramebuffer = 1u << 14;
 constexpr uint32_t kCopyClear = 1u << 11;
 constexpr uint32_t kXfSize = 0x1100;
@@ -540,6 +541,17 @@ void execute_copy(uint32_t value) {
         g_copy_width = static_cast<uint32_t>(width);
         g_copy_height = static_cast<uint32_t>(height);
         render::copy_to_framebuffer(address, stride, x, y, width, height);
+    } else {
+        uint32_t source = g_bp[0x49];
+        uint32_t size = g_bp[0x4A];
+        int x = static_cast<int>(source & 0x3FF);
+        int y = static_cast<int>((source >> 10) & 0x3FF);
+        int width = static_cast<int>(size & 0x3FF) + 1;
+        int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
+        uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
+        uint32_t coded = (value >> 3) & 15;
+        uint32_t format = coded / 2 + (coded & 1) * 8;
+        render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format);
     }
     if (value & kCopyClear) {
         render::clear();
@@ -563,6 +575,9 @@ void load_bp(uint32_t word) {
     g_bp[reg] = (g_bp[reg] & ~mask) | (value & mask);
     if (reg == kBpCopyExecute) {
         execute_copy(g_bp[reg]);
+    } else if (reg == kBpLoadTlut) {
+        uint32_t address = kRamBase | ((g_bp[0x64] & 0x1FFFFF) << 5);
+        render::load_tlut(address, (g_bp[reg] & 0x3FF) << 9, ((g_bp[reg] >> 10) & 0x7FF) << 5);
     }
 }
 

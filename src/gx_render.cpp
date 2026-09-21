@@ -299,6 +299,17 @@ struct CachedTexture {
     uint32_t format = 0;
 };
 
+struct CopiedTexture {
+    ID3D11Texture2D* texture = nullptr;
+    ID3D11ShaderResourceView* view = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t logical_width = 0;
+    uint32_t logical_height = 0;
+    uint32_t bytes = 0;
+    uint64_t guest_hash = 0;
+};
+
 struct Device {
     ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
@@ -317,12 +328,18 @@ struct Device {
     std::map<uint32_t, ID3D11DepthStencilState*> depth_states;
     std::map<uint32_t, ID3D11SamplerState*> samplers;
     std::map<uint64_t, CachedTexture> textures;
+    std::map<uint32_t, CopiedTexture> copies;
     bool failed = false;
     bool ready = false;
 };
 
+constexpr uint32_t kTlutSize = 0x100000;
+constexpr uint32_t kTlutMask = 0x7FE00;
+
 Device g_device;
 bool g_logged_palette = false;
+bool g_logged_copy_format = false;
+uint8_t g_tlut[kTlutSize];
 
 bool compile(const char* entry, const char* profile, ID3DBlob** blob) {
     ID3DBlob* errors = nullptr;
@@ -478,14 +495,17 @@ struct Layout {
 Layout layout_for(uint32_t format) {
     switch (format) {
     case 0:
+    case 8:
         return {8, 8, true};
     case 1:
     case 2:
+    case 9:
         return {8, 4, true};
     case 3:
     case 4:
     case 5:
     case 6:
+    case 10:
         return {4, 4, true};
     case 14:
         return {8, 8, true};
@@ -527,7 +547,20 @@ void decode_cmpr_block(const uint8_t* source, uint32_t* out, uint32_t stride) {
     }
 }
 
-std::vector<uint32_t> decode_texture(const uint8_t* data, uint32_t width, uint32_t height, uint32_t format) {
+uint32_t palette_entry(const uint8_t* tlut, uint32_t tlut_format, uint32_t index) {
+    uint16_t entry = be16(tlut + index * 2);
+    switch (tlut_format) {
+    case 0:
+        return rgba(entry & 0xFF, entry & 0xFF, entry & 0xFF, entry >> 8);
+    case 1:
+        return rgb565(entry);
+    default:
+        return rgb5a3(entry);
+    }
+}
+
+std::vector<uint32_t> decode_texture(const uint8_t* data, uint32_t width, uint32_t height, uint32_t format, const uint8_t* tlut,
+                                     uint32_t tlut_format) {
     Layout layout = layout_for(format);
     uint32_t padded_width = (width + layout.block_width - 1) / layout.block_width * layout.block_width;
     uint32_t padded_height = (height + layout.block_height - 1) / layout.block_height * layout.block_height;
@@ -578,6 +611,15 @@ std::vector<uint32_t> decode_texture(const uint8_t* data, uint32_t width, uint32
                         pixel = rgba(block[32 + index], block[32 + index + 1], block[index + 1], block[index]);
                         break;
                     }
+                    case 8:
+                        pixel = palette_entry(tlut, tlut_format, (block[y * 4 + x / 2] >> ((x & 1) ? 0 : 4)) & 15);
+                        break;
+                    case 9:
+                        pixel = palette_entry(tlut, tlut_format, block[y * 8 + x]);
+                        break;
+                    case 10:
+                        pixel = palette_entry(tlut, tlut_format, be16(block + (y * 4 + x) * 2) & 0x3FFF);
+                        break;
                     case 14: {
                         uint32_t sub = (y / 4) * 2 + (x / 4);
                         uint32_t local[16];
@@ -613,6 +655,18 @@ uint64_t hash_bytes(const uint8_t* data, size_t size) {
     return hash;
 }
 
+uint64_t sample_hash(const uint8_t* data, size_t size) {
+    constexpr size_t kSamples = 32;
+    uint64_t hash = 1469598103934665603ull;
+    size_t step = size / kSamples;
+    for (size_t i = 0; i < kSamples; i++) {
+        uint64_t word = 0;
+        std::memcpy(&word, data + std::min(i * step, size > 8 ? size - 8 : 0), std::min<size_t>(size, 8));
+        hash = (hash ^ word) * 1099511628211ull;
+    }
+    return hash;
+}
+
 ID3D11ShaderResourceView* texture_for(uint32_t map) {
     const uint32_t* bp = bp_registers();
     uint32_t image0_reg = map < 4 ? 0x88 + map : 0xA8 + (map - 4);
@@ -631,15 +685,31 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     uint32_t padded_height = (height + layout.block_height - 1) / layout.block_height * layout.block_height;
     size_t size = static_cast<size_t>(padded_width / layout.block_width) * (padded_height / layout.block_height) * block_bytes(format);
     const uint8_t* source = host(address);
+    auto copied = g_device.copies.find(address);
+    if (copied != g_device.copies.end() && copied->second.logical_width == width && copied->second.logical_height == height &&
+        (format == 4 || format == 5 || format == 6) && copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
+        return copied->second.view;
+    }
     uint64_t key = (static_cast<uint64_t>(address) << 20) ^ (static_cast<uint64_t>(width) << 8) ^ (static_cast<uint64_t>(height) << 32) ^ format;
     uint64_t hash = hash_bytes(source, size);
+    const uint8_t* tlut = nullptr;
+    uint32_t tlut_format = 0;
+    if (format >= 8 && format <= 10) {
+        uint32_t tlut_register = bp[map < 4 ? 0x98 + map : 0xB8 + (map - 4)];
+        uint32_t tlut_offset = (tlut_register & 0x3FF) << 9;
+        tlut_format = (tlut_register >> 10) & 3;
+        tlut = g_tlut + (tlut_offset & kTlutMask);
+        uint32_t entries = format == 8 ? 16 : format == 9 ? 256 : 16384;
+        hash = (hash ^ hash_bytes(tlut, entries * 2)) * 1099511628211ull ^ tlut_format;
+        key ^= (static_cast<uint64_t>(tlut_offset >> 9) << 54) ^ (static_cast<uint64_t>(tlut_format) << 52);
+    }
     CachedTexture& entry = g_device.textures[key];
     if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format) {
         return entry.view;
     }
     release(entry.view);
     release(entry.texture);
-    std::vector<uint32_t> pixels = decode_texture(source, width, height, format);
+    std::vector<uint32_t> pixels = decode_texture(source, width, height, format, tlut, tlut_format);
     D3D11_TEXTURE2D_DESC description{};
     description.Width = width;
     description.Height = height;
@@ -874,6 +944,64 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
         context->Draw(batch, 0);
         offset += batch;
     }
+}
+
+void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes) {
+    tmem_offset &= kTlutMask;
+    bytes = std::min(bytes, kTlutSize - tmem_offset);
+    std::memcpy(g_tlut + tmem_offset, host(address), bytes);
+}
+
+void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format) {
+    if (!initialize()) {
+        return;
+    }
+    if (format != 4 && format != 5 && format != 6) {
+        if (!g_logged_copy_format) {
+            g_logged_copy_format = true;
+            std::fprintf(stderr, "unsupported EFB copy format %u\n", format);
+        }
+        g_device.copies.erase(address);
+        return;
+    }
+    x = std::max(0, x);
+    y = std::max(0, y);
+    width = std::min(width, kEfbWidth - x);
+    height = std::min(height, kEfbHeight - y);
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    CopiedTexture& entry = g_device.copies[address];
+    uint32_t w = static_cast<uint32_t>(width);
+    uint32_t h = static_cast<uint32_t>(height);
+    if (!entry.texture || entry.width != w || entry.height != h) {
+        release(entry.view);
+        release(entry.texture);
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = w;
+        description.Height = h;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &entry.texture)) ||
+            FAILED(g_device.device->CreateShaderResourceView(entry.texture, nullptr, &entry.view))) {
+            release(entry.view);
+            release(entry.texture);
+            g_device.copies.erase(address);
+            return;
+        }
+        entry.width = w;
+        entry.height = h;
+    }
+    D3D11_BOX box{static_cast<UINT>(x), static_cast<UINT>(y), 0, static_cast<UINT>(x + width), static_cast<UINT>(y + height), 1};
+    g_device.context->CopySubresourceRegion(entry.texture, 0, 0, 0, 0, g_device.target, 0, &box);
+    entry.logical_width = half ? std::max(1u, w / 2) : w;
+    entry.logical_height = half ? std::max(1u, h / 2) : h;
+    entry.bytes = entry.logical_width * entry.logical_height * (format == 6 ? 4 : 2);
+    entry.guest_hash = sample_hash(host(address), entry.bytes);
 }
 
 void copy_to_framebuffer(uint32_t address, uint32_t stride, int x, int y, int width, int height) {

@@ -17,7 +17,7 @@ Working today:
 - **Recompilation:** the main executable (about 7350 functions) and all 115 REL modules are translated to C++ and compile into one native program of roughly 300 MB. The translator is covered by unit tests, and one game function (a red-black tree erase) is checked against the C++ standard library.
 - **Boot and system:** the Revolution OS initialisation, threads (as Windows fibers, including the game's own `setjmp`/`longjmp` coroutines), video retrace interrupts derived from the video mode, module loading and linking.
 - **Disc and storage:** disc reads served from the extracted game files, IOS requests emulated at request level, and a virtual NAND with a default `SYSCONF` (English, widescreen).
-- **Graphics:** the GX command stream is decoded and rendered with Direct3D 11: vertex formats, transforms, an ubershader for the TEV stages, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, CMPR), blending, depth, scissor and EFB copies to the framebuffer.
+- **Graphics:** the GX command stream is decoded and rendered with Direct3D 11: vertex formats, transforms, an ubershader for the TEV stages, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, palette formats C4, C8 and C14X2, CMPR), blending, depth, scissor and EFB copies to the framebuffer and to textures.
 - **Window:** a resizable window that keeps the aspect ratio and shows the game code, build number, graphics API and video region in its title.
 - **Diagnostics:** environment variables such as `WP_LOG_GX`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP` and `WP_SAVE_FRAME`, a per-thread call trace, and a GDB client (`tools/dolphin_gdb.py`) to compare against a real Dolphin.
 
@@ -25,7 +25,7 @@ Not implemented yet:
 
 - Generic gamepads and real Wii Remotes (keyboard and mouse work).
 - Audio: the AX sound layer is stubbed, so the game is silent.
-- Graphics: palette textures, texture copies from the EFB, lighting, indirect textures, lines and points, and internal resolution scaling.
+- Graphics: lighting, indirect textures, lines and points, EFB copies in intensity formats, and internal resolution scaling.
 - Higher frame rates, online play and quality-of-life options.
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`.

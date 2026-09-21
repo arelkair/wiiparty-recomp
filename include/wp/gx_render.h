@@ -23,6 +23,8 @@ namespace wp::gx::render {
 const char* api_name();
 void draw(const ScreenVertex* vertices, uint32_t count);
 void copy_to_framebuffer(uint32_t address, uint32_t stride, int x, int y, int width, int height);
+void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format);
+void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes);
 void clear();
 
 }

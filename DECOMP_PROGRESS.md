@@ -115,7 +115,7 @@
 - El decodificador del FIFO de GX ya interpreta sin errores el flujo del juego (0 comandos desconocidos). Los pares de floats de `psq_st` van los dos al FIFO. Con `WP_LOG_GX=2` se listan los dibujados (vértices, VCD y VAT) y con `3` los primeros comandos. Cada fotograma del estado actual contiene tres cuadriláteros y una copia de EFB al framebuffer.
 - Renderizador GX en Direct3D 11 (`src/gx_render.cpp`, estado y vértices en `src/gx.cpp`): decodificación de vértices por VCD/VAT con atributos directos o indexados, transformación por las matrices de XF (proyección, ventana, generación de coordenadas de textura), ubershader con las etapas TEV, decodificación de texturas (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, CMPR), mezcla, profundidad, tijera y copia del EFB al framebuffer externo convirtiendo a YCbCr 4:2:2. La primera pantalla del juego (aviso de la correa) se dibuja correctamente. Con `WP_SAVE_FRAME=archivo.png` se guarda cada 100 fotogramas la imagen presentada.
 - Detalles verificados: el cull mode 1 del juego equivale a descartar las caras con giro antihorario en pantalla; los cuatro registros BP con máscara (0xFE) se aplican al registro siguiente; las constantes TEV KONST comparten direcciones 0xE0-0xE7 con los registros de color y se distinguen por el bit 23.
-- Pendiente de GX: iluminación, texturas indirectas, texturas con paleta (TLUT), copias del EFB a textura, líneas y puntos, recorte en el plano cercano, escalado interno.
+- Pendiente de GX: iluminación, texturas indirectas, líneas y puntos, recorte en el plano cercano, escalado interno, copias del EFB en formatos de intensidad.
 - Pendiente: gráficos (GX), audio (DSP), entrada (WPAD/KPAD), liberar las fibras de hilos terminados y contabilizar la profundidad de la traza tras un `longjmp`.
 - Entrada con Wiimote real: Windows pide PIN al emparejarlo por la interfaz normal (con 1+2 y con SYNC). El emparejamiento se hará dentro del programa con la API Bluetooth de Windows, usando como PIN los 6 bytes de la dirección Bluetooth del equipo, y la lectura de los informes HID después. Mando genérico tipo Pro Controller: SDL2. Monitor del usuario: ultrawide 2K a 75 Hz.
 
@@ -146,8 +146,16 @@ Estado por componente:
 
 - Implementado y probado: lectura de teclado y ratón como Wiimote, entrega diferida de IPC, contador de muestras de AI, renderizado del menú principal con la mayoría de elementos.
 - Stub: núcleo de audio AX (sin sonido) y DSP.
-- Parcial: GX. Faltan texturas con paleta (formato 9, C8; aparecen cuadrados magenta), copias del EFB a textura (fondos negros), iluminación, texturas indirectas y líneas/puntos. El título se dibuja con un encuadre incorrecto (logotipo ampliado y recortado); causa sin investigar.
+- Parcial: GX. Faltan iluminación, texturas indirectas, líneas/puntos y copias del EFB en formatos de intensidad. El título se dibuja con un encuadre incorrecto (logotipo ampliado y recortado); causa sin investigar.
 - Pendiente: audio real (mezclador AX en el lado del PC), mandos genéricos y Wiimote, resolución interna, liberar las fibras de hilos terminados (aparecen decenas de fibras de `OSExitThread` sin liberar).
 - No verificado: que los cuatro canales de KPAD den el estado esperado por los minijuegos; que el título se muestre correctamente a 16:9.
 
 Coste de compilación: cada alta de una función sustituida regenera `functions.h` y recompila todos los módulos (unos 15 minutos). Pendiente separar esa declaración de los módulos.
+
+## Texturas con paleta y copias del EFB (2026-09-21)
+
+- Implementado en `src/gx.cpp` y `src/gx_render.cpp`: carga de TLUT (BP 0x64/0x65, memoria TMEM de paletas de 512 KB copiada en el momento de la carga), formatos C4, C8 y C14X2 con paleta IA8, RGB565 o RGB5A3 (registro BP 0x98/0xB8 por mapa), y copias del EFB a textura (BP 0x52 sin el bit de XFB) para los formatos RGB565, RGB5A3 y RGBA8 mediante `CopySubresourceRegion` en la GPU.
+- La textura copiada se asocia a su dirección de destino y solo se usa si el tamaño coincide y una muestra de 32 palabras de la memoria de invitado no ha cambiado (si el juego escribe otra textura en esa dirección, se descarta).
+- Verificado ejecutando con A+B: el menú principal muestra las miniaturas animadas de los minijuegos y ya no hay cuadrados magenta ni el aviso `unsupported texture format`. ctest 3/3.
+- Limitaciones: la copia con bit de reducción a la mitad usa la textura a tamaño completo (se muestrea con UV normalizadas); RGB565 no fuerza alfa a 1; los formatos de intensidad (R4, Y8, RA4, RA8, A8, R8...) no se copian (se registra `unsupported EFB copy format`).
+- Sigue visible: un cuadro blanco sobre "Pair Games", el panel de House Party oscuro y el fondo negro del menú. Causa sin investigar.
