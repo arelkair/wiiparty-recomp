@@ -192,7 +192,7 @@ std::string game_code() {
 std::string window_title() {
     bool pal = (rd16(kDisplayConfig) & 0x0300) == 0x0100;
     return std::string("Wii Party (") + game_code() + ")  |  Build " + WP_BUILD + "  |  " + gx::render::api_name() + "  |  " +
-           (pal ? "PAL" : "NTSC") + "  |  SRC";
+           (pal ? "PAL" : "NTSC");
 }
 
 void window_thread() {

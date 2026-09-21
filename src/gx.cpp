@@ -504,24 +504,14 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     default:
         break;
     }
-    if (g_log_draws && g_copy_total >= g_log_from && g_logged_prepared < 40) {
+    if (g_log_draws && g_copy_total >= g_log_from && g_logged_prepared < 300) {
         g_logged_prepared++;
-        std::fprintf(stderr, "GX prepared: %zu triangles from %u vertices, stages=%u texgens=%u cull=%u\n", triangles.size() / 3, count,
-                     ((g_bp[0x00] >> 10) & 15) + 1, g_bp[0x00] & 15, (g_bp[0x00] >> 14) & 3);
-        for (uint32_t i = 0; i < count && i < 4; i++) {
-            const ScreenVertex& v = vertices[i].vertex;
-            std::fprintf(stderr, "  v%u valid=%d pos=(%.3f %.3f %.3f) c0=(%.2f %.2f %.2f %.2f) uv0=(%.3f %.3f)\n", i, vertices[i].valid, v.x, v.y, v.z,
-                         v.color[0][0], v.color[0][1], v.color[0][2], v.color[0][3], v.uv[0][0], v.uv[0][1]);
-        }
-        std::fprintf(stderr, "  arrays pos=%08x/%u tex0=%08x/%u\n", g_array_base[0], g_array_stride[0], g_array_base[4], g_array_stride[4]);
-        for (uint32_t m = 0; m < 2; m++) {
-            uint32_t image0 = g_bp[m == 0 ? 0x88 : 0x89];
-            std::fprintf(stderr, "  map%u fmt=%u %ux%u addr=%08x\n", m, (image0 >> 20) & 15, (image0 & 0x3FF) + 1, ((image0 >> 10) & 0x3FF) + 1,
-                         0x80000000u | ((g_bp[m == 0 ? 0x94 : 0x95] & 0xFFFFFF) << 5));
-        }
-        std::fprintf(stderr, "  tev0 color=%06x alpha=%06x order=%06x kc=%06x blend=%06x z=%06x proj=%f %f %f %f %f %f ortho=%u\n", g_bp[0xC0], g_bp[0xC1],
-                     g_bp[0x28], g_bp[0xF6], g_bp[0x41], g_bp[0x40], xf_float(0x1020), xf_float(0x1021), xf_float(0x1022), xf_float(0x1023),
-                     xf_float(0x1024), xf_float(0x1025), g_xf[0x1026]);
+        uint32_t image0 = g_bp[0x88];
+        const ScreenVertex& v0 = vertices[0].vertex;
+        std::fprintf(stderr, "P copy=%d cmd=%02x n=%u tri=%zu stg=%u tg=%u cull=%u blend=%06x z=%06x map0=%u/%ux%u v0=(%.2f %.2f %.2f)%s tev0=%06x/%06x\n",
+                     g_copy_total, command, count, triangles.size() / 3, ((g_bp[0x00] >> 10) & 15) + 1, g_bp[0x00] & 15, (g_bp[0x00] >> 14) & 3,
+                     g_bp[0x41], g_bp[0x40], (image0 >> 20) & 15, (image0 & 0x3FF) + 1, ((image0 >> 10) & 0x3FF) + 1, v0.x, v0.y, v0.z,
+                     vertices[0].valid ? "" : " INVALID", g_bp[0xC0], g_bp[0xC1]);
     }
     render::draw(triangles.data(), static_cast<uint32_t>(triangles.size()));
 }

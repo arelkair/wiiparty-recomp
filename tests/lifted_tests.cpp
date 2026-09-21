@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -221,6 +222,55 @@ bool run_tree_erase(std::mt19937& random, int size) {
     return true;
 }
 
+uint32_t float_bits(float value) {
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+
+float bits_float(uint32_t bits) {
+    float value;
+    std::memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
+bool run_matrix_concat(std::mt19937& random) {
+    constexpr uint32_t kA = 0x80300000;
+    constexpr uint32_t kB = 0x80300040;
+    constexpr uint32_t kOut = 0x80300080;
+    std::uniform_real_distribution<float> distribution(-4.0f, 4.0f);
+    float a[3][4];
+    float b[3][4];
+    for (int row = 0; row < 3; row++) {
+        for (int column = 0; column < 4; column++) {
+            a[row][column] = distribution(random);
+            b[row][column] = distribution(random);
+            wp::wr32(kA + (row * 4 + column) * 4, float_bits(a[row][column]));
+            wp::wr32(kB + (row * 4 + column) * 4, float_bits(b[row][column]));
+            wp::wr32(kOut + (row * 4 + column) * 4, 0);
+        }
+    }
+    wp::wr32(0x802f58d0, 0);
+    wp::wr32(0x802f58d4, float_bits(1.0f));
+    wp::Cpu c{};
+    c.r[1] = 0x80280000;
+    c.r[3] = kA;
+    c.r[4] = kB;
+    c.r[5] = kOut;
+    f_8014b100(c);
+    for (int row = 0; row < 3; row++) {
+        for (int column = 0; column < 4; column++) {
+            float expected = a[row][0] * b[0][column] + a[row][1] * b[1][column] + a[row][2] * b[2][column] + (column == 3 ? a[row][3] : 0.0f);
+            float actual = bits_float(wp::rd32(kOut + (row * 4 + column) * 4));
+            if (std::fabs(expected - actual) > 1e-3f) {
+                std::fprintf(stderr, "matrix concat mismatch at %d,%d: expected %f actual %f\n", row, column, expected, actual);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 }
 
 int main() {
@@ -243,6 +293,12 @@ int main() {
             if (failures > 5) {
                 break;
             }
+        }
+    }
+    for (int round = 0; round < 50; round++) {
+        if (!run_matrix_concat(random)) {
+            failures++;
+            break;
         }
     }
     std::free(wp::g_memory);

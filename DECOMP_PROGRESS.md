@@ -173,4 +173,12 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Con `WP_LOG_FROM=1200` los dibujos del fondo ya no salen con vértices inválidos: eran consecuencia de las listas mal grabadas.
 - Sin ninguna entrada, el juego pasa por la animación del logotipo, muestra el título (logotipo "Wii Party" a tamaño y encuadre correctos, "Press A and B together", "(c)2010 Nintendo") y llega solo al menú principal (capturas `t_05` a `t_08` de `WP_SAVE_FRAME`). El encuadre erróneo del título anotado antes no se reproduce.
 - Sin verificar contra Dolphin: si el fondo negro del menú es el original.
-- Defecto visible: la vista previa de House Party (esquina inferior derecha del menú) muestra polígonos verdes, rojos y azules sin forma reconocible; la cara del Mii del título se ve oscura. Causa sin investigar.
+- Defecto visible (corregido el 2026-09-21): la vista previa de House Party debe mostrar 4 Miis y el título debe mostrar el fondo rosa con personajes 3D; ambos son modelos 3D con esqueleto y no se dibujan bien.
+
+## Modelos 3D con esqueleto: diagnóstico (2026-09-21)
+
+- Referencia de Dolphin aportada por el usuario: el título tiene fondo rosa/blanco con Miis y animales 3D, el menú tiene fondo rosa degradado, paneles rojo/naranja/verde y botones morado/azul/amarillo, y House Party muestra 4 Miis. Nuestro render: fondo negro, sin modelos 3D y colores de paneles distintos (azul/morado/verde, botones turquesa/lima/morado).
+- Evidencia: los dibujos de modelos (comandos 0x90/0x98/0xA0 con matriz de posición por vértice) llegan con posiciones brutas correctas, pero las matrices de XF que usan (índices 3, 6, 15, 27...) valen cero. Se cargan con cargas indexadas (comandos 0x20 y 0x30) desde arrays de 48 bytes por matriz (bases distintas por modelo en MEM1) y el contenido de esos arrays es cero también cuando el FIFO se procesa en el momento de escribirse (umbral de vaciado de 64 bytes probado y revertido). Por tanto no es un problema del retraso del análisis.
+- Descartado: `PSMTXConcat` (0x8014b100) se compara con una multiplicación de matrices de referencia con 50 casos aleatorios y coincide (prueba añadida en `tests/lifted_tests.cpp`); la constante `(0,1)` que usa está en 0x802f58d0.
+- Pendiente: averiguar qué código debería escribir esos arrays (cálculo de matrices mundo de los modelos) y por qué no lo hace o guarda ceros; hipótesis: una función reemplazada por HLE, un hilo/corrutina que no llega a ejecutarse, o datos del esqueleto sin cargar.
+- Sin investigar todavía: diferencia de colores del menú y rendimiento (el usuario percibe 30-40 fps con caídas).
