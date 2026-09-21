@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** work in progress. The game reaches and draws its main menu but is not yet playable.
+> **Status:** work in progress. The game runs at a steady 50 fps on PAL, shows the title screen and the main menu with its 3D background and Miis, but is not yet playable.
 
 ## About
 
@@ -10,14 +10,14 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
-The game runs natively on Windows and reaches its main menu (Party Games, Pair Games and House Party) with keyboard and mouse input. Parts of the interface are still missing because some GX features and all audio are not implemented yet, so it is not playable.
+The game runs natively on Windows and reaches its title screen and main menu (Party Games, Pair Games and House Party) with keyboard and mouse input. Menus, text, 3D backgrounds and Mii models are drawn, but panel colours differ from the real game, the image is rendered at the native 640x480 and stretched (so it looks pixelated), there is no audio and no minigame has been tried, so it is not playable yet.
 
 Working today:
 
 - **Recompilation:** the main executable (about 7350 functions) and all 115 REL modules are translated to C++ and compile into one native program of roughly 300 MB. The translator is covered by unit tests, and one game function (a red-black tree erase) is checked against the C++ standard library.
-- **Boot and system:** the Revolution OS initialisation, threads (as Windows fibers, including the game's own `setjmp`/`longjmp` coroutines), video retrace interrupts derived from the video mode, module loading and linking.
+- **Boot and system:** the Revolution OS initialisation, locked cache DMA, threads (as Windows fibers, including the game's own `setjmp`/`longjmp` coroutines), video retrace interrupts derived from the video mode, module loading and linking.
 - **Disc and storage:** disc reads served from the extracted game files, IOS requests emulated at request level, and a virtual NAND with a default `SYSCONF` (English, widescreen).
-- **Graphics:** the GX command stream is decoded and rendered with Direct3D 11: vertex formats, transforms, an ubershader for the TEV stages, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, palette formats C4, C8 and C14X2, CMPR), blending, depth, scissor and EFB copies to the framebuffer and to textures.
+- **Graphics:** the GX command stream is decoded and rendered with Direct3D 11: vertex formats, transforms, an ubershader for the TEV stages (including channel swap tables), display lists recorded through the FIFO, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, palette formats C4, C8 and C14X2, CMPR), blending, depth, scissor and EFB copies to the framebuffer and to textures.
 - **Window:** a resizable window that keeps the aspect ratio and shows the game code, build number, graphics API and video region in its title.
 - **Diagnostics:** environment variables such as `WP_LOG_GX`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP` and `WP_SAVE_FRAME`, a per-thread call trace, and a GDB client (`tools/dolphin_gdb.py`) to compare against a real Dolphin.
 
@@ -26,7 +26,7 @@ Not implemented yet:
 - Generic gamepads and real Wii Remotes (keyboard and mouse work).
 - Audio: the AX sound layer is stubbed, so the game is silent.
 - Graphics: lighting, indirect textures, lines and points, EFB copies in intensity formats, and internal resolution scaling.
-- Higher frame rates, online play and quality-of-life options.
+- Higher frame rates, internal resolution scaling, online play, quality-of-life options and a Galician translation (planned).
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`.
 

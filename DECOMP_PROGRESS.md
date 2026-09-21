@@ -218,3 +218,10 @@ Coste de compilación: cada alta de una función sustituida regenera `functions.
 - Cambios en `src/gx_render.cpp`: los dibujos consecutivos con el mismo estado (constantes de TEV, texturas, muestreadores, mezcla, profundidad y recorte) se acumulan y se envían con una sola llamada; el lote se vacía antes de cualquier copia del EFB, limpieza o sustitución de textura. Las texturas solo se consultan para los mapas que usan las etapas de TEV, y una textura ya comprobada en el fotograma actual no se vuelve a hashear.
 - Resultado medido con `WP_LOG_FPS=1`: 50 fps estables (el tope de PAL) en título, menú y escenas 3D durante 70 s (antes 6 fps en 3D).
 - Pixelado: la imagen se renderiza a 640x480 (resolución nativa) y se amplía con GDI sin filtrado. La solución prevista es resolución interna escalada (2x, 3x, 4x) y presentación por GPU; pendiente.
+
+## Objetivos y herramientas sugeridas por el usuario (2026-09-21)
+
+- Objetivo extra: lograr una traducción al gallego del juego (texto, sin distribuir recursos del juego).
+- Referencia visual real aportada por el usuario (Dolphin, PAL en español): el título tiene fondo rosa con Miis y animales 3D; en el menú principal los cinco tableros de Party Games son rojos, los de juegos en pareja amarillo anaranjado y House Party verde, con los Miis algo más pequeños que en nuestra versión. Los botones inferiores son morado, azul y amarillo.
+- WinDbg con Time Travel Debugging: útil para grabar un fallo del ejecutable y retroceder; limitaciones: el ejecutable se compila con GCC (símbolos DWARF que WinDbg lee mal), la traza de un emulador intensivo en CPU es enorme y ralentiza mucho la ejecución. Reservado para fallos difíciles de reproducir.
+- RenderDoc: captura de un fotograma de Direct3D 11 con sus llamadas, texturas, búferes y shaders. Encaja directamente con nuestro renderizador y es la herramienta prevista para el pixelado, los colores y las texturas.
