@@ -23,8 +23,8 @@ namespace {
 constexpr uint32_t kDisplayConfig = 0xCC002002;
 constexpr uint32_t kGameCodeAddress = 0x80000000;
 constexpr uint32_t kGameCodeLength = 6;
-constexpr int kWindowWidth = 1280;
-constexpr int kWindowHeight = 720;
+constexpr int kWindowWidth = 1920;
+constexpr int kWindowHeight = 1080;
 constexpr double kStandardAspect = 4.0 / 3.0;
 constexpr double kWideAspect = 16.0 / 9.0;
 constexpr const char* kWindowClass = "WiiPartyRecomp";
@@ -143,8 +143,18 @@ void window_thread() {
     window_class.lpszClassName = kWindowClass;
     RegisterClassA(&window_class);
     std::string title = window_title();
-    RECT rect{0, 0, kWindowWidth, kWindowHeight};
+    RECT work;
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &work, 0);
+    int client_width = kWindowWidth;
+    int client_height = kWindowHeight;
+    RECT rect{0, 0, client_width, client_height};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+    while ((rect.right - rect.left > work.right - work.left || rect.bottom - rect.top > work.bottom - work.top) && client_width > 320) {
+        client_width -= 16;
+        client_height = client_width * 9 / 16;
+        rect = {0, 0, client_width, client_height};
+        AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+    }
     HWND window = CreateWindowA(kWindowClass, title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
                                 CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr,
                                 window_class.hInstance, nullptr);

@@ -1,6 +1,7 @@
 #include "wp/ios.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -168,6 +169,12 @@ int32_t send(uint32_t request) {
     uint32_t command = rd32(request);
     int32_t descriptor = static_cast<int32_t>(rd32(request + 8));
     int32_t result = 0;
+    static const bool log_requests = std::getenv("WP_LOG_IOS") != nullptr;
+    if (log_requests) {
+        std::fprintf(stderr, "IOS request cmd=%u fd=%d a=%08x b=%08x c=%08x d=%08x", command, descriptor, rd32(request + 12), rd32(request + 16),
+                     rd32(request + 20), rd32(request + 24));
+        std::fputc(10, stderr);
+    }
     auto device = g_devices.find(descriptor);
     switch (command) {
     case kOpen:

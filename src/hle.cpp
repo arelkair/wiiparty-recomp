@@ -184,6 +184,11 @@ void ipc_deliver(Cpu& c) {
         PendingRequest pending = g_pending_ipc.front();
         g_pending_ipc.pop_front();
         uint32_t heap = rd32(c.r[13] + kIpcHeapSlot);
+        static const bool log_requests = std::getenv("WP_LOG_IOS") != nullptr;
+        if (log_requests) {
+            std::fprintf(stderr, "IOS complete request=%08x result=%d callback=%08x", pending.request, static_cast<int32_t>(pending.result), pending.callback);
+            std::fputc(10, stderr);
+        }
         if (pending.callback != 0) {
             c.r[3] = pending.result;
             c.r[4] = pending.argument;
