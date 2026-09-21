@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-LABEL = "progress"
+LABEL = "Progress"
 HEIGHT = 20
 CHAR_WIDTH = 6.6
 PADDING = 10
