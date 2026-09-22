@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays through the start of Board Game Island (for example), including a minigame, but it is not yet playable to the end of a turn.
+> **Status:** The game boots, reaches the menu and plays through the start of Board Game Island (for example), including a minigame, but it is not yet playable to the end of a turn. Overall progress is about 47% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -22,7 +22,7 @@ The overall figure is the equal-weight average of the components below. They are
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
 | System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD and NAND work; free of known blockers except finished fibers not freed |
-| Graphics (GX to Direct3D 11) | 65% | Menus, text, 3D models and Miis draw; no lighting, indirect textures, mipmaps or R8 copies; menu panel colors differ |
+| Graphics (GX to Direct3D 11) | 65% | Menus, text, 3D models and Miis draw with partial normal-based shading; no color-channel lighting, indirect textures, mipmaps or R8 copies; menu panel colors differ |
 | Input | 40% | Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes |
 | Audio | 0% | AX sound layer is stubbed; the game is silent |
 | Game flow | 35% | Reaches title, menu, Board Game Island, a minigame and the board turn; freezes when the first Mii moves |
@@ -32,7 +32,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 - **Recompilation:** the main executable (about 7,350 functions) and all 115 REL modules are translated to C++ and build into one native program of roughly 300 MB. Unit tests cover the translator; one game function is checked against the C++ standard library.
 - **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace and decrementer interrupts, OS alarms, module loading and linking, disc reads from the extracted files, IOS at request level and a virtual NAND. Real Mii databases (`RFL_DB.dat`) load.
-- **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, depth, scissor and EFB copies to textures.
+- **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, depth, scissor, EFB copies to textures, and texture coordinates generated from normals with per-vertex texture matrices and the dual texture transform.
 - **Window:** 4:3, native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain.
 - **Diagnostics:** `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
 
@@ -41,7 +41,8 @@ The overall figure is the equal-weight average of the components below. They are
 - The game freezes when the first Mii moves on the board. An object rotation angle grows without limit; the cause is under investigation.
 - The minigame is drawn incorrectly (upside down or black) and the barrel of the first minigame does not appear.
 - The dice show no pips.
-- Miis look flat: GX lighting is not implemented.
+- Miis still do not look like the real game. Normal-based shading is now applied, but GX color-channel lighting is not implemented and the result has not been compared with Dolphin.
+- An intermittent crash in the menu (`WPADGetInfoAsync` at `0x8017cd60` writes through an uninitialized controller queue) appears in some runs, depending on timing.
 - Text such as "Round 1" is not drawn.
 - The pictures in the board explanation are black rectangles.
 - Menu panel colors differ from the real game (blue instead of red, purple instead of orange). The game chooses a different color id; the source of that id is not found yet.
@@ -51,7 +52,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 - Audio: the AX sound layer is stubbed, so the game is silent.
 - Generic gamepads and real Wii Remotes.
-- GX: lighting, indirect textures, mipmaps, lines and points, EFB copies in intensity formats.
+- GX: color-channel lighting, indirect textures, mipmaps, lines and points, EFB copies in intensity formats.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`; planned features are in `FEATURES_QOL.md`.

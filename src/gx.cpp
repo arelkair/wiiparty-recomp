@@ -1,5 +1,6 @@
 #include "wp/gx.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -77,9 +78,11 @@ struct Layout {
 
 struct Vertex {
     float position[3] = {0, 0, 0};
+    float normal[3] = {0, 0, 1};
     float color[2][4] = {{1, 1, 1, 1}, {1, 1, 1, 1}};
     float texture[kTexCoordCount][2] = {};
     uint32_t position_matrix = 0;
+    uint32_t texture_matrix[kTexCoordCount] = {};
     bool has_color[2] = {false, false};
 };
 
@@ -226,6 +229,21 @@ float read_number(const uint8_t* p, uint32_t format, uint32_t shift) {
     return std::ldexp(value, -static_cast<int>(shift));
 }
 
+float read_normal_component(const uint8_t* p, uint32_t format) {
+    switch (format) {
+    case 0:
+        return std::ldexp(static_cast<float>(p[0]), -7);
+    case 1:
+        return std::ldexp(static_cast<float>(static_cast<int8_t>(p[0])), -6);
+    case 2:
+        return std::ldexp(static_cast<float>(be16(p)), -15);
+    case 3:
+        return std::ldexp(static_cast<float>(static_cast<int16_t>(be16(p))), -14);
+    default:
+        return bits_to_float(be32(p));
+    }
+}
+
 void read_color(const uint8_t* p, uint32_t format, float* out) {
     float r = 1, g = 1, b = 1, a = 1;
     switch (format) {
@@ -305,7 +323,13 @@ Vertex decode_vertex(const Layout& layout, const uint8_t*& stream) {
         vertex.position_matrix = stream[0] & 0x3F;
         stream++;
     }
-    stream += __builtin_popcount(layout.texture_matrices);
+    for (uint32_t i = 0; i < kTexCoordCount; i++) {
+        vertex.texture_matrix[i] = i < 4 ? (g_xf[0x1018] >> (6 + 6 * i)) & 0x3F : (g_xf[0x1019] >> (6 * (i - 4))) & 0x3F;
+        if (layout.texture_matrices & (1u << i)) {
+            vertex.texture_matrix[i] = stream[0] & 0x3F;
+            stream++;
+        }
+    }
     if (layout.position.mode != kNone) {
         const uint8_t* p = fetch(layout.position, 0, stream);
         uint32_t step = component_size(layout.position.format);
@@ -314,7 +338,11 @@ Vertex decode_vertex(const Layout& layout, const uint8_t*& stream) {
         }
     }
     if (layout.normal.mode != kNone) {
-        fetch(layout.normal, 1, stream);
+        const uint8_t* p = fetch(layout.normal, 1, stream);
+        uint32_t step = component_size(layout.normal.format);
+        vertex.normal[0] = read_normal_component(p, layout.normal.format);
+        vertex.normal[1] = read_normal_component(p + step, layout.normal.format);
+        vertex.normal[2] = read_normal_component(p + 2 * step, layout.normal.format);
     }
     for (uint32_t k = 0; k < 2; k++) {
         if (layout.color[k].mode != kNone) {
@@ -367,34 +395,66 @@ void transform_position(const Vertex& vertex, float* eye) {
 
 void generate_texture_coordinates(const Vertex& vertex, float out[8][2]) {
     uint32_t count = g_bp[0x00] & 15;
+    bool dual = (g_xf[0x1009] & 1) != 0;
     for (uint32_t i = 0; i < count && i < kTexCoordCount; i++) {
         uint32_t info = g_xf[0x1040 + i];
         uint32_t source = (info >> 7) & 31;
-        bool projected = (info & 1) != 0;
-        bool three = ((info >> 1) & 1) != 0;
-        float input[4] = {0, 0, 1, 1};
+        bool projected = ((info >> 1) & 1) != 0;
+        bool abc1 = ((info >> 2) & 1) != 0;
+        float input[3] = {0, 0, 1};
         if (source == 0) {
             input[0] = vertex.position[0];
             input[1] = vertex.position[1];
             input[2] = vertex.position[2];
+        } else if (source == 1) {
+            input[0] = vertex.normal[0];
+            input[1] = vertex.normal[1];
+            input[2] = vertex.normal[2];
         } else if (source >= 5 && source < 13) {
             input[0] = vertex.texture[source - 5][0];
             input[1] = vertex.texture[source - 5][1];
-            input[2] = three ? 0.0f : 1.0f;
         }
-        uint32_t index = i < 4 ? (g_xf[0x1018] >> (6 + 6 * i)) & 0x3F : (g_xf[0x1019] >> (6 * (i - 4))) & 0x3F;
-        uint32_t base = index * 4;
-        float s = xf_float(base) * input[0] + xf_float(base + 1) * input[1] + xf_float(base + 2) * input[2] + xf_float(base + 3);
-        float t = xf_float(base + 4) * input[0] + xf_float(base + 5) * input[1] + xf_float(base + 6) * input[2] + xf_float(base + 7);
-        if (projected) {
-            float q = xf_float(base + 8) * input[0] + xf_float(base + 9) * input[1] + xf_float(base + 10) * input[2] + xf_float(base + 11);
-            if (q != 0.0f) {
-                s /= q;
-                t /= q;
+        if (!abc1) {
+            input[2] = 1.0f;
+        }
+        uint32_t base = vertex.texture_matrix[i] * 4;
+        float coord[3];
+        for (uint32_t row = 0; row < 3; row++) {
+            uint32_t r = base + row * 4;
+            coord[row] = xf_float(r) * input[0] + xf_float(r + 1) * input[1] + xf_float(r + 2) * input[2] + xf_float(r + 3);
+        }
+        if (!projected) {
+            coord[2] = 1.0f;
+        }
+        if (dual) {
+            uint32_t post = g_xf[0x1050 + i];
+            if ((post >> 8) & 1) {
+                float length = std::sqrt(coord[0] * coord[0] + coord[1] * coord[1] + coord[2] * coord[2]);
+                if (length > 0.0f) {
+                    coord[0] /= length;
+                    coord[1] /= length;
+                    coord[2] /= length;
+                }
             }
+            uint32_t post_base = 0x500 + (post & 0x3F) * 4;
+            float result[3];
+            for (uint32_t row = 0; row < 3; row++) {
+                uint32_t r = post_base + row * 4;
+                result[row] = xf_float(r) * coord[0] + xf_float(r + 1) * coord[1] + xf_float(r + 2) * coord[2] + xf_float(r + 3);
+            }
+            coord[0] = result[0];
+            coord[1] = result[1];
+            coord[2] = result[2];
         }
-        out[i][0] = s;
-        out[i][1] = t;
+        if (coord[2] == 0.0f) {
+            coord[0] = std::clamp(coord[0] / 2.0f, -1.0f, 1.0f);
+            coord[1] = std::clamp(coord[1] / 2.0f, -1.0f, 1.0f);
+        } else {
+            coord[0] /= coord[2];
+            coord[1] /= coord[2];
+        }
+        out[i][0] = coord[0];
+        out[i][1] = coord[1];
     }
 }
 
