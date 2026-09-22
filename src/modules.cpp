@@ -126,4 +126,25 @@ void describe_loaded_modules(uint32_t address) {
     }
 }
 
+const char* module_name_at(uint32_t address) {
+    if (address >= 0x80000000u) {
+        return "dol";
+    }
+    const char* found = nullptr;
+    uint32_t info = rd32(kModuleListHead);
+    for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
+        const char* name = "?";
+        for (size_t m = 0; m < g_module_count; m++) {
+            if (g_module_table[m]->identifier == rd32(info + kInfoIdentifier)) {
+                name = g_module_table[m]->name;
+            }
+        }
+        if (found != nullptr) {
+            return "?";
+        }
+        found = name;
+    }
+    return found != nullptr ? found : "?";
+}
+
 }
