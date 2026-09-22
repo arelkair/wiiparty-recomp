@@ -21,7 +21,6 @@ constexpr uint8_t kTypeBigArray = 1;
 constexpr uint8_t kTypeSmallArray = 2;
 constexpr uint8_t kTypeByte = 3;
 constexpr uint8_t kTypeLong = 5;
-constexpr uint8_t kTypeBool = 7;
 constexpr uint8_t kLanguageEnglish = 1;
 
 fs::path g_root;
@@ -65,7 +64,7 @@ std::vector<uint8_t> default_sysconf() {
     add_item(items, kTypeByte, "IPL.PGS", {0});
     add_item(items, kTypeByte, "IPL.E60", {0});
     add_item(items, kTypeByte, "IPL.SSV", {1});
-    add_item(items, kTypeBool, "IPL.CB", {1});
+    add_item(items, kTypeLong, "IPL.CB", {0, 0, 0, 0});
     add_item(items, kTypeLong, "IPL.UPT", {0, 0, 0, 0});
     add_item(items, kTypeSmallArray, "IPL.IDL", {0, 1});
     add_item(items, kTypeSmallArray, "IPL.AREA", {'E', 'U', 'R', 0});
@@ -81,11 +80,12 @@ std::vector<uint8_t> default_sysconf() {
     file.push_back('v');
     file.push_back('0');
     append16(file, static_cast<uint16_t>(items.size()));
-    size_t position = 4 + 2 + 2 * items.size();
+    size_t position = 4 + 2 + 2 * (items.size() + 1);
     for (const auto& item : items) {
         append16(file, static_cast<uint16_t>(position));
         position += item.size();
     }
+    append16(file, static_cast<uint16_t>(position));
     for (const auto& item : items) {
         file.insert(file.end(), item.begin(), item.end());
     }
@@ -97,9 +97,40 @@ std::vector<uint8_t> default_sysconf() {
     return file;
 }
 
+uint16_t read16(const std::vector<uint8_t>& data, size_t offset) {
+    return static_cast<uint16_t>((data[offset] << 8) | data[offset + 1]);
+}
+
+bool valid_sysconf(const fs::path& path) {
+    std::FILE* file = std::fopen(path.string().c_str(), "rb");
+    if (!file) {
+        return false;
+    }
+    std::vector<uint8_t> data(kSysconfSize);
+    size_t count = std::fread(data.data(), 1, data.size(), file);
+    std::fclose(file);
+    if (count != kSysconfSize || std::memcmp(data.data(), "SCv0", 4) != 0 || std::memcmp(&data[kSysconfSize - 4], "SCed", 4) != 0) {
+        return false;
+    }
+    size_t entries = read16(data, 4);
+    size_t table_end = 6 + 2 * (entries + 1);
+    if (table_end > kSysconfSize - 4) {
+        return false;
+    }
+    size_t previous = table_end;
+    for (size_t i = 0; i <= entries; i++) {
+        size_t offset = read16(data, 6 + 2 * i);
+        if (offset < previous || offset > kSysconfSize - 4) {
+            return false;
+        }
+        previous = offset;
+    }
+    return true;
+}
+
 void ensure_sysconf() {
     fs::path path = host_path("/shared2/sys/SYSCONF");
-    if (fs::exists(path)) {
+    if (fs::exists(path) && valid_sysconf(path)) {
         return;
     }
     fs::create_directories(path.parent_path());

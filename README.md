@@ -26,14 +26,14 @@ The overall figure is the equal-weight average of the components below. They are
 | Input | 40% | Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes |
 | Audio | 0% | AX sound layer is stubbed; the game is silent |
 | Game flow | 35% | Reaches title, menu, Board Game Island, a minigame and the board turn; freezes when the first Mii moves |
-| PC features | 10% | Native resolution multiplier and 4:3 window only; launcher, options menu, ultrawide and online not started |
+| PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
 
 ### Working
 
 - **Recompilation:** the main executable (about 7,350 functions) and all 115 REL modules are translated to C++ and build into one native program of roughly 300 MB. Unit tests cover the translator; one game function is checked against the C++ standard library.
 - **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace and decrementer interrupts, OS alarms, module loading and linking, disc reads from the extracted files, IOS at request level and a virtual NAND. Real Mii databases (`RFL_DB.dat`) load.
 - **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, depth, scissor, EFB copies to textures, texture coordinates generated from normals with per-vertex texture matrices and the dual texture transform, and per-vertex color-channel lighting (adapted from Dolphin's software renderer, see `THIRD_PARTY_NOTICES.md`).
-- **Window:** 4:3, native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain.
+- **Window:** 16:9 when the virtual Wii is set to widescreen (the default, as in Dolphin), 4:3 otherwise; native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain.
 - **Diagnostics:** `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
 
 ### Known problems

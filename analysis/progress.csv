@@ -5,4 +5,4 @@ Graphics (GX to Direct3D 11),70,"Menus, text, 3D models and lit Miis draw; no in
 Input,40,"Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes"
 Audio,0,"AX sound layer is stubbed; the game is silent"
 Game flow,35,"Reaches title, menu, Board Game Island, a minigame and the board turn; freezes when the first Mii moves"
-PC features,10,"Native resolution multiplier and 4:3 window only; launcher, options menu, ultrawide and online not started"
+PC features,10,"Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started"
