@@ -36,6 +36,22 @@ constexpr uint32_t kDeviceNotFound = 0xFD;
 constexpr uint32_t kChannelCount = 4;
 constexpr const char* kSilentPrefix = "HleZero_";
 constexpr float kPointerHeightScale = 1.0f;
+constexpr uint32_t kWpadResetChannel = 0x8017afd0;
+constexpr uint32_t kOsCreateAlarm = 0x8013f780;
+constexpr uint32_t kWpadState = 0x802b62a0;
+constexpr uint32_t kWpadBlockTable = kWpadState + 0x30;
+constexpr uint32_t kWpadChannelFlags = kWpadState + 0x1040;
+constexpr uint32_t kWpadChannelFlagCount = 16;
+constexpr uint32_t kWpadBlocks = kWpadState + 0x1060;
+constexpr uint32_t kWpadBlockSize = 0xbe0;
+constexpr uint32_t kWpadBlockReset = 0x8e8;
+constexpr uint32_t kWpadBlockAlarm = 0x928;
+constexpr uint32_t kWpadBlockPending = 0xbae;
+constexpr uint32_t kWpadInfoSize = 0x18;
+constexpr uint32_t kWpadInfoBattery = 0x14;
+constexpr uint32_t kWpadInfoLed = 0x15;
+constexpr uint32_t kWpadFullBattery = 4;
+constexpr int32_t kWpadNoController = -1;
 uint32_t g_previous_buttons[kChannelCount] = {};
 
 struct PendingRequest {
@@ -49,6 +65,17 @@ struct PendingRequest {
 constexpr std::chrono::microseconds kIpcLatency(1000);
 
 std::deque<PendingRequest> g_pending_ipc;
+
+struct PendingWpadCallback {
+    uint32_t callback;
+    uint32_t channel;
+    int32_t result;
+    std::chrono::steady_clock::time_point ready;
+};
+
+constexpr std::chrono::milliseconds kWpadLatency(10);
+
+std::deque<PendingWpadCallback> g_pending_wpad;
 
 struct Replacement {
     const char* name;
@@ -131,6 +158,55 @@ void kpad_read(Cpu& c) {
     c.r[3] = samples;
 }
 
+void wpad_init(Cpu& c) {
+    for (uint32_t i = 0; i < kWpadChannelFlagCount; i++) {
+        wr8(kWpadChannelFlags + i, 0xFF);
+    }
+    for (uint32_t channel = 0; channel < kChannelCount; channel++) {
+        uint32_t block = kWpadBlocks + channel * kWpadBlockSize;
+        wr32(kWpadBlockTable + 4 * channel, block);
+        wr32(block + kWpadBlockReset, 0);
+        c.r[3] = channel;
+        call(c, kWpadResetChannel);
+        c.r[3] = block + kWpadBlockAlarm;
+        call(c, kOsCreateAlarm);
+        wr8(block + kWpadBlockPending, 0);
+    }
+}
+
+void wpad_get_info_async(Cpu& c) {
+    uint32_t channel = c.r[3];
+    uint32_t info = c.r[4];
+    uint32_t callback = c.r[5];
+    bool present = channel < kChannelCount && input::connected(channel);
+    if (!present) {
+        if (callback != 0) {
+            c.r[3] = channel;
+            c.r[4] = static_cast<uint32_t>(kWpadNoController);
+            call(c, callback);
+        }
+        c.r[3] = static_cast<uint32_t>(kWpadNoController);
+        return;
+    }
+    if (info != 0) {
+        std::memset(host(info), 0, kWpadInfoSize);
+        wr8(info + kWpadInfoBattery, kWpadFullBattery);
+        wr8(info + kWpadInfoLed, 1u << channel);
+    }
+    if (callback != 0) {
+        g_pending_wpad.push_back({callback, channel, 0, std::chrono::steady_clock::now() + kWpadLatency});
+    }
+    c.r[3] = 0;
+}
+
+bool wpad_pending() {
+    return !g_pending_wpad.empty() && g_pending_wpad.front().ready <= std::chrono::steady_clock::now();
+}
+
+bool request_pending() {
+    return !g_pending_ipc.empty() && g_pending_ipc.front().ready <= std::chrono::steady_clock::now();
+}
+
 void wpad_probe(Cpu& c) {
     uint32_t channel = c.r[3];
     uint32_t type = c.r[4];
@@ -168,24 +244,32 @@ const Replacement kReplacements[] = {
     {"IOSSendRequest", ios_send},
     {"OSReport", os_report},
     {"OSPanic", os_panic},
-    {"WPADInit", do_nothing},
-    {"KPADInit", do_nothing},
+    {"WPADInit", wpad_init},
+    {"KPADInit", wpad_init},
     {"OSLoadContext", load_context},
     {"OSSwitchFiber", switch_fiber},
     {"longjmp", long_jump},
     {"GXDrawDone", gx_draw_done},
     {"KPADReadEx", kpad_read},
     {"WPADProbe", wpad_probe},
+    {"WPADGetInfoAsync", wpad_get_info_async},
 };
 
 }
 
 bool ipc_pending() {
-    return !g_pending_ipc.empty() && g_pending_ipc.front().ready <= std::chrono::steady_clock::now();
+    return request_pending() || wpad_pending();
 }
 
 void ipc_deliver(Cpu& c) {
-    while (ipc_pending()) {
+    while (wpad_pending()) {
+        PendingWpadCallback pending = g_pending_wpad.front();
+        g_pending_wpad.pop_front();
+        c.r[3] = pending.channel;
+        c.r[4] = static_cast<uint32_t>(pending.result);
+        call(c, pending.callback);
+    }
+    while (request_pending()) {
         PendingRequest pending = g_pending_ipc.front();
         g_pending_ipc.pop_front();
         uint32_t heap = rd32(c.r[13] + kIpcHeapSlot);

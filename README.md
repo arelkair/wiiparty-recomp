@@ -42,7 +42,6 @@ The overall figure is the equal-weight average of the components below. They are
 - The minigame is drawn incorrectly (upside down or black) and the barrel of the first minigame does not appear.
 - The dice show no pips.
 - Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked.
-- An intermittent crash in the menu (`WPADGetInfoAsync` at `0x8017cd60` writes through an uninitialized controller queue) appears in some runs, depending on timing.
 - Text such as "Round 1" is not drawn.
 - The pictures in the board explanation are black rectangles.
 - Menu panel colors differ from the real game (blue instead of red, purple instead of orange). The game chooses a different color id; the source of that id is not found yet.
