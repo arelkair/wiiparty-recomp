@@ -4,11 +4,19 @@ The original code of this project is licensed under GPL-3.0-or-later (see `LICEN
 
 ## Status
 
-No third-party source code has been incorporated into this repository. This file records what was reviewed and what is still pending. It is not a legal audit.
+One adapted third-party component is included (see below). This file records what was reviewed and what is still pending. It is not a legal audit.
 
 ## Third-party code included in the repository
 
-None.
+### GX lighting from the Dolphin Emulator software renderer
+
+- Repository files: `src/gx_lighting.cpp` and `include/wp/gx_lighting.h`. They are kept apart from the project's own code and carry the upstream copyright line and SPDX identifier.
+- Upstream file: `Source/Core/VideoBackends/Software/TransformUnit.cpp` of the Dolphin Emulator, from a source snapshot of version 2606 (taken from `CMake/ScmRevGen.cmake` in the local copy under `reference/dolphin-source`; the snapshot has no Git metadata, so the exact commit is not known).
+- Parts adapted: `TransformNormal`, `SafeDivide`, `CalculateLightAttn`, `LightColor`, `LightAlpha` and the channel logic of `TransformColor`. The register layout was read from `Source/Core/VideoCommon/XFMemory.h` (same snapshot); no code from that file was copied.
+- Copyright: "Copyright 2009 Dolphin Emulator Project", as stated in the upstream file header.
+- License: `SPDX-License-Identifier: GPL-2.0-or-later`, as stated in the upstream file header. Dolphin's `COPYING` and `LICENSES/GPL-2.0-or-later.txt` confirm it. GPL-2.0-or-later code may be used under GPL-3.0-or-later, so it is compatible with this project.
+- Dependencies: none copied. Dolphin's `Common::Vec3`, logging, assertion and memory types were replaced by small local equivalents; no other Dolphin file is included.
+- Changes (2026-09-22, this project): reads lights and channel registers from this project's flat XF register array instead of Dolphin's `XFMemory` struct; works on RGBA bytes instead of Dolphin's ABGR layout; removes the panic alerts; returns the normal instead of dividing by zero when its length is zero; exposes two functions (`transform_normal`, `light_channels`) used by `src/gx.cpp`.
 
 ## Rules for adding third-party code
 
@@ -28,7 +36,7 @@ Nothing from these has been copied. License information was read from the files 
 
 | Project | License as stated by the project | Status |
 | --- | --- | --- |
-| Dolphin Emulator | Its `COPYING` says most original code is GPLv2+, that parts derive from other projects with stronger or weaker terms, and that the whole is compatible with GPLv3. | Identified. Not audited file by file. |
+| Dolphin Emulator | Its `COPYING` says most original code is GPLv2+, that parts derive from other projects with stronger or weaker terms, and that the whole is compatible with GPLv3. | `TransformUnit.cpp` audited and adapted (see above). The rest is not audited file by file. |
 | WiiCompiled (Mario Kart Wii) | GPLv3 (`LICENSE`), with its own `THIRD-PARTY-NOTICES.md` listing bundled components. | Identified. Not audited file by file. |
 | Aurora | MIT (license file present in the WiiCompiled tree that vendors it). Aurora itself vendors other components with their own licenses. | Identified. Not audited. |
 | RecompCore | Described as a Dolphin fork; its license files have not been read. | Identified only. License unverified. |

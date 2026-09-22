@@ -8,6 +8,7 @@
 #include <cstring>
 #include <vector>
 
+#include "wp/gx_lighting.h"
 #include "wp/gx_render.h"
 #include "wp/memory.h"
 
@@ -364,21 +365,28 @@ Vertex decode_vertex(const Layout& layout, const uint8_t*& stream) {
     return vertex;
 }
 
-float material_component(uint32_t value, uint32_t index) {
-    return static_cast<float>((value >> (24 - 8 * index)) & 0xFF) / 255.0f;
+uint8_t color_byte(float value) {
+    return static_cast<uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
 }
 
-void rasterize_colors(const Vertex& vertex, float out[2][4]) {
+void rasterize_colors(const Vertex& vertex, const float* eye, float out[2][4]) {
+    uint8_t vertex_color[2][4];
     for (uint32_t k = 0; k < 2; k++) {
-        uint32_t color_control = g_xf[0x100E + k];
-        uint32_t alpha_control = g_xf[0x1010 + k];
         uint32_t material = g_xf[0x100C + k];
-        bool color_from_vertex = (color_control & 1) != 0 && vertex.has_color[k];
-        bool alpha_from_vertex = (alpha_control & 1) != 0 && vertex.has_color[k];
-        for (uint32_t i = 0; i < 3; i++) {
-            out[k][i] = color_from_vertex ? vertex.color[k][i] : material_component(material, i);
+        for (uint32_t i = 0; i < 4; i++) {
+            vertex_color[k][i] = vertex.has_color[k] ? color_byte(vertex.color[k][i]) : static_cast<uint8_t>(material >> (24 - 8 * i));
         }
-        out[k][3] = alpha_from_vertex ? vertex.color[k][3] : material_component(material, 3);
+    }
+    float normal[3] = {0, 0, 1};
+    if ((g_xf[0x100E] | g_xf[0x100F] | g_xf[0x1010] | g_xf[0x1011]) & 2) {
+        lighting::transform_normal(g_xf, vertex.position_matrix, vertex.normal, normal);
+    }
+    uint8_t result[2][4];
+    lighting::light_channels(g_xf, eye, normal, vertex_color, result);
+    for (uint32_t k = 0; k < 2; k++) {
+        for (uint32_t i = 0; i < 4; i++) {
+            out[k][i] = static_cast<float>(result[k][i]) / 255.0f;
+        }
     }
 }
 
@@ -395,7 +403,7 @@ void transform_position(const Vertex& vertex, float* eye) {
 
 void generate_texture_coordinates(const Vertex& vertex, float out[8][2]) {
     uint32_t count = g_bp[0x00] & 15;
-    bool dual = (g_xf[0x1009] & 1) != 0;
+    bool dual = (g_xf[0x1012] & 1) != 0;
     for (uint32_t i = 0; i < count && i < kTexCoordCount; i++) {
         uint32_t info = g_xf[0x1040 + i];
         uint32_t source = (info >> 7) & 31;
@@ -504,7 +512,7 @@ Prepared prepare(const Vertex& vertex) {
     prepared.vertex.x = screen[0];
     prepared.vertex.y = screen[1];
     prepared.vertex.z = screen[2];
-    rasterize_colors(vertex, prepared.vertex.color);
+    rasterize_colors(vertex, eye, prepared.vertex.color);
     generate_texture_coordinates(vertex, prepared.vertex.uv);
     return prepared;
 }

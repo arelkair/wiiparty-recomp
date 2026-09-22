@@ -11,7 +11,7 @@ set(WP_BUILD "2609-001" CACHE STRING "Build number shown in the window title")
 
 option(WP_TRACE "Record function entries for diagnostics" ON)
 
-add_library(wp_runtime STATIC src/runtime.cpp src/dol.cpp src/boot.cpp src/hle.cpp src/ios.cpp src/interrupts.cpp src/threads.cpp src/format.cpp src/disc.cpp src/modules.cpp src/nand.cpp src/video.cpp src/gx.cpp src/gx_render.cpp src/input.cpp src/audio.cpp)
+add_library(wp_runtime STATIC src/runtime.cpp src/dol.cpp src/boot.cpp src/hle.cpp src/ios.cpp src/interrupts.cpp src/threads.cpp src/format.cpp src/disc.cpp src/modules.cpp src/nand.cpp src/video.cpp src/gx.cpp src/gx_lighting.cpp src/gx_render.cpp src/input.cpp src/audio.cpp)
 target_include_directories(wp_runtime PUBLIC include)
 target_compile_definitions(wp_runtime PRIVATE WP_BUILD="${WP_BUILD}")
 target_link_libraries(wp_runtime PUBLIC gdi32 user32 d3d11 d3dcompiler dxgi)
