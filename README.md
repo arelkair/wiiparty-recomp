@@ -42,6 +42,7 @@ The overall figure is the equal-weight average of the components below. They are
 - The gold, silver and bronze bonus dice above the Miis after a minigame show no pips.
 - The Miis that cheer at the sides when something good happens are drawn without heads.
 - Some minigames may still be drawn incorrectly; not all have been checked.
+- Audio: about two 3 ms buffers per second can end with ~1 ms of stale samples when the game answers the audio interrupt late (the rest matches Dolphin sample for sample). Minigame sound has not been checked.
 
 ### Not implemented
 
