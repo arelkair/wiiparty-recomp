@@ -133,11 +133,9 @@ Sample sample(uint32_t channel) {
     }
     POINT cursor;
     RECT client;
-    if (GetCursorPos(&cursor) && ScreenToClient(window, &cursor) && GetClientRect(window, &client) && client.right > 0 &&
-        client.bottom > 0 && cursor.x >= 0 && cursor.y >= 0 && cursor.x < client.right && cursor.y < client.bottom) {
+    if (GetCursorPos(&cursor) && ScreenToClient(window, &cursor) && GetClientRect(window, &client) &&
+        video::image_point(cursor.x, cursor.y, client.right, client.bottom, result.pointer_x, result.pointer_y)) {
         result.pointer_valid = true;
-        result.pointer_x = static_cast<float>(cursor.x) / client.right * 2.0f - 1.0f;
-        result.pointer_y = static_cast<float>(cursor.y) / client.bottom * 2.0f - 1.0f;
     }
     return result;
 }

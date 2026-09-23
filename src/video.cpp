@@ -179,6 +179,28 @@ void* window_handle() {
     return g_window.load();
 }
 
+bool image_point(long x, long y, long client_width, long client_height, float& out_x, float& out_y) {
+    if (client_width <= 0 || client_height <= 0) {
+        return false;
+    }
+    double width = client_width;
+    double height = width / g_aspect;
+    if (height > client_height) {
+        height = client_height;
+        width = height * g_aspect;
+    }
+    double left = (client_width - width) / 2;
+    double top = (client_height - height) / 2;
+    double u = (x - left) / width;
+    double v = (y - top) / height;
+    if (u < 0.0 || u >= 1.0 || v < 0.0 || v >= 1.0) {
+        return false;
+    }
+    out_x = static_cast<float>(u * 2.0 - 1.0);
+    out_y = static_cast<float>(v * 2.0 - 1.0);
+    return true;
+}
+
 void present() {
     gx::process();
     HWND window = g_window;

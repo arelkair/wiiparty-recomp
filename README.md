@@ -22,10 +22,10 @@ The overall figure is the equal-weight average of the components below. They are
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
 | System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD and NAND work; free of known blockers except finished fibers not freed |
-| Graphics (GX to Direct3D 11) | 74% | Menus, text, 3D models and lit Miis draw with correct RGBA8 colors, mipmaps and texture filtering; no indirect textures or R8 copies |
+| Graphics (GX to Direct3D 11) | 74% | Menus, text, 3D models and lit Miis draw with correct RGBA8 colors, mipmaps, texture filtering and EFB copies in every format; no indirect textures |
 | Input | 40% | Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes |
 | Audio | 0% | AX sound layer is stubbed; the game is silent |
-| Game flow | 35% | Reaches title, menu, Board Game Island, a minigame and the board turn; freezes when the first Mii moves |
+| Game flow | 45% | Plays a full Board Game Island round: minigame, results, dice rolls and board moves, up to the next minigame |
 | PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
 
 ### Working
@@ -38,11 +38,10 @@ The overall figure is the equal-weight average of the components below. They are
 
 ### Known problems
 
-- The game freezes when the first Mii moves on the board. An object rotation angle grows without limit; the cause is under investigation.
 - The minigame is drawn incorrectly (upside down or black) and the barrel of the first minigame does not appear.
-- The dice show no pips.
 - Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked.
-- Text such as "Round 1" is not drawn.
+- Text such as "Round 1" is not drawn: the translucent band appears, the text does not.
+- The Wii Remote pointer uses a different horizontal range in widescreen, so the game cursor is not yet under the mouse, and the game does not draw its hand cursor.
 - The pictures in the board explanation are black rectangles.
 - `unsupported EFB copy format 8` (R8 EFB copy) is logged.
 
@@ -50,7 +49,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 - Audio: the AX sound layer is stubbed, so the game is silent.
 - Generic gamepads and real Wii Remotes.
-- GX: indirect textures, lines and points, EFB copies in intensity formats.
+- GX: indirect textures, lines and points, depth (Z) EFB copies.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`; planned features are in `FEATURES_QOL.md`.

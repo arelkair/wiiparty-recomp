@@ -647,7 +647,7 @@ void execute_copy(uint32_t value) {
         uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
         uint32_t coded = (value >> 3) & 15;
         uint32_t format = coded / 2 + (coded & 1) * 8;
-        render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format);
+        render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format, (value & (1u << 15)) != 0);
     }
     if (value & kCopyClear) {
         render::clear();

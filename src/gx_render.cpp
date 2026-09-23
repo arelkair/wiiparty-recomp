@@ -48,6 +48,46 @@ float4 pixel_main(Output input) : SV_Target {
 }
 )HLSL";
 
+const char* kCopyShaderSource = R"HLSL(
+Texture2D source : register(t0);
+SamplerState source_sampler : register(s0);
+
+cbuffer CopyConstants : register(b0) {
+    uint4 params;
+};
+
+float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    uint4 raw = uint4(round(saturate(source.Sample(source_sampler, uv)) * 255.0));
+    if (params.y != 0) {
+        const float4 y_const = float4(66, 129, 25, 16);
+        const float4 u_const = float4(-38, -74, 112, 128);
+        const float4 v_const = float4(112, -94, -18, 128);
+        uint3 yuv = uint3(dot(y_const, float4(raw.rgb, 256)), dot(u_const, float4(raw.rgb, 256)), dot(v_const, float4(raw.rgb, 256)));
+        raw.rgb = min((yuv >> 8) + ((yuv >> 7) & 1u), uint3(255, 255, 255));
+    }
+    float4 value = float4(raw) / 255.0;
+    switch (params.x) {
+    case 0: {
+        float red = float(raw.r & 0xF0u) / 240.0;
+        return float4(red, red, red, red);
+    }
+    case 1:
+    case 8: return value.rrrr;
+    case 2: {
+        float2 red_alpha = float2(raw.ra & 0xF0u) / 240.0;
+        return red_alpha.rrrg;
+    }
+    case 3: return value.rrra;
+    case 7: return value.aaaa;
+    case 9: return value.gggg;
+    case 10: return value.bbbb;
+    case 11: return value.rrrg;
+    case 12: return value.gggb;
+    default: return value;
+    }
+}
+)HLSL";
+
 const char* kShaderSource = R"HLSL(
 cbuffer Constants : register(b0) {
     float4 initial[4];
@@ -340,6 +380,12 @@ struct CachedTexture {
 
 struct CopiedTexture {
     ID3D11Texture2D* texture = nullptr;
+    ID3D11ShaderResourceView* raw_view = nullptr;
+    ID3D11Texture2D* converted = nullptr;
+    ID3D11ShaderResourceView* converted_view = nullptr;
+    ID3D11RenderTargetView* converted_target = nullptr;
+    uint32_t converted_width = 0;
+    uint32_t converted_height = 0;
     ID3D11ShaderResourceView* view = nullptr;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -372,6 +418,8 @@ struct Device {
     ID3D11VertexShader* present_vertex = nullptr;
     ID3D11PixelShader* present_pixel = nullptr;
     ID3D11SamplerState* present_sampler = nullptr;
+    ID3D11PixelShader* copy_pixel = nullptr;
+    ID3D11Buffer* copy_constants = nullptr;
     ID3D11RasterizerState* present_rasterizer = nullptr;
     ID3D11RasterizerState* rasterizer = nullptr;
     std::map<uint32_t, ID3D11BlendState*> blend_states;
@@ -788,7 +836,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     const uint8_t* source = host(address);
     auto copied = g_device.copies.find(address);
     if (copied != g_device.copies.end() && copied->second.logical_width == width && copied->second.logical_height == height &&
-        (format == 4 || format == 5 || format == 6) && copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
+        format <= 6 && copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
         return copied->second.view;
     }
     uint64_t key = (static_cast<uint64_t>(address) << 20) ^ (static_cast<uint64_t>(width) << 8) ^ (static_cast<uint64_t>(height) << 32) ^ format ^
@@ -1152,16 +1200,98 @@ void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes) {
     std::memcpy(g_tlut + tmem_offset, host(address), bytes);
 }
 
-void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format) {
+bool create_present_pipeline();
+
+void release_copy(CopiedTexture& entry) {
+    release(entry.raw_view);
+    release(entry.texture);
+    release(entry.converted_target);
+    release(entry.converted_view);
+    release(entry.converted);
+    entry.view = nullptr;
+}
+
+uint32_t copy_bits(uint32_t format) {
+    switch (format) {
+    case 0:
+        return 4;
+    case 1:
+    case 2:
+    case 7:
+    case 8:
+    case 9:
+    case 10:
+        return 8;
+    case 6:
+        return 32;
+    default:
+        return 16;
+    }
+}
+
+bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity) {
+    if (!create_present_pipeline()) {
+        return false;
+    }
+    uint32_t target_width = std::max(1u, entry.logical_width * g_scale);
+    uint32_t target_height = std::max(1u, entry.logical_height * g_scale);
+    if (!entry.converted || entry.converted_width != target_width || entry.converted_height != target_height) {
+        release(entry.converted_target);
+        release(entry.converted_view);
+        release(entry.converted);
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = target_width;
+        description.Height = target_height;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &entry.converted)) ||
+            FAILED(g_device.device->CreateShaderResourceView(entry.converted, nullptr, &entry.converted_view)) ||
+            FAILED(g_device.device->CreateRenderTargetView(entry.converted, nullptr, &entry.converted_target))) {
+            return false;
+        }
+        entry.converted_width = target_width;
+        entry.converted_height = target_height;
+    }
+    ID3D11DeviceContext* context = g_device.context;
+    uint32_t params[4] = {format, intensity ? 1u : 0u, 0, 0};
+    context->UpdateSubresource(g_device.copy_constants, 0, nullptr, params, 0, 0);
+    context->OMSetRenderTargets(1, &entry.converted_target, nullptr);
+    D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target_width), static_cast<float>(target_height), 0.0f, 1.0f};
+    context->RSSetViewports(1, &viewport);
+    context->RSSetState(g_device.present_rasterizer);
+    context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+    context->OMSetDepthStencilState(nullptr, 0);
+    context->IASetInputLayout(nullptr);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(g_device.present_vertex, nullptr, 0);
+    context->PSSetShader(g_device.copy_pixel, nullptr, 0);
+    context->PSSetConstantBuffers(0, 1, &g_device.copy_constants);
+    context->PSSetShaderResources(0, 1, &entry.raw_view);
+    context->PSSetSamplers(0, 1, &g_device.present_sampler);
+    context->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    context->PSSetShaderResources(0, 1, &none);
+    return true;
+}
+
+void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity) {
     if (!initialize()) {
         return;
     }
-    if (format != 4 && format != 5 && format != 6) {
+    if (format > 12) {
         if (!g_logged_copy_format) {
             g_logged_copy_format = true;
             std::fprintf(stderr, "unsupported EFB copy format %u\n", format);
         }
-        g_device.copies.erase(address);
+        auto stale = g_device.copies.find(address);
+        if (stale != g_device.copies.end()) {
+            release_copy(stale->second);
+            g_device.copies.erase(stale);
+        }
         return;
     }
     x = std::max(0, x);
@@ -1178,7 +1308,7 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     uint32_t physical_width = w * g_scale;
     uint32_t physical_height = h * g_scale;
     if (!entry.texture || entry.width != physical_width || entry.height != physical_height) {
-        release(entry.view);
+        release(entry.raw_view);
         release(entry.texture);
         D3D11_TEXTURE2D_DESC description{};
         description.Width = physical_width;
@@ -1190,9 +1320,8 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
         description.Usage = D3D11_USAGE_DEFAULT;
         description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &entry.texture)) ||
-            FAILED(g_device.device->CreateShaderResourceView(entry.texture, nullptr, &entry.view))) {
-            release(entry.view);
-            release(entry.texture);
+            FAILED(g_device.device->CreateShaderResourceView(entry.texture, nullptr, &entry.raw_view))) {
+            release_copy(entry);
             g_device.copies.erase(address);
             return;
         }
@@ -1203,7 +1332,16 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     g_device.context->CopySubresourceRegion(entry.texture, 0, 0, 0, 0, g_device.target, 0, &box);
     entry.logical_width = half ? std::max(1u, w / 2) : w;
     entry.logical_height = half ? std::max(1u, h / 2) : h;
-    entry.bytes = entry.logical_width * entry.logical_height * (format == 6 ? 4 : 2);
+    entry.view = entry.raw_view;
+    if (format != 4 && format != 5 && format != 6) {
+        if (!convert_copy(entry, format, intensity)) {
+            release_copy(entry);
+            g_device.copies.erase(address);
+            return;
+        }
+        entry.view = entry.converted_view;
+    }
+    entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
     entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
 }
 
@@ -1249,6 +1387,9 @@ void copy_to_framebuffer(int x, int y, int width, int height) {
 }
 
 bool create_present_pipeline() {
+    if (g_device.present_vertex && g_device.copy_pixel && g_device.present_sampler) {
+        return true;
+    }
     ID3DBlob* vertex_code = nullptr;
     ID3DBlob* pixel_code = nullptr;
     if (!compile(kPresentShaderSource, "vertex_main", "vs_5_0", &vertex_code) || !compile(kPresentShaderSource, "pixel_main", "ps_5_0", &pixel_code)) {
@@ -1258,6 +1399,18 @@ bool create_present_pipeline() {
               SUCCEEDED(g_device.device->CreatePixelShader(pixel_code->GetBufferPointer(), pixel_code->GetBufferSize(), nullptr, &g_device.present_pixel));
     release(vertex_code);
     release(pixel_code);
+    ID3DBlob* copy_code = nullptr;
+    if (ok && compile(kCopyShaderSource, "pixel_main", "ps_5_0", &copy_code)) {
+        ok = SUCCEEDED(g_device.device->CreatePixelShader(copy_code->GetBufferPointer(), copy_code->GetBufferSize(), nullptr, &g_device.copy_pixel));
+        release(copy_code);
+        D3D11_BUFFER_DESC constants{};
+        constants.ByteWidth = 16;
+        constants.Usage = D3D11_USAGE_DEFAULT;
+        constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        ok = ok && SUCCEEDED(g_device.device->CreateBuffer(&constants, nullptr, &g_device.copy_constants));
+    } else {
+        ok = false;
+    }
     if (!ok) {
         return false;
     }
