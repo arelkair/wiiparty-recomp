@@ -676,7 +676,7 @@ std::vector<uint32_t> decode_texture(const uint8_t* data, uint32_t width, uint32
                         break;
                     case 6: {
                         uint32_t index = (y * 4 + x) * 2;
-                        pixel = rgba(block[32 + index], block[32 + index + 1], block[index + 1], block[index]);
+                        pixel = rgba(block[index + 1], block[32 + index], block[32 + index + 1], block[index]);
                         break;
                     }
                     case 8:

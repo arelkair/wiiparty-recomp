@@ -22,7 +22,7 @@ The overall figure is the equal-weight average of the components below. They are
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
 | System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD and NAND work; free of known blockers except finished fibers not freed |
-| Graphics (GX to Direct3D 11) | 70% | Menus, text, 3D models and lit Miis draw; no indirect textures, mipmaps or R8 copies; menu panel colors differ |
+| Graphics (GX to Direct3D 11) | 72% | Menus, text, 3D models and lit Miis draw with correct RGBA8 colors; no indirect textures, mipmaps or R8 copies |
 | Input | 40% | Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes |
 | Audio | 0% | AX sound layer is stubbed; the game is silent |
 | Game flow | 35% | Reaches title, menu, Board Game Island, a minigame and the board turn; freezes when the first Mii moves |
@@ -44,7 +44,6 @@ The overall figure is the equal-weight average of the components below. They are
 - Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked.
 - Text such as "Round 1" is not drawn.
 - The pictures in the board explanation are black rectangles.
-- Menu panel colors differ from the real game (blue instead of red, purple instead of orange). The game chooses a different color id; the source of that id is not found yet.
 - `unsupported EFB copy format 8` (R8 EFB copy) is logged.
 
 ### Not implemented
