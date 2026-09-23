@@ -189,13 +189,13 @@ public:
   void nr(UDSPInstruction opc);
   void nop_ext(UDSPInstruction opc);
 
+  // See: DspIntBranch.cpp
+  void HandleLoop();
+
 private:
   void ExecuteInstruction(UDSPInstruction inst);
 
   bool CheckCondition(u8 condition) const;
-
-  // See: DspIntBranch.cpp
-  void HandleLoop();
 
   u16 IncrementAddressRegister(u16 reg) const;
   u16 DecrementAddressRegister(u16 reg) const;

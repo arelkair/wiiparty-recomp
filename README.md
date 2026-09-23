@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 61% (estimate, see below).
+> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 63% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -24,7 +24,7 @@ The overall figure is the equal-weight average of the components below. They are
 | System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD, NAND and Bluetooth work; free of known blockers |
 | Graphics (GX to Direct3D 11) | 80% | Menus, text, cursor, 3D models and lit Miis with correct faces draw with correct colors, paletted textures, mipmaps, filtering, TEV compare modes and EFB copies in every format; no indirect textures |
 | Input | 55% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons; no motion, gamepads or real Wii Remotes |
-| Audio | 45% | The original AX microcode runs on an emulated DSP (Dolphin interpreter) with WASAPI output; microcode recompilation and checks in minigames pending |
+| Audio | 60% | The original AX microcode is recompiled to C++ (checked instruction by instruction against Dolphin's DSP interpreter) and runs in lockstep with the CPU, WASAPI output; minigames not checked |
 | Game flow | 55% | Plays Board Game Island through a full first round (minigame, results, dice, board events, 1 vs 3 minigame) into the second round |
 | PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
 
@@ -86,12 +86,13 @@ Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (f
 
    ```
    python tools/recomp.py
+   python tools/dsp/recomp_dsp.py
    cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
    cmake --build build/out
    ctest --test-dir build/out
    ```
 
-   `tools/recomp.py` reads `analysis/dol_functions.csv` and writes the generated sources to `build/recomp/`. Game modules are translated separately with `python tools/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/rel_code/`; run `tools/recomp.py` again afterwards so the DOL provides every function the modules call.
+   `tools/recomp.py` reads `analysis/dol_functions.csv` and writes the generated sources to `build/recomp/`. `tools/dsp/recomp_dsp.py` extracts the audio DSP microcode listed in `analysis/dsp_ucode.csv` from the DOL and translates it to C++ in `build/dsp_recomp/`; without it the DSP runs on the interpreter. Game modules are translated separately with `python tools/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/rel_code/`; run `tools/recomp.py` again afterwards so the DOL provides every function the modules call.
 
    Run the result with `build/out/wiiparty extracted [seconds] [nand directory]`. It opens a window that shows the console framebuffer; `seconds` is an optional watchdog that stops the process after that long (0 or omitted means no limit) and `WP_HEADLESS=1` runs without a window. The virtual NAND (settings and saves) lives in `game/nand`.
 

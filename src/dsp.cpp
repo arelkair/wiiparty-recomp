@@ -11,6 +11,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
+
+#include "Common/ChunkFile.h"
 
 #include "Core/DSP/DSPCore.h"
 #include "Core/DSP/DSPHost.h"
@@ -18,6 +21,7 @@
 #include "Core/DSP/Interpreter/DSPInterpreter.h"
 #include "wp/audio.h"
 #include "wp/cpu.h"
+#include "wp/dsp_translated.h"
 #include "wp/log.h"
 #include "wp/memory.h"
 
@@ -63,6 +67,7 @@ constexpr double kMaxLag = 0.02;
 constexpr int kSlice = 512;
 constexpr int kMailSlice = 512;
 constexpr uint32_t kFramesPerBlock = 8;
+constexpr uint16_t kIramWords = 0x1000;
 
 using Clock = std::chrono::steady_clock;
 
@@ -103,6 +108,47 @@ double g_owed = 0.0;
 Clock::time_point g_last_update = Clock::now();
 Statistics g_statistics;
 bool g_log = std::getenv("WP_LOG_DSP") != nullptr;
+bool g_force_interpreter = std::getenv("WP_DSP_INTERPRETER") != nullptr;
+bool g_verify = std::getenv("WP_DSP_VERIFY") != nullptr;
+
+struct MemoryWrite {
+    uint32_t address;
+    uint8_t old_value;
+    uint8_t new_value;
+};
+
+std::vector<MemoryWrite>* g_write_log = nullptr;
+
+void record_write(uint32_t address, uint8_t value) {
+    if (g_write_log) {
+        g_write_log->push_back({address, rd8(address), value});
+    }
+}
+
+void undo_writes(const std::vector<MemoryWrite>& log) {
+    for (auto it = log.rbegin(); it != log.rend(); ++it) {
+        *host(it->address) = it->old_value;
+    }
+}
+
+void redo_writes(const std::vector<MemoryWrite>& log) {
+    for (const MemoryWrite& write : log) {
+        *host(write.address) = write.new_value;
+    }
+}
+
+bool same_writes(const std::vector<MemoryWrite>& a, const std::vector<MemoryWrite>& b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < a.size(); i++) {
+        if (a[i].address != b[i].address || a[i].new_value != b[i].new_value) {
+            return false;
+        }
+    }
+    return true;
+}
+TranslatedFunction g_translated = nullptr;
 
 bool load_rom(int id, uint16_t* words, size_t count) {
     HRSRC resource = FindResourceA(nullptr, MAKEINTRESOURCEA(id), MAKEINTRESOURCEA(10));
@@ -129,11 +175,153 @@ bool halted() {
     return !g_core || (g_core->DSPState().control_reg & kControlHalt);
 }
 
-void run_dsp(int cycles) {
+std::vector<uint8_t> save_state() {
+    std::vector<uint8_t> buffer;
+    PointerWrap writer(buffer, PointerWrap::Mode::Write);
+    g_core->DSPState().DoState(writer);
+    return buffer;
+}
+
+void load_state(std::vector<uint8_t>& buffer) {
+    TranslatedFunction translated = g_translated;
+    PointerWrap reader(buffer, PointerWrap::Mode::Read);
+    g_core->DSPState().DoState(reader);
+    g_translated = translated;
+}
+
+size_t step_counter_offset() {
+    return sizeof(DSP::DSP_Regs) + 2 + 2 + 8 + 4 + 1 + sizeof(std::atomic<bool>) + 4 * DSP::DSP_STACK_DEPTH * 2;
+}
+
+void report_mismatch(uint16_t start_pc, int instructions, const std::vector<uint8_t>& translated, const std::vector<uint8_t>& interpreted) {
+    size_t skip = step_counter_offset();
+    size_t first = 0;
+    while (first < translated.size() && (translated[first] == interpreted[first] || (first >= skip && first < skip + 8))) {
+        first++;
+    }
+    DSP::DSP_Regs a;
+    DSP::DSP_Regs b;
+    std::memcpy(&a, translated.data(), sizeof a);
+    std::memcpy(&b, interpreted.data(), sizeof b);
+    uint16_t pc_a;
+    uint16_t pc_b;
+    std::memcpy(&pc_a, translated.data() + sizeof a, 2);
+    std::memcpy(&pc_b, interpreted.data() + sizeof b, 2);
+    std::fprintf(stderr, "DSP verify: mismatch after %d instructions from pc %04x, first differing byte %zu of %zu\n", instructions, start_pc,
+                 first, translated.size());
+    std::fprintf(stderr, "  translated  pc %04x sr %04x ac0 %016llx ac1 %016llx ax0 %08x ax1 %08x prod %016llx ar %04x %04x %04x %04x\n", pc_a, a.sr,
+                 static_cast<unsigned long long>(a.ac[0].val), static_cast<unsigned long long>(a.ac[1].val), a.ax[0].val, a.ax[1].val,
+                 static_cast<unsigned long long>(a.prod.val), a.ar[0], a.ar[1], a.ar[2], a.ar[3]);
+    std::fprintf(stderr, "  interpreter pc %04x sr %04x ac0 %016llx ac1 %016llx ax0 %08x ax1 %08x prod %016llx ar %04x %04x %04x %04x\n", pc_b, b.sr,
+                 static_cast<unsigned long long>(b.ac[0].val), static_cast<unsigned long long>(b.ac[1].val), b.ax[0].val, b.ax[1].val,
+                 static_cast<unsigned long long>(b.prod.val), b.ar[0], b.ar[1], b.ar[2], b.ar[3]);
+}
+
+bool same_state(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    size_t skip = step_counter_offset();
+    return std::memcmp(a.data(), b.data(), skip) == 0 && std::memcmp(a.data() + skip + 8, b.data() + skip + 8, a.size() - skip - 8) == 0;
+}
+
+int run_translated_verified(DSP::SDSP& state, int left, bool& idle) {
+    static uint64_t checks = 0;
+    static uint64_t failures = 0;
+    std::vector<uint8_t> before = save_state();
+    uint16_t start_pc = state.pc;
+    std::vector<MemoryWrite> translated_writes;
+    std::vector<MemoryWrite> interpreted_writes;
+    g_write_log = &translated_writes;
+    int remaining = g_translated(g_core->GetInterpreter(), state, left, idle);
+    g_write_log = nullptr;
+    int executed = left - remaining;
+    std::vector<uint8_t> translated = save_state();
+    undo_writes(translated_writes);
+    load_state(before);
+    g_write_log = &interpreted_writes;
+    for (int i = 0; i < executed; i++) {
+        g_core->GetInterpreter().Step();
+    }
+    g_write_log = nullptr;
+    std::vector<uint8_t> interpreted = save_state();
+    undo_writes(interpreted_writes);
+    redo_writes(translated_writes);
+    checks++;
+    if (!same_writes(translated_writes, interpreted_writes)) {
+        failures++;
+        if (failures <= 20) {
+            std::fprintf(stderr, "DSP verify: memory writes differ after %d instructions from pc %04x (%zu vs %zu bytes)\n", executed, start_pc,
+                         translated_writes.size(), interpreted_writes.size());
+        }
+    } else if (!same_state(translated, interpreted)) {
+        failures++;
+        if (failures <= 20) {
+            report_mismatch(start_pc, executed, translated, interpreted);
+            undo_writes(translated_writes);
+            for (int k = 1; k <= left; k++) {
+                std::vector<MemoryWrite> log_t;
+                std::vector<MemoryWrite> log_i;
+                load_state(before);
+                bool unused = false;
+                g_write_log = &log_t;
+                int left_k = g_translated(g_core->GetInterpreter(), state, k, unused);
+                g_write_log = nullptr;
+                uint16_t pc_t = state.pc;
+                std::vector<uint8_t> t_k = save_state();
+                undo_writes(log_t);
+                load_state(before);
+                g_write_log = &log_i;
+                uint16_t pc_last = state.pc;
+                for (int i = 0; i < k - left_k; i++) {
+                    pc_last = state.pc;
+                    g_core->GetInterpreter().Step();
+                }
+                g_write_log = nullptr;
+                std::vector<uint8_t> i_k = save_state();
+                undo_writes(log_i);
+                if (!same_state(t_k, i_k)) {
+                    std::fprintf(stderr, "  first divergence with budget %d: counted %d, translated stopped at %04x, interpreter last executed %04x and is at %04x, exceptions %02x\n",
+                                 k, k - left_k, pc_t, pc_last, state.pc, state.exceptions);
+                    break;
+                }
+            }
+            redo_writes(translated_writes);
+        }
+    }
+    if (checks % 20000 == 0) {
+        std::fprintf(stderr, "DSP verify: %llu runs checked, %llu mismatches\n", static_cast<unsigned long long>(checks),
+                     static_cast<unsigned long long>(failures));
+    }
+    load_state(translated);
+    return remaining;
+}
+
+int run_dsp(int cycles) {
     Clock::time_point start = Clock::now();
-    g_core->RunCycles(cycles);
+    DSP::SDSP& state = g_core->DSPState();
+    int left = cycles;
+    while (left > 0 && !(state.control_reg & kControlHalt)) {
+        if (g_translated && state.pc < kIramWords) {
+            bool idle = false;
+            int before = left;
+            left = g_verify ? run_translated_verified(state, left, idle) : g_translated(g_core->GetInterpreter(), state, left, idle);
+            if (idle) {
+                break;
+            }
+            if (left == before) {
+                g_core->GetInterpreter().Step();
+                left--;
+            }
+        } else {
+            g_core->RunCycles(left);
+            left = 0;
+        }
+    }
+    int executed = cycles - left;
     g_statistics.dsp_seconds += std::chrono::duration<double>(Clock::now() - start).count();
-    g_statistics.dsp_cycles += cycles;
+    g_statistics.dsp_cycles += executed;
+    return executed;
 }
 
 void push_block(uint32_t source, bool enabled, uint32_t rate) {
@@ -256,8 +444,7 @@ void do_aram_dma() {
 
 void run_for_mail() {
     if (!halted()) {
-        run_dsp(kMailSlice);
-        g_owed -= kMailSlice;
+        g_owed -= run_dsp(kMailSlice);
     }
 }
 
@@ -272,10 +459,10 @@ void update() {
     g_last_update = now;
     g_owed = std::min(g_owed + seconds * kDspClock, kMaxLag * kDspClock);
     while (g_owed >= kSlice && !halted()) {
-        run_dsp(kSlice);
-        g_owed -= kSlice;
+        int executed = run_dsp(kSlice);
+        g_owed -= executed;
         DSP::SDSP& state = g_core->DSPState();
-        if (state.GetAnalyzer().IsIdleSkip(state.pc)) {
+        if (executed < kSlice || state.GetAnalyzer().IsIdleSkip(state.pc)) {
             g_owed = 0.0;
         }
     }
@@ -448,6 +635,7 @@ u8 ReadHostMemory(u32 address) {
 }
 
 void WriteHostMemory(u8 value, u32 address) {
+    wp::dsp::record_write(wp::dsp::kMem2Base | (address & wp::dsp::kMem2Mask), value);
     wp::wr8(wp::dsp::kMem2Base | (address & wp::dsp::kMem2Mask), value);
 }
 
@@ -459,6 +647,8 @@ void DMAToDSP(u16* destination, u32 address, u32 size) {
 
 void DMAFromDSP(const u16* source, u32 address, u32 size) {
     for (u32 i = 0; i < size / 2; i++) {
+        wp::dsp::record_write(address + 2 * i, static_cast<uint8_t>(source[i] >> 8));
+        wp::dsp::record_write(address + 2 * i + 1, static_cast<uint8_t>(source[i]));
         wp::wr16(address + 2 * i, source[i]);
     }
 }
@@ -494,10 +684,24 @@ void CodeLoaded(DSPCore& dsp, const u8* pointer, size_t size) {
         crc = (crc * 31) ^ pointer[i];
     }
     state.SetIRAMCRC(crc);
+    wp::dsp::g_translated = nullptr;
+    for (size_t i = 0; i < wp::dsp::g_translated_code_count && !wp::dsp::g_force_interpreter; i++) {
+        if (wp::dsp::g_translated_code[i].checksum == crc) {
+            wp::dsp::g_translated = wp::dsp::g_translated_code[i].function;
+        }
+    }
     if (wp::dsp::g_log) {
         std::fprintf(stderr, "DSP code loaded, %zu bytes, checksum %08x\n", size, crc);
     }
-    wp::log::write("audio", "DSP microcode loaded, %u bytes, checksum %08x", static_cast<unsigned>(size), crc);
+    wp::log::write("audio", "DSP microcode loaded, %u bytes, checksum %08x, %s", static_cast<unsigned>(size), crc,
+                   wp::dsp::g_translated ? "recompiled" : "interpreted");
+    if (const char* directory = std::getenv("WP_DUMP_DSP_CODE")) {
+        std::string path = std::string(directory) + "/dsp_" + std::to_string(crc) + ".bin";
+        if (std::FILE* file = std::fopen(path.c_str(), "wb")) {
+            std::fwrite(pointer, 1, size, file);
+            std::fclose(file);
+        }
+    }
     dsp.ClearIRAM();
     state.GetAnalyzer().Analyze(state);
 }

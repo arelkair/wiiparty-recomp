@@ -27,6 +27,14 @@ if(WP_TRACE)
 endif()
 target_compile_options(wp_runtime PRIVATE -Wall -Wextra)
 
+set(WP_DSP_RECOMP_DIR "${CMAKE_SOURCE_DIR}/build/dsp_recomp" CACHE PATH "Directory with generated DSP microcode sources")
+file(GLOB WP_DSP_RECOMP_SOURCES CONFIGURE_DEPENDS "${WP_DSP_RECOMP_DIR}/*.cpp")
+if(WP_DSP_RECOMP_SOURCES)
+    target_sources(wp_runtime PRIVATE ${WP_DSP_RECOMP_SOURCES})
+else()
+    target_sources(wp_runtime PRIVATE src/no_dsp_code.cpp)
+endif()
+
 set(WP_MODULES_DIR "${CMAKE_SOURCE_DIR}/build/rel_code" CACHE PATH "Directory with generated recompiled module sources")
 file(GLOB WP_MODULE_SOURCES CONFIGURE_DEPENDS "${WP_MODULES_DIR}/*.cpp")
 
