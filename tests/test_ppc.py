@@ -189,7 +189,15 @@ class EmitterTests(unittest.TestCase):
 
     def test_float_single_arithmetic(self):
         fadds = (59 << 26) | (1 << 21) | (2 << 16) | (3 << 11) | (21 << 1)
-        self.assertEqual(lift(fadds), ["c.f[1] = wp::round_single(c.f[2] + c.f[3]);"])
+        self.assertEqual(lift(fadds), ["c.f[1] = wp::round_single(c.f[2] + c.f[3]);", "c.ps1[1] = c.f[1];"])
+
+    def test_round_to_single_fills_both_lanes(self):
+        frsp = (63 << 26) | (3 << 21) | (1 << 11) | (12 << 1)
+        self.assertEqual(lift(frsp), ["c.f[3] = wp::round_single(c.f[1]);", "c.ps1[3] = c.f[3];"])
+
+    def test_double_arithmetic_keeps_second_lane(self):
+        fadd = (63 << 26) | (1 << 21) | (2 << 16) | (3 << 11) | (21 << 1)
+        self.assertEqual(lift(fadd), ["c.f[1] = c.f[2] + c.f[3];"])
 
     def test_illegal_word(self):
         self.assertEqual(lift(1), ["wp::illegal_instruction(c, 0x80004000u, 0x1u);"])

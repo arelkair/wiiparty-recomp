@@ -266,9 +266,12 @@ class Emitter:
         expression = FLOAT_ARITHMETIC[instr.mn][0].format(
             a=fpr(instr.fra), b=fpr(instr.frb), c=fpr(instr.frc)
         )
-        if FLOAT_ARITHMETIC[instr.mn][1]:
+        single = FLOAT_ARITHMETIC[instr.mn][1]
+        if single:
             expression = f"wp::round_single({expression})"
         lines = [f"{fpr(instr.frd)} = {expression};"]
+        if single:
+            lines.append(f"{ps1(instr.frd)} = {fpr(instr.frd)};")
         if instr.rc:
             lines.append("wp::update_cr1(c);")
         return lines
