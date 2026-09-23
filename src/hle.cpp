@@ -113,7 +113,6 @@ const Replacement kReplacements[] = {
     {"EXIUnlock", return_one},
     {"EXIProbe", return_zero},
     {"EXIGetID", return_zero},
-    {"__OSInitAudioSystem", do_nothing},
     {"OSRealModeCall", do_nothing},
     {"IOSSendRequest", ios_send},
     {"OSReport", os_report},

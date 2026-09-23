@@ -19,6 +19,15 @@ namespace gx {
 void push(uint64_t value, unsigned bytes);
 }
 
+namespace dsp {
+uint16_t read16(uint32_t address);
+void write16(uint32_t address, uint16_t value);
+}
+
+constexpr bool dsp_register(uint32_t address) {
+    return (address >> 12) == 0xCC005;
+}
+
 inline uint8_t* host(uint32_t address) {
     if ((address & 0xF0000000) == kLockedCacheBase) {
         return g_memory + kPhysicalSize + (address & (kLockedCacheSize - 1));
@@ -31,12 +40,18 @@ inline uint8_t rd8(uint32_t address) {
 }
 
 inline uint16_t rd16(uint32_t address) {
+    if (__builtin_expect(dsp_register(address), 0)) {
+        return dsp::read16(address);
+    }
     uint16_t value;
     std::memcpy(&value, host(address), sizeof value);
     return __builtin_bswap16(value);
 }
 
 inline uint32_t rd32(uint32_t address) {
+    if (__builtin_expect(dsp_register(address), 0)) {
+        return (static_cast<uint32_t>(dsp::read16(address)) << 16) | dsp::read16(address + 2);
+    }
     uint32_t value;
     std::memcpy(&value, host(address), sizeof value);
     return __builtin_bswap32(value);
@@ -73,6 +88,10 @@ inline void wr16(uint32_t address, uint16_t value) {
         gx::push(value, 2);
         return;
     }
+    if (__builtin_expect(dsp_register(address), 0)) {
+        dsp::write16(address, value);
+        return;
+    }
     value = __builtin_bswap16(value);
     std::memcpy(host(address), &value, sizeof value);
 }
@@ -80,6 +99,11 @@ inline void wr16(uint32_t address, uint16_t value) {
 inline void wr32(uint32_t address, uint32_t value) {
     if (__builtin_expect(address == kFifoAddress, 0)) {
         gx::push(value, 4);
+        return;
+    }
+    if (__builtin_expect(dsp_register(address), 0)) {
+        dsp::write16(address, static_cast<uint16_t>(value >> 16));
+        dsp::write16(address + 2, static_cast<uint16_t>(value));
         return;
     }
     value = __builtin_bswap32(value);

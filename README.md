@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, but it is silent, some elements are missing, and it has not been played to the end. Overall progress is about 54% (estimate, see below).
+> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 61% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -24,7 +24,7 @@ The overall figure is the equal-weight average of the components below. They are
 | System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD, NAND and Bluetooth work; free of known blockers |
 | Graphics (GX to Direct3D 11) | 80% | Menus, text, cursor, 3D models and lit Miis with correct faces draw with correct colors, paletted textures, mipmaps, filtering, TEV compare modes and EFB copies in every format; no indirect textures |
 | Input | 55% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons; no motion, gamepads or real Wii Remotes |
-| Audio | 0% | AX sound layer is stubbed; the game is silent |
+| Audio | 45% | The original AX microcode runs on an emulated DSP (Dolphin interpreter) with WASAPI output; microcode recompilation and checks in minigames pending |
 | Game flow | 55% | Plays Board Game Island through a full first round (minigame, results, dice, board events, 1 vs 3 minigame) into the second round |
 | PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
 
@@ -45,7 +45,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 ### Not implemented
 
-- Audio: the AX sound layer is stubbed, so the game is silent.
+- Audio: recompiling the DSP microcode (it runs on an interpreter for now).
 - Wii Remote motion (tilt, swing), generic gamepads and real Wii Remotes.
 - GX: indirect textures, lines and points, depth (Z) EFB copies.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.

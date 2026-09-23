@@ -4,6 +4,7 @@
 
 #include "wp/audio.h"
 #include "wp/cpu.h"
+#include "wp/dsp.h"
 #include "wp/hle.h"
 #include "wp/memory.h"
 #include "wp/threads.h"
@@ -99,6 +100,24 @@ void deliver_ipc_interrupt(Cpu& c) {
     c = saved;
 }
 
+void deliver_dsp_interrupt(Cpu& c, uint32_t index) {
+    uint32_t handler = rd32(kInterruptTable + 4 * index);
+    if (handler == 0) {
+        return;
+    }
+    Cpu saved = c;
+    g_in_interrupt = true;
+    c.msr &= ~kMsrExternalInterrupt;
+    c.r[3] = index;
+    c.r[4] = rd32(kCurrentContext);
+    call(c, handler);
+    c = saved;
+    g_in_interrupt = false;
+    c.r[3] = 0;
+    call(c, symbol_address("OSSelectThread"));
+    c = saved;
+}
+
 void deliver_video_interrupt(Cpu& c) {
     uint32_t handler = rd32(kInterruptTable + 4 * kVideoInterrupt);
     if (handler == 0 || !arm_video_interrupt()) {
@@ -135,6 +154,13 @@ void poll_interrupts(Cpu& c) {
     }
     if (ipc_pending()) {
         deliver_ipc_interrupt(c);
+    }
+    for (int delivered = 0; delivered < 3; delivered++) {
+        uint32_t index = dsp::pending_interrupt();
+        if (index == 0) {
+            break;
+        }
+        deliver_dsp_interrupt(c, index);
     }
     Clock::time_point now = Clock::now();
     if (now < g_next_retrace) {
