@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays through the start of Board Game Island (for example), including a minigame, but it is not yet playable to the end of a turn. Overall progress is about 48% (estimate, see below).
+> **Status:** The game boots, reaches the menu and plays a full round of Board Game Island (minigame, results, dice rolls and board moves), but it is silent, some elements are missing and it has not been played to the end. Overall progress is about 50% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
