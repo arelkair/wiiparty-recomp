@@ -131,16 +131,16 @@ float2 select_uv(PixelInput p, uint i) {
     }
 }
 
-float4 sample_map(uint m, float2 uv) {
+float4 sample_map(uint m, float2 uv, float2 dx, float2 dy) {
     switch (m) {
-    case 0: return t0.SampleLevel(s0, uv, 0);
-    case 1: return t1.SampleLevel(s1, uv, 0);
-    case 2: return t2.SampleLevel(s2, uv, 0);
-    case 3: return t3.SampleLevel(s3, uv, 0);
-    case 4: return t4.SampleLevel(s4, uv, 0);
-    case 5: return t5.SampleLevel(s5, uv, 0);
-    case 6: return t6.SampleLevel(s6, uv, 0);
-    default: return t7.SampleLevel(s7, uv, 0);
+    case 0: return t0.SampleGrad(s0, uv, dx, dy);
+    case 1: return t1.SampleGrad(s1, uv, dx, dy);
+    case 2: return t2.SampleGrad(s2, uv, dx, dy);
+    case 3: return t3.SampleGrad(s3, uv, dx, dy);
+    case 4: return t4.SampleGrad(s4, uv, dx, dy);
+    case 5: return t5.SampleGrad(s5, uv, dx, dy);
+    case 6: return t6.SampleGrad(s6, uv, dx, dy);
+    default: return t7.SampleGrad(s7, uv, dx, dy);
     }
 }
 
@@ -225,6 +225,8 @@ float4 apply_swap(float4 value, uint table) {
 }
 
 float4 pixel_main(PixelInput p) : SV_Target {
+    float2 gradient_x[8] = {ddx(p.uv0), ddx(p.uv1), ddx(p.uv2), ddx(p.uv3), ddx(p.uv4), ddx(p.uv5), ddx(p.uv6), ddx(p.uv7)};
+    float2 gradient_y[8] = {ddy(p.uv0), ddy(p.uv1), ddy(p.uv2), ddy(p.uv3), ddy(p.uv4), ddy(p.uv5), ddy(p.uv6), ddy(p.uv7)};
     float4 r[4];
     r[0] = initial[0];
     r[1] = initial[1];
@@ -241,7 +243,8 @@ float4 pixel_main(PixelInput p) : SV_Target {
         uint ksel = stage[i].w;
         float4 tex = float4(1, 1, 1, 1);
         if ((order & 0x40) != 0) {
-            tex = apply_swap(sample_map(order & 7, select_uv(p, (order >> 3) & 7)), (ae >> 2) & 3);
+            uint coord = (order >> 3) & 7;
+            tex = apply_swap(sample_map(order & 7, select_uv(p, coord), gradient_x[coord], gradient_y[coord]), (ae >> 2) & 3);
         }
         float4 ras = float4(0, 0, 0, 0);
         uint chan = (order >> 7) & 7;
@@ -331,6 +334,7 @@ struct CachedTexture {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t format = 0;
+    uint32_t levels = 0;
     uint64_t verified_frame = ~0ull;
 };
 
@@ -372,7 +376,7 @@ struct Device {
     ID3D11RasterizerState* rasterizer = nullptr;
     std::map<uint32_t, ID3D11BlendState*> blend_states;
     std::map<uint32_t, ID3D11DepthStencilState*> depth_states;
-    std::map<uint32_t, ID3D11SamplerState*> samplers;
+    std::map<uint64_t, ID3D11SamplerState*> samplers;
     std::map<uint64_t, CachedTexture> textures;
     std::map<uint32_t, CopiedTexture> copies;
     bool failed = false;
@@ -749,11 +753,37 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         g_logged_palette = true;
         std::fprintf(stderr, "unsupported texture format %u\n", format);
     }
-    uint32_t padded_width = (width + layout.block_width - 1) / layout.block_width * layout.block_width;
-    uint32_t padded_height = (height + layout.block_height - 1) / layout.block_height * layout.block_height;
-    size_t size = static_cast<size_t>(padded_width / layout.block_width) * (padded_height / layout.block_height) * block_bytes(format);
+    uint32_t mode0 = bp[map < 4 ? 0x80 + map : 0xA0 + (map - 4)];
+    uint32_t mode1 = bp[map < 4 ? 0x84 + map : 0xA4 + (map - 4)];
+    uint32_t levels = 1;
+    if (((mode0 >> 5) & 3) != 0) {
+        uint32_t requested = (((mode1 >> 8) & 0xFF) + 15) / 16 + 1;
+        uint32_t largest = std::max(width, height);
+        uint32_t available = 1;
+        while ((largest >> available) != 0) {
+            available++;
+        }
+        levels = std::min(requested, available);
+    }
+    auto level_size = [&](uint32_t level) {
+        uint32_t level_width = std::max(width >> level, 1u);
+        uint32_t level_height = std::max(height >> level, 1u);
+        uint32_t padded_width = (level_width + layout.block_width - 1) / layout.block_width * layout.block_width;
+        uint32_t padded_height = (level_height + layout.block_height - 1) / layout.block_height * layout.block_height;
+        return static_cast<size_t>(padded_width / layout.block_width) * (padded_height / layout.block_height) * block_bytes(format);
+    };
+    size_t size = level_size(0);
     if (!guest_range_valid(address, size)) {
         return nullptr;
+    }
+    size_t total = size;
+    for (uint32_t level = 1; level < levels; level++) {
+        size_t next = total + level_size(level);
+        if (!guest_range_valid(address, next)) {
+            levels = level;
+            break;
+        }
+        total = next;
     }
     const uint8_t* source = host(address);
     auto copied = g_device.copies.find(address);
@@ -761,7 +791,8 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         (format == 4 || format == 5 || format == 6) && copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
         return copied->second.view;
     }
-    uint64_t key = (static_cast<uint64_t>(address) << 20) ^ (static_cast<uint64_t>(width) << 8) ^ (static_cast<uint64_t>(height) << 32) ^ format;
+    uint64_t key = (static_cast<uint64_t>(address) << 20) ^ (static_cast<uint64_t>(width) << 8) ^ (static_cast<uint64_t>(height) << 32) ^ format ^
+                   (static_cast<uint64_t>(levels) << 4);
     const uint8_t* tlut = nullptr;
     uint32_t tlut_format = 0;
     uint32_t entries = 0;
@@ -774,32 +805,41 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         key ^= (static_cast<uint64_t>(tlut_offset >> 9) << 54) ^ (static_cast<uint64_t>(tlut_format) << 52);
     }
     CachedTexture& entry = g_device.textures[key];
-    if (entry.view && entry.verified_frame == g_frame && entry.width == width && entry.height == height && entry.format == format) {
+    if (entry.view && entry.verified_frame == g_frame && entry.width == width && entry.height == height && entry.format == format &&
+        entry.levels == levels) {
         return entry.view;
     }
-    uint64_t hash = hash_bytes(source, size);
+    uint64_t hash = hash_bytes(source, total);
     if (tlut) {
         hash = (hash ^ hash_bytes(tlut, entries * 2)) * 1099511628211ull ^ tlut_format;
     }
-    if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format) {
+    if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format && entry.levels == levels) {
         entry.verified_frame = g_frame;
         return entry.view;
     }
     flush_pending();
     release(entry.view);
     release(entry.texture);
-    std::vector<uint32_t> pixels = decode_texture(source, width, height, format, tlut, tlut_format);
+    std::vector<std::vector<uint32_t>> pixels(levels);
+    std::vector<D3D11_SUBRESOURCE_DATA> initial(levels);
+    size_t offset = 0;
+    for (uint32_t level = 0; level < levels; level++) {
+        uint32_t level_width = std::max(width >> level, 1u);
+        uint32_t level_height = std::max(height >> level, 1u);
+        pixels[level] = decode_texture(source + offset, level_width, level_height, format, tlut, tlut_format);
+        initial[level] = {pixels[level].data(), level_width * 4, 0};
+        offset += level_size(level);
+    }
     D3D11_TEXTURE2D_DESC description{};
     description.Width = width;
     description.Height = height;
-    description.MipLevels = 1;
+    description.MipLevels = levels;
     description.ArraySize = 1;
     description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     description.SampleDesc.Count = 1;
     description.Usage = D3D11_USAGE_IMMUTABLE;
     description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA initial{pixels.data(), width * 4, 0};
-    if (FAILED(g_device.device->CreateTexture2D(&description, &initial, &entry.texture)) ||
+    if (FAILED(g_device.device->CreateTexture2D(&description, initial.data(), &entry.texture)) ||
         FAILED(g_device.device->CreateShaderResourceView(entry.texture, nullptr, &entry.view))) {
         return nullptr;
     }
@@ -807,6 +847,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     entry.width = width;
     entry.height = height;
     entry.format = format;
+    entry.levels = levels;
     entry.verified_frame = g_frame;
     return entry.view;
 }
@@ -814,7 +855,8 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
 ID3D11SamplerState* sampler_for(uint32_t map) {
     const uint32_t* bp = bp_registers();
     uint32_t mode = bp[map < 4 ? 0x80 + map : 0xA0 + (map - 4)];
-    uint32_t key = mode & 0xFF;
+    uint32_t lod = bp[map < 4 ? 0x84 + map : 0xA4 + (map - 4)];
+    uint64_t key = (mode & 0x3FFFFF) | (static_cast<uint64_t>(lod & 0xFFFF) << 32);
     auto found = g_device.samplers.find(key);
     if (found != g_device.samplers.end()) {
         return found->second;
@@ -823,12 +865,27 @@ ID3D11SamplerState* sampler_for(uint32_t map) {
         return wrap == 1 ? D3D11_TEXTURE_ADDRESS_WRAP : wrap == 2 ? D3D11_TEXTURE_ADDRESS_MIRROR : D3D11_TEXTURE_ADDRESS_CLAMP;
     };
     D3D11_SAMPLER_DESC description{};
-    bool linear = ((mode >> 4) & 1) != 0 || ((mode >> 5) & 7) >= 4;
-    description.Filter = linear ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_POINT;
+    bool mag_linear = ((mode >> 4) & 1) != 0;
+    uint32_t mip_mode = (mode >> 5) & 3;
+    bool min_linear = ((mode >> 7) & 1) != 0;
+    D3D11_FILTER_TYPE min_type = min_linear ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
+    D3D11_FILTER_TYPE mag_type = mag_linear ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
+    D3D11_FILTER_TYPE mip_type = mip_mode == 2 ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
+    description.Filter = D3D11_ENCODE_BASIC_FILTER(min_type, mag_type, mip_type, false);
     description.AddressU = address(mode & 3);
     description.AddressV = address((mode >> 2) & 3);
     description.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-    description.MaxLOD = D3D11_FLOAT32_MAX;
+    if (mip_mode == 0) {
+        description.MinLOD = 0.0f;
+        description.MaxLOD = 0.0f;
+        description.MipLODBias = 0.0f;
+    } else {
+        uint32_t max_lod = (lod >> 8) & 0xFF;
+        uint32_t min_lod = std::min(lod & 0xFF, max_lod);
+        description.MinLOD = min_lod / 16.0f;
+        description.MaxLOD = max_lod / 16.0f;
+        description.MipLODBias = static_cast<int8_t>((mode >> 9) & 0xFF) / 32.0f;
+    }
     ID3D11SamplerState* state = nullptr;
     g_device.device->CreateSamplerState(&description, &state);
     g_device.samplers[key] = state;

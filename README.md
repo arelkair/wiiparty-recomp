@@ -22,7 +22,7 @@ The overall figure is the equal-weight average of the components below. They are
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
 | System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD and NAND work; free of known blockers except finished fibers not freed |
-| Graphics (GX to Direct3D 11) | 72% | Menus, text, 3D models and lit Miis draw with correct RGBA8 colors; no indirect textures, mipmaps or R8 copies |
+| Graphics (GX to Direct3D 11) | 74% | Menus, text, 3D models and lit Miis draw with correct RGBA8 colors, mipmaps and texture filtering; no indirect textures or R8 copies |
 | Input | 40% | Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes |
 | Audio | 0% | AX sound layer is stubbed; the game is silent |
 | Game flow | 35% | Reaches title, menu, Board Game Island, a minigame and the board turn; freezes when the first Mii moves |
@@ -50,7 +50,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 - Audio: the AX sound layer is stubbed, so the game is silent.
 - Generic gamepads and real Wii Remotes.
-- GX: indirect textures, mipmaps, lines and points, EFB copies in intensity formats.
+- GX: indirect textures, lines and points, EFB copies in intensity formats.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`; planned features are in `FEATURES_QOL.md`.
