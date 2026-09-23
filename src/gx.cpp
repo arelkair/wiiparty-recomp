@@ -12,6 +12,7 @@
 #include "wp/gx_render.h"
 #include "wp/log.h"
 #include "wp/memory.h"
+#include "wp/video.h"
 
 namespace wp::gx {
 
@@ -623,7 +624,7 @@ void execute_copy(uint32_t value) {
         int y = static_cast<int>((source >> 10) & 0x3FF);
         int width = static_cast<int>(size & 0x3FF) + 1;
         int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
-        if (g_log_fps || log::enabled()) {
+        {
             g_frames++;
             auto now = std::chrono::steady_clock::now();
             static auto previous_frame = now;
@@ -643,6 +644,7 @@ void execute_copy(uint32_t value) {
                     std::fputc(10, stderr);
                 }
                 log::write("fps", "%.1f fps, %u draw batches, %u vertices, %.0f ms drawing", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
+                video::update_statistics(g_frames / seconds);
                 g_frames = 0;
                 g_fps_start = now;
             }

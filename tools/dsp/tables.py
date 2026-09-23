@@ -93,3 +93,12 @@ class Tables:
         value = inst & 0x7F if (inst >> 12) == 0x3 else inst & 0xFF
         found = find(self.ext_handlers, value)
         return found.function if found else "nop"
+
+
+def load_idle_signatures():
+    text = (DSP_DIR / "DSPAnalyzer.cpp").read_text(encoding="utf-8")
+    start = text.index("idle_skip_sigs")
+    block = text[text.index("{", start) + 1: text.index("};", start)]
+    block = re.sub(r"//[^\n]*", "", block)
+    return [[int(value, 16) if value.lower().startswith("0x") else int(value) for value in re.findall(r"0x[0-9a-fA-F]+|\d+", group)]
+            for group in re.findall(r"\{([^{}]*)\}", block)]

@@ -68,6 +68,8 @@ constexpr int kSlice = 512;
 constexpr int kMailSlice = 512;
 constexpr uint32_t kFramesPerBlock = 8;
 constexpr uint16_t kIramWords = 0x1000;
+constexpr double kMaxPumpStep = 0.0005;
+constexpr int kCatchUpRate = 4;
 
 using Clock = std::chrono::steady_clock;
 
@@ -79,6 +81,8 @@ struct AudioDma {
     bool source_written = false;
     bool started = false;
     Clock::time_point next_block{};
+    Clock::time_point clock = Clock::now();
+    Clock::time_point last_call = Clock::now();
 };
 
 struct AramDma {
@@ -107,6 +111,8 @@ AudioDma g_audio_dma;
 double g_owed = 0.0;
 Clock::time_point g_last_update = Clock::now();
 Statistics g_statistics;
+bool g_code_loaded = false;
+double g_load_percent = 0.0;
 bool g_log = std::getenv("WP_LOG_DSP") != nullptr;
 bool g_force_interpreter = std::getenv("WP_DSP_INTERPRETER") != nullptr;
 bool g_verify = std::getenv("WP_DSP_VERIFY") != nullptr;
@@ -148,6 +154,7 @@ bool same_writes(const std::vector<MemoryWrite>& a, const std::vector<MemoryWrit
     }
     return true;
 }
+
 TranslatedFunction g_translated = nullptr;
 
 bool load_rom(int id, uint16_t* words, size_t count) {
@@ -333,7 +340,12 @@ void push_block(uint32_t source, bool enabled, uint32_t rate) {
     audio::push(frames, kFramesPerBlock, rate);
 }
 
-void pump_audio_dma(Clock::time_point now) {
+void pump_audio_dma(Clock::time_point wall) {
+    const auto step = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(kMaxPumpStep));
+    Clock::duration elapsed = std::min(wall - g_audio_dma.last_call, step);
+    g_audio_dma.last_call = wall;
+    g_audio_dma.clock = std::min(wall, g_audio_dma.clock + elapsed * kCatchUpRate);
+    Clock::time_point now = g_audio_dma.clock;
     uint32_t rate = (rd32(kAudioControl) & kAudioDmaRate32k) ? 32000 : 48000;
     const auto block = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(double(kFramesPerBlock) / rate));
     while (true) {
@@ -362,7 +374,7 @@ void pump_audio_dma(Clock::time_point now) {
                 }
                 g_audio_dma.started = true;
                 g_statistics.buffers++;
-                double lateness = std::chrono::duration<double>(now - g_audio_dma.next_block).count();
+                double lateness = std::chrono::duration<double>(wall - g_audio_dma.next_block).count();
                 g_statistics.worst_start = std::max(g_statistics.worst_start, lateness);
                 if (lateness > 0.001) {
                     g_statistics.late_starts++;
@@ -385,6 +397,7 @@ void report(Clock::time_point now) {
     if (seconds < 1.0) {
         return;
     }
+    g_load_percent = 100.0 * g_statistics.dsp_seconds / seconds;
     if (log::enabled()) {
         log::write("audio", "buffers %.1f/s, late starts %u, worst start %.2f ms, DSP %.1f Mcycles/s using %.1f%% of the CPU thread",
                    g_statistics.buffers / seconds, g_statistics.late_starts, g_statistics.worst_start * 1000.0,
@@ -442,6 +455,20 @@ void do_aram_dma() {
     raise(kIntAram);
 }
 
+void accumulate(Clock::time_point now) {
+    double seconds = std::chrono::duration<double>(now - g_last_update).count();
+    g_last_update = now;
+    g_owed = std::min(g_owed + seconds * kDspClock, kMaxLag * kDspClock);
+}
+
+void run_slice(int slice) {
+    int executed = run_dsp(slice);
+    g_owed -= executed;
+    if (executed < slice || g_core->DSPState().GetAnalyzer().IsIdleSkip(g_core->DSPState().pc)) {
+        g_owed = 0.0;
+    }
+}
+
 void run_for_mail() {
     if (!halted()) {
         g_owed -= run_dsp(kMailSlice);
@@ -455,16 +482,9 @@ void update() {
         return;
     }
     Clock::time_point now = Clock::now();
-    double seconds = std::chrono::duration<double>(now - g_last_update).count();
-    g_last_update = now;
-    g_owed = std::min(g_owed + seconds * kDspClock, kMaxLag * kDspClock);
+    accumulate(now);
     while (g_owed >= kSlice && !halted()) {
-        int executed = run_dsp(kSlice);
-        g_owed -= executed;
-        DSP::SDSP& state = g_core->DSPState();
-        if (executed < kSlice || state.GetAnalyzer().IsIdleSkip(state.pc)) {
-            g_owed = 0.0;
-        }
+        run_slice(kSlice);
     }
     if (halted()) {
         g_owed = 0.0;
@@ -609,6 +629,10 @@ void write16(uint32_t address, uint16_t value) {
     }
 }
 
+Status status() {
+    return {g_code_loaded, g_translated != nullptr, g_load_percent};
+}
+
 uint32_t pending_interrupt() {
     uint16_t active = static_cast<uint16_t>((g_control >> 1) & g_control & kIntAll);
     if (active & kIntDsp) {
@@ -635,21 +659,27 @@ u8 ReadHostMemory(u32 address) {
 }
 
 void WriteHostMemory(u8 value, u32 address) {
-    wp::dsp::record_write(wp::dsp::kMem2Base | (address & wp::dsp::kMem2Mask), value);
+    if (wp::dsp::g_write_log) {
+        wp::dsp::record_write(wp::dsp::kMem2Base | (address & wp::dsp::kMem2Mask), value);
+    }
     wp::wr8(wp::dsp::kMem2Base | (address & wp::dsp::kMem2Mask), value);
 }
 
 void DMAToDSP(u16* destination, u32 address, u32 size) {
     for (u32 i = 0; i < size / 2; i++) {
-        destination[i] = wp::rd16(address + 2 * i);
+        destination[i] = __builtin_bswap16(wp::rd16_reversed(address + 2 * i));
     }
 }
 
 void DMAFromDSP(const u16* source, u32 address, u32 size) {
+    if (wp::dsp::g_write_log) {
+        for (u32 i = 0; i < size / 2; i++) {
+            wp::dsp::record_write(address + 2 * i, static_cast<uint8_t>(source[i] >> 8));
+            wp::dsp::record_write(address + 2 * i + 1, static_cast<uint8_t>(source[i]));
+        }
+    }
     for (u32 i = 0; i < size / 2; i++) {
-        wp::dsp::record_write(address + 2 * i, static_cast<uint8_t>(source[i] >> 8));
-        wp::dsp::record_write(address + 2 * i + 1, static_cast<uint8_t>(source[i]));
-        wp::wr16(address + 2 * i, source[i]);
+        wp::wr16_reversed(address + 2 * i, __builtin_bswap16(source[i]));
     }
 }
 
@@ -693,6 +723,7 @@ void CodeLoaded(DSPCore& dsp, const u8* pointer, size_t size) {
     if (wp::dsp::g_log) {
         std::fprintf(stderr, "DSP code loaded, %zu bytes, checksum %08x\n", size, crc);
     }
+    wp::dsp::g_code_loaded = true;
     wp::log::write("audio", "DSP microcode loaded, %u bytes, checksum %08x, %s", static_cast<unsigned>(size), crc,
                    wp::dsp::g_translated ? "recompiled" : "interpreted");
     if (const char* directory = std::getenv("WP_DUMP_DSP_CODE")) {

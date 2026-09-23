@@ -7,14 +7,18 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "wp/dsp.h"
 #include "wp/gx.h"
 #include "wp/gx_render.h"
+#include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
+#include "wp/ui_text.h"
 
 namespace wp::video {
 
@@ -27,9 +31,12 @@ constexpr int kWindowWidth = 1280;
 constexpr double kStandardAspect = 4.0 / 3.0;
 constexpr double kWideAspect = 16.0 / 9.0;
 constexpr const char* kWindowClass = "WiiPartyRecomp";
+constexpr UINT kTitleMessage = WM_APP + 1;
 
 std::atomic<HWND> g_window{nullptr};
 double g_aspect = kStandardAspect;
+std::mutex g_title_mutex;
+std::string g_title;
 
 uint32_t crc32(const uint8_t* data, size_t size, uint32_t crc = 0xFFFFFFFFu) {
     for (size_t i = 0; i < size; i++) {
@@ -104,6 +111,15 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_CLOSE:
     case WM_DESTROY:
         std::_Exit(0);
+    case kTitleMessage: {
+        std::string title;
+        {
+            std::lock_guard<std::mutex> lock(g_title_mutex);
+            title = g_title;
+        }
+        SetWindowTextA(window, title.c_str());
+        return 0;
+    }
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT: {
@@ -128,10 +144,19 @@ std::string game_code() {
     return code;
 }
 
-std::string window_title() {
+std::string window_title(double fps) {
+    const ui::Text& text = ui::text();
     bool pal = (rd16(kDisplayConfig) & 0x0300) == 0x0100;
-    return std::string("Wii Party (") + game_code() + ")  |  Build " + WP_BUILD + "  |  " + gx::render::api_name() + "  |  " +
-           (pal ? "PAL" : "NTSC");
+    dsp::Status status = dsp::status();
+    char statistics[128];
+    if (status.loaded) {
+        std::snprintf(statistics, sizeof statistics, "%s: %.0f | %s: %s (%.0f%%)", text.fps, fps, text.dsp,
+                      status.native ? text.dsp_native : text.dsp_interpreted, status.load_percent);
+    } else {
+        std::snprintf(statistics, sizeof statistics, "%s: %.0f | %s: %s", text.fps, fps, text.dsp, text.dsp_stopped);
+    }
+    return std::string("Wii Party (") + game_code() + ") | " + gx::render::api_name() + " | " + (pal ? "PAL" : "NTSC") + " | " +
+           statistics;
 }
 
 void window_thread() {
@@ -142,7 +167,7 @@ void window_thread() {
     window_class.hIcon = LoadIcon(window_class.hInstance, MAKEINTRESOURCE(1));
     window_class.lpszClassName = kWindowClass;
     RegisterClassA(&window_class);
-    std::string title = window_title();
+    std::string title = window_title(0.0);
     RECT work;
     SystemParametersInfo(SPI_GETWORKAREA, 0, &work, 0);
     int client_width = kWindowWidth;
@@ -169,6 +194,7 @@ void window_thread() {
 }
 
 void start() {
+    log::write("video", "build %s", WP_BUILD);
     g_aspect = nand::widescreen() ? kWideAspect : kStandardAspect;
     if (std::getenv("WP_HEADLESS")) {
         return;
@@ -200,6 +226,22 @@ bool image_point(long x, long y, long client_width, long client_height, float& o
     out_x = static_cast<float>(u * 2.0 - 1.0);
     out_y = static_cast<float>(v * 2.0 - 1.0);
     return true;
+}
+
+void update_statistics(double fps) {
+    HWND window = g_window;
+    if (!window) {
+        return;
+    }
+    std::string title = window_title(fps);
+    {
+        std::lock_guard<std::mutex> lock(g_title_mutex);
+        if (title == g_title) {
+            return;
+        }
+        g_title = title;
+    }
+    PostMessageA(window, kTitleMessage, 0, 0);
 }
 
 void present() {
