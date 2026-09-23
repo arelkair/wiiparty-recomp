@@ -5,6 +5,7 @@
 #include "wp/audio.h"
 #include "wp/cpu.h"
 #include "wp/dsp.h"
+#include "wp/log.h"
 #include "wp/hle.h"
 #include "wp/memory.h"
 #include "wp/threads.h"
@@ -146,6 +147,8 @@ void interrupt_left() {
 void poll_interrupts(Cpu& c) {
     g_poll_counter = 0;
     audio::update();
+    dsp::update();
+    log::watch_modules();
     if (g_in_interrupt || !(c.msr & kMsrExternalInterrupt)) {
         return;
     }

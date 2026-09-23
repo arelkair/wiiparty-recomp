@@ -1,6 +1,10 @@
 #include "wp/modules.h"
 
+#include <chrono>
 #include <cstdio>
+#include <string>
+
+#include "wp/log.h"
 
 namespace wp {
 
@@ -124,6 +128,40 @@ void describe_loaded_modules(uint32_t address) {
         }
         std::fputc(10, stderr);
     }
+}
+
+namespace log {
+
+void watch_modules() {
+    if (!enabled()) {
+        return;
+    }
+    using Clock = std::chrono::steady_clock;
+    static Clock::time_point next = Clock::now();
+    static std::string previous;
+    Clock::time_point now = Clock::now();
+    if (now < next) {
+        return;
+    }
+    next = now + std::chrono::milliseconds(100);
+    std::string current;
+    uint32_t info = rd32(kModuleListHead);
+    for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
+        const char* name = "unknown";
+        for (size_t m = 0; m < g_module_count; m++) {
+            if (g_module_table[m]->identifier == rd32(info + kInfoIdentifier)) {
+                name = g_module_table[m]->name;
+            }
+        }
+        current += current.empty() ? "" : " ";
+        current += name;
+    }
+    if (current != previous) {
+        write("module", "loaded modules: %s", current.empty() ? "(none)" : current.c_str());
+        previous = current;
+    }
+}
+
 }
 
 const char* module_name_at(uint32_t address) {

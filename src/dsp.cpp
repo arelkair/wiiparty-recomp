@@ -6,14 +6,11 @@
 #include <windows.h>
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
 #include <string>
-#include <thread>
 
 #include "Core/DSP/DSPCore.h"
 #include "Core/DSP/DSPHost.h"
@@ -21,6 +18,7 @@
 #include "Core/DSP/Interpreter/DSPInterpreter.h"
 #include "wp/audio.h"
 #include "wp/cpu.h"
+#include "wp/log.h"
 #include "wp/memory.h"
 
 namespace wp::dsp {
@@ -60,11 +58,10 @@ constexpr uint32_t kAudioDmaRate32k = 0x40;
 constexpr uint32_t kMem1Mask = 0x01FFFFFF;
 constexpr uint32_t kMem2Base = 0x10000000;
 constexpr uint32_t kMem2Mask = 0x03FFFFFF;
-constexpr double kDspClock = 729000000.0 / 6.0 * 4.0;
-constexpr double kMaxLag = 0.01;
-constexpr int kSlice = 2048;
+constexpr double kDspClock = 729000000.0 / 6.0;
+constexpr double kMaxLag = 0.02;
+constexpr int kSlice = 512;
 constexpr int kMailSlice = 512;
-constexpr int kSlicesPerTurn = 4;
 constexpr uint32_t kFramesPerBlock = 8;
 
 using Clock = std::chrono::steady_clock;
@@ -76,7 +73,7 @@ struct AudioDma {
     uint16_t remaining = 0;
     bool source_written = false;
     bool started = false;
-    std::chrono::steady_clock::time_point next_block{};
+    Clock::time_point next_block{};
 };
 
 struct AramDma {
@@ -85,19 +82,28 @@ struct AramDma {
     uint32_t count = 0;
 };
 
+struct Statistics {
+    uint32_t buffers = 0;
+    uint32_t late_starts = 0;
+    double worst_start = 0.0;
+    double dsp_seconds = 0.0;
+    double dsp_cycles = 0.0;
+    Clock::time_point since = Clock::now();
+};
+
 DSP::DSPCore* g_core = nullptr;
-std::mutex g_core_mutex;
-std::mutex g_state_mutex;
-HANDLE g_wake = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-HANDLE g_dma_wake = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-std::once_flag g_started;
+bool g_started = false;
 uint16_t g_control = kControlHalt;
 uint16_t g_aram_info = 0;
 uint16_t g_aram_mode = 1;
 uint16_t g_aram_refresh = 156;
 AramDma g_aram_dma;
 AudioDma g_audio_dma;
+double g_owed = 0.0;
+Clock::time_point g_last_update = Clock::now();
+Statistics g_statistics;
 bool g_log = std::getenv("WP_LOG_DSP") != nullptr;
+
 bool load_rom(int id, uint16_t* words, size_t count) {
     HRSRC resource = FindResourceA(nullptr, MAKEINTRESOURCEA(id), MAKEINTRESOURCEA(10));
     if (!resource || SizeofResource(nullptr, resource) != count * 2) {
@@ -115,9 +121,19 @@ void assert_interrupt_line() {
 }
 
 void raise(uint16_t interrupt) {
-    std::lock_guard<std::mutex> lock(g_state_mutex);
     g_control = static_cast<uint16_t>(g_control | interrupt);
     assert_interrupt_line();
+}
+
+bool halted() {
+    return !g_core || (g_core->DSPState().control_reg & kControlHalt);
+}
+
+void run_dsp(int cycles) {
+    Clock::time_point start = Clock::now();
+    g_core->RunCycles(cycles);
+    g_statistics.dsp_seconds += std::chrono::duration<double>(Clock::now() - start).count();
+    g_statistics.dsp_cycles += cycles;
 }
 
 void push_block(uint32_t source, bool enabled, uint32_t rate) {
@@ -133,107 +149,85 @@ void pump_audio_dma(Clock::time_point now) {
     uint32_t rate = (rd32(kAudioControl) & kAudioDmaRate32k) ? 32000 : 48000;
     const auto block = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(double(kFramesPerBlock) / rate));
     while (true) {
+        bool enabled = (g_audio_dma.control & 0x8000) != 0;
         uint32_t source = 0;
-        bool enabled = false;
-        {
-            std::lock_guard<std::mutex> lock(g_state_mutex);
-            enabled = (g_audio_dma.control & 0x8000) != 0;
-            if (!enabled) {
-                g_audio_dma.next_block = std::max(g_audio_dma.next_block, now - block);
-                if (g_audio_dma.next_block + block > now) {
-                    break;
-                }
-                g_audio_dma.next_block += block;
-            } else {
-                if (g_audio_dma.remaining == 0) {
-                    if (!g_audio_dma.source_written) {
-                        break;
-                    }
-                    g_audio_dma.current = g_audio_dma.source;
-                    g_audio_dma.remaining = g_audio_dma.control & 0x7FFF;
-                    g_audio_dma.source_written = false;
-                    g_audio_dma.started = false;
-                    g_control = static_cast<uint16_t>(g_control | kIntAudioDma);
-                    assert_interrupt_line();
-                }
-                if (!g_audio_dma.started) {
-                    if (g_control & kIntAudioDma) {
-                        break;
-                    }
-                    g_audio_dma.started = true;
-                }
-                if (g_audio_dma.next_block + block > now) {
-                    break;
-                }
-                g_audio_dma.next_block += block;
-                source = g_audio_dma.current;
-                g_audio_dma.remaining--;
-                g_audio_dma.current += 32;
+        if (!enabled) {
+            g_audio_dma.next_block = std::max(g_audio_dma.next_block, now - block);
+            if (g_audio_dma.next_block + block > now) {
+                return;
             }
+            g_audio_dma.next_block += block;
+        } else {
+            if (g_audio_dma.remaining == 0) {
+                if (!g_audio_dma.source_written) {
+                    return;
+                }
+                g_audio_dma.current = g_audio_dma.source;
+                g_audio_dma.remaining = g_audio_dma.control & 0x7FFF;
+                g_audio_dma.source_written = false;
+                g_audio_dma.started = false;
+                raise(kIntAudioDma);
+            }
+            if (!g_audio_dma.started) {
+                if (g_control & kIntAudioDma) {
+                    return;
+                }
+                g_audio_dma.started = true;
+                g_statistics.buffers++;
+                double lateness = std::chrono::duration<double>(now - g_audio_dma.next_block).count();
+                g_statistics.worst_start = std::max(g_statistics.worst_start, lateness);
+                if (lateness > 0.001) {
+                    g_statistics.late_starts++;
+                }
+            }
+            if (g_audio_dma.next_block + block > now) {
+                return;
+            }
+            g_audio_dma.next_block += block;
+            source = g_audio_dma.current;
+            g_audio_dma.remaining--;
+            g_audio_dma.current += 32;
         }
         push_block(source, enabled, rate);
     }
 }
 
-void dsp_thread() {
-    Clock::time_point last = Clock::now();
-    double owed = 0.0;
-    while (true) {
-        Clock::time_point now = Clock::now();
-        double seconds = std::chrono::duration<double>(now - last).count();
-        last = now;
-        owed = std::min(owed + seconds * kDspClock, kMaxLag * kDspClock);
-        bool idle = false;
-        for (int slice = 0; slice < kSlicesPerTurn && owed >= kSlice; slice++) {
-            std::lock_guard<std::mutex> lock(g_core_mutex);
-            DSP::SDSP& state = g_core->DSPState();
-            if (state.control_reg & kControlHalt) {
-                owed = 0.0;
-                idle = true;
-                break;
-            }
-            g_core->RunCycles(kSlice);
-            owed -= kSlice;
-            if (state.GetAnalyzer().IsIdleSkip(state.pc)) {
-                owed = 0.0;
-                idle = true;
-                break;
-            }
-        }
-        if (idle || owed < kSlice) {
-            WaitForSingleObject(g_wake, 1);
-        }
+void report(Clock::time_point now) {
+    double seconds = std::chrono::duration<double>(now - g_statistics.since).count();
+    if (seconds < 1.0) {
+        return;
     }
-}
-
-void audio_dma_thread() {
-    while (true) {
-        WaitForSingleObject(g_dma_wake, 1);
-        pump_audio_dma(Clock::now());
+    if (log::enabled()) {
+        log::write("audio", "buffers %.1f/s, late starts %u, worst start %.2f ms, DSP %.1f Mcycles/s using %.1f%% of the CPU thread",
+                   g_statistics.buffers / seconds, g_statistics.late_starts, g_statistics.worst_start * 1000.0,
+                   g_statistics.dsp_cycles / seconds / 1e6, 100.0 * g_statistics.dsp_seconds / seconds);
     }
+    g_statistics = Statistics{};
+    g_statistics.since = now;
 }
 
 void start() {
-    std::call_once(g_started, [] {
-        DSP::DSPInitOptions options;
-        options.core_type = DSP::DSPInitOptions::CoreType::Interpreter;
-        if (!load_rom(2, options.irom_contents.data(), options.irom_contents.size()) ||
-            !load_rom(3, options.coef_contents.data(), options.coef_contents.size())) {
-            std::fprintf(stderr, "DSP ROMs missing from the executable resources\n");
-            return;
-        }
-        g_core = new DSP::DSPCore();
-        if (!g_core->Initialize(options)) {
-            std::fprintf(stderr, "DSP core failed to initialize\n");
-            return;
-        }
-        g_core->Reset();
-        DSP::InitInstructionTable();
-        timeBeginPeriod(1);
-        audio::start_output();
-        std::thread(dsp_thread).detach();
-        std::thread(audio_dma_thread).detach();
-    });
+    if (g_started) {
+        return;
+    }
+    g_started = true;
+    DSP::DSPInitOptions options;
+    options.core_type = DSP::DSPInitOptions::CoreType::Interpreter;
+    if (!load_rom(2, options.irom_contents.data(), options.irom_contents.size()) ||
+        !load_rom(3, options.coef_contents.data(), options.coef_contents.size())) {
+        std::fprintf(stderr, "DSP ROMs missing from the executable resources\n");
+        return;
+    }
+    DSP::DSPCore* core = new DSP::DSPCore();
+    if (!core->Initialize(options)) {
+        std::fprintf(stderr, "DSP core failed to initialize\n");
+        return;
+    }
+    core->Reset();
+    DSP::InitInstructionTable();
+    g_core = core;
+    g_last_update = Clock::now();
+    audio::start_output();
 }
 
 void do_aram_dma() {
@@ -256,21 +250,40 @@ void do_aram_dma() {
     g_aram_dma.main += count;
     g_aram_dma.aram += count;
     g_aram_dma.count &= 0x80000000u;
-    g_control = static_cast<uint16_t>((g_control & ~kDmaState) | kIntAram);
+    g_control = static_cast<uint16_t>(g_control & ~kDmaState);
+    raise(kIntAram);
 }
 
 void run_for_mail() {
-    std::unique_lock<std::mutex> lock(g_core_mutex, std::try_to_lock);
-    if (lock && g_core && !(g_core->DSPState().control_reg & kControlHalt)) {
-        g_core->RunCycles(kMailSlice);
+    if (!halted()) {
+        run_dsp(kMailSlice);
+        g_owed -= kMailSlice;
     }
-    SetEvent(g_wake);
 }
 
-uint16_t dsp_control_bits() {
-    return g_core ? g_core->GetInterpreter().ReadControlRegister() : kControlHalt;
 }
 
+void update() {
+    if (!g_core) {
+        return;
+    }
+    Clock::time_point now = Clock::now();
+    double seconds = std::chrono::duration<double>(now - g_last_update).count();
+    g_last_update = now;
+    g_owed = std::min(g_owed + seconds * kDspClock, kMaxLag * kDspClock);
+    while (g_owed >= kSlice && !halted()) {
+        run_dsp(kSlice);
+        g_owed -= kSlice;
+        DSP::SDSP& state = g_core->DSPState();
+        if (state.GetAnalyzer().IsIdleSkip(state.pc)) {
+            g_owed = 0.0;
+        }
+    }
+    if (halted()) {
+        g_owed = 0.0;
+    }
+    pump_audio_dma(now);
+    report(now);
 }
 
 uint16_t read16(uint32_t address) {
@@ -292,8 +305,7 @@ uint16_t read16(uint32_t address) {
     case kMailFromDspLow:
         return g_core ? g_core->ReadMailboxLow(DSP::Mailbox::DSP) : 0;
     case kControl: {
-        uint16_t engine = dsp_control_bits();
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+        uint16_t engine = g_core ? g_core->GetInterpreter().ReadControlRegister() : kControlHalt;
         return static_cast<uint16_t>((g_control & ~kControlMask) | (engine & kControlMask));
     }
     case kAramInfo:
@@ -314,22 +326,14 @@ uint16_t read16(uint32_t address) {
         return static_cast<uint16_t>(g_aram_dma.count >> 16);
     case kAramDmaCountLow:
         return static_cast<uint16_t>(g_aram_dma.count);
-    case kAudioDmaStartHigh: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+    case kAudioDmaStartHigh:
         return static_cast<uint16_t>(g_audio_dma.source >> 16);
-    }
-    case kAudioDmaStartLow: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+    case kAudioDmaStartLow:
         return static_cast<uint16_t>(g_audio_dma.source);
-    }
-    case kAudioDmaControl: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+    case kAudioDmaControl:
         return g_audio_dma.control;
-    }
-    case kAudioDmaBlocksLeft: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+    case kAudioDmaBlocksLeft:
         return static_cast<uint16_t>(g_audio_dma.remaining > 0 ? g_audio_dma.remaining - 1 : 0);
-    }
     default:
         return 0;
     }
@@ -348,12 +352,10 @@ void write16(uint32_t address, uint16_t value) {
         if (g_core) {
             g_core->WriteMailboxLow(DSP::Mailbox::CPU, value);
         }
-        SetEvent(g_wake);
         break;
     case kControl: {
         uint16_t engine = kControlHalt;
         if (g_core) {
-            std::lock_guard<std::mutex> lock(g_core_mutex);
             DSP::Interpreter::Interpreter& interpreter = g_core->GetInterpreter();
             interpreter.WriteControlRegister(value);
             if (value & DSP::CR_EXTERNAL_INT) {
@@ -362,18 +364,12 @@ void write16(uint32_t address, uint16_t value) {
             }
             engine = interpreter.ReadControlRegister();
         }
-        std::lock_guard<std::mutex> lock(g_state_mutex);
         if (value & kControlReset) {
             g_audio_dma.control = 0;
         }
         uint16_t kept = static_cast<uint16_t>(g_control & (kIntAll | kDmaState));
         uint16_t acknowledged = static_cast<uint16_t>(value & kIntAll);
-        if (acknowledged & kIntAudioDma) {
-            SetEvent(g_dma_wake);
-        }
         g_control = static_cast<uint16_t>((value & ~(kIntAll | kDmaState | kControlMask)) | (engine & kControlMask) | (kept & ~acknowledged));
-
-        SetEvent(g_wake);
         break;
     }
     case kAramInfo:
@@ -397,27 +393,18 @@ void write16(uint32_t address, uint16_t value) {
     case kAramDmaCountHigh:
         g_aram_dma.count = (g_aram_dma.count & 0xFFFF) | (static_cast<uint32_t>(value & 0x83FF) << 16);
         break;
-    case kAramDmaCountLow: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+    case kAramDmaCountLow:
         g_aram_dma.count = (g_aram_dma.count & 0xFFFF0000u) | (value & 0xFFE0);
         do_aram_dma();
         break;
-    }
-    case kAudioDmaStartHigh: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+    case kAudioDmaStartHigh:
         g_audio_dma.source = (g_audio_dma.source & 0xFFFF) | (static_cast<uint32_t>(value & 0x1FFF) << 16);
         break;
-    }
-    case kAudioDmaStartLow: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
+    case kAudioDmaStartLow:
         g_audio_dma.source = (g_audio_dma.source & 0xFFFF0000u) | (value & 0xFFE0);
         g_audio_dma.source_written = true;
-        SetEvent(g_dma_wake);
-        SetEvent(g_wake);
         break;
-    }
     case kAudioDmaControl: {
-        std::lock_guard<std::mutex> lock(g_state_mutex);
         bool already = (g_audio_dma.control & 0x8000) != 0;
         g_audio_dma.control = value;
         if (!already && (value & 0x8000)) {
@@ -425,7 +412,8 @@ void write16(uint32_t address, uint16_t value) {
             g_audio_dma.remaining = value & 0x7FFF;
             g_audio_dma.source_written = false;
             g_audio_dma.started = false;
-            g_control = static_cast<uint16_t>(g_control | kIntAudioDma);
+            g_audio_dma.next_block = Clock::now();
+            raise(kIntAudioDma);
         }
         break;
     }
@@ -435,7 +423,6 @@ void write16(uint32_t address, uint16_t value) {
 }
 
 uint32_t pending_interrupt() {
-    std::lock_guard<std::mutex> lock(g_state_mutex);
     uint16_t active = static_cast<uint16_t>((g_control >> 1) & g_control & kIntAll);
     if (active & kIntDsp) {
         return kInterruptDsp;
@@ -481,7 +468,7 @@ void OSD_AddMessage(std::string message, u32) {
 }
 
 bool OnThread() {
-    return true;
+    return false;
 }
 
 bool IsWiiHost() {
@@ -510,6 +497,7 @@ void CodeLoaded(DSPCore& dsp, const u8* pointer, size_t size) {
     if (wp::dsp::g_log) {
         std::fprintf(stderr, "DSP code loaded, %zu bytes, checksum %08x\n", size, crc);
     }
+    wp::log::write("audio", "DSP microcode loaded, %u bytes, checksum %08x", static_cast<unsigned>(size), crc);
     dsp.ClearIRAM();
     state.GetAnalyzer().Analyze(state);
 }

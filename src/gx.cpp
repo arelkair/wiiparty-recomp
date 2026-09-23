@@ -10,6 +10,7 @@
 
 #include "wp/gx_lighting.h"
 #include "wp/gx_render.h"
+#include "wp/log.h"
 #include "wp/memory.h"
 
 namespace wp::gx {
@@ -46,6 +47,7 @@ constexpr float kDepthRange = 16777215.0f;
 constexpr int kMaxLoggedCopies = 60;
 constexpr uint32_t kTexCoordCount = 8;
 constexpr size_t kArrayReadMargin = 256;
+constexpr double kSlowFrameMs = 40.0;
 
 enum Attribute : uint32_t { kNone = 0, kDirect = 1, kIndex8 = 2, kIndex16 = 3 };
 
@@ -621,17 +623,26 @@ void execute_copy(uint32_t value) {
         int y = static_cast<int>((source >> 10) & 0x3FF);
         int width = static_cast<int>(size & 0x3FF) + 1;
         int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
-        if (g_log_fps) {
+        if (g_log_fps || log::enabled()) {
             g_frames++;
             auto now = std::chrono::steady_clock::now();
+            static auto previous_frame = now;
+            double frame_ms = std::chrono::duration<double>(now - previous_frame).count() * 1000.0;
+            previous_frame = now;
+            if (frame_ms > kSlowFrameMs) {
+                log::write("frame", "slow frame: %.0f ms", frame_ms);
+            }
             double seconds = std::chrono::duration<double>(now - g_fps_start).count();
             if (seconds >= 1.0) {
                 uint32_t batches = 0;
                 uint32_t vertices = 0;
                 double batch_seconds = 0.0;
                 render::take_statistics(batches, vertices, batch_seconds);
-                std::fprintf(stderr, "fps %.1f batches %u vertices %u cpu-side draw time %.0f ms", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
-                std::fputc(10, stderr);
+                if (g_log_fps) {
+                    std::fprintf(stderr, "fps %.1f batches %u vertices %u cpu-side draw time %.0f ms", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
+                    std::fputc(10, stderr);
+                }
+                log::write("fps", "%.1f fps, %u draw batches, %u vertices, %.0f ms drawing", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
                 g_frames = 0;
                 g_fps_start = now;
             }

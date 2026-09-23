@@ -9,6 +9,7 @@
 
 #include "wp/bluetooth.h"
 #include "wp/disc.h"
+#include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
 
@@ -244,11 +245,13 @@ int32_t open(const std::string& path, uint32_t mode) {
         int32_t file = nand::open(path, mode);
         if (file < 0) {
             std::fprintf(stderr, "IOS open %s failed (%d)\n", path.c_str(), file);
+            log::write("ios", "open %s failed (%d)", path.c_str(), file);
             return file;
         }
         device.file = file;
     }
     std::fprintf(stderr, "IOS open %s\n", path.c_str());
+    log::write("ios", "open %s", path.c_str());
     int32_t descriptor = g_next_descriptor++;
     g_devices[descriptor] = device;
     return descriptor;

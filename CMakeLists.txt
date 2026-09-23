@@ -18,10 +18,10 @@ target_include_directories(wp_dolphin_dsp SYSTEM PUBLIC "${WP_DOLPHIN_DIR}" "${C
 target_compile_features(wp_dolphin_dsp PUBLIC cxx_std_20)
 set_target_properties(wp_dolphin_dsp PROPERTIES CXX_STANDARD 20)
 
-add_library(wp_runtime STATIC src/runtime.cpp src/dol.cpp src/boot.cpp src/hle.cpp src/ios.cpp src/bluetooth.cpp src/wiimote.cpp src/interrupts.cpp src/threads.cpp src/format.cpp src/disc.cpp src/modules.cpp src/nand.cpp src/video.cpp src/gx.cpp src/gx_lighting.cpp src/gx_render.cpp src/input.cpp src/audio.cpp src/dsp.cpp)
+add_library(wp_runtime STATIC src/runtime.cpp src/dol.cpp src/boot.cpp src/hle.cpp src/ios.cpp src/bluetooth.cpp src/wiimote.cpp src/interrupts.cpp src/threads.cpp src/format.cpp src/disc.cpp src/modules.cpp src/nand.cpp src/video.cpp src/gx.cpp src/gx_lighting.cpp src/gx_render.cpp src/input.cpp src/audio.cpp src/dsp.cpp src/log.cpp)
 target_include_directories(wp_runtime PUBLIC include)
 target_compile_definitions(wp_runtime PRIVATE WP_BUILD="${WP_BUILD}")
-target_link_libraries(wp_runtime PUBLIC wp_dolphin_dsp gdi32 user32 d3d11 d3dcompiler dxgi ole32 winmm)
+target_link_libraries(wp_runtime PUBLIC wp_dolphin_dsp gdi32 user32 d3d11 d3dcompiler dxgi ole32)
 if(WP_TRACE)
     target_compile_definitions(wp_runtime PUBLIC WP_TRACE)
 endif()

@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <vector>
 
+#include "wp/log.h"
 #include "wp/memory.h"
 
 namespace wp::disc {
@@ -140,6 +141,7 @@ void read(uint64_t offset, uint32_t length, uint32_t destination) {
             std::fprintf(stderr, "disc read %llx+%x -> %08x from %s%s\n", static_cast<unsigned long long>(offset), length,
                          destination, it->path.c_str(), file ? "" : " (missing)");
         }
+        log::write("disc", "read %u bytes from %s%s", static_cast<uint32_t>(stop - start), it->path.c_str(), file ? "" : " (missing)");
         if (!file) {
             continue;
         }
