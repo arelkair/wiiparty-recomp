@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, but it is silent, some elements are missing, it can crash when a minigame loads and it has not been played to the end. Overall progress is about 54% (estimate, see below).
+> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, but it is silent, some elements are missing, and it has not been played to the end. Overall progress is about 54% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -21,7 +21,7 @@ The overall figure is the equal-weight average of the components below. They are
 | Component | Progress | Basis |
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
-| System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD, NAND and Bluetooth work; a reused thread slot can resume a finished thread (crash when loading some minigames) |
+| System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD, NAND and Bluetooth work; free of known blockers |
 | Graphics (GX to Direct3D 11) | 80% | Menus, text, cursor, 3D models and lit Miis with correct faces draw with correct colors, paletted textures, mipmaps, filtering, TEV compare modes and EFB copies in every format; no indirect textures |
 | Input | 55% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons; no motion, gamepads or real Wii Remotes |
 | Audio | 0% | AX sound layer is stubbed; the game is silent |
@@ -39,7 +39,6 @@ The overall figure is the equal-weight average of the components below. They are
 ### Known problems
 
 - Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked.
-- The game can crash when a minigame loads ("thread function returned without exiting"): a thread slot that the game reuses can resume the previous, finished thread.
 - The gold, silver and bronze bonus dice above the Miis after a minigame show no pips.
 - The Miis that cheer at the sides when something good happens are drawn without heads.
 - Some minigames may still be drawn incorrectly; not all have been checked.

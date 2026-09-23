@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(wiiparty_recomp CXX)
+project(wiiparty_recomp CXX RC)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,7 +52,7 @@ if(TARGET wp_dol)
 endif()
 
 if(TARGET wp_dol)
-    add_executable(wiiparty src/main.cpp)
+    add_executable(wiiparty src/main.cpp res/wiiparty.rc)
     target_link_libraries(wiiparty PRIVATE "$<LINK_GROUP:RESCAN,wp_dol,wp_runtime>")
     target_link_options(wiiparty PRIVATE -Wl,--stack,536870912)
     target_compile_options(wiiparty PRIVATE -Wall -Wextra)

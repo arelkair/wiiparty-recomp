@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <map>
 
 #include "wp/function_table.h"
@@ -40,6 +41,7 @@ constexpr size_t kFiberStackSize = 4u << 20;
 struct SavedContext {
     void* fiber;
     std::jmp_buf* point;
+    uint32_t resume;
 };
 
 struct SavedJump {
@@ -168,6 +170,22 @@ void restore_jump(Cpu& c, uint32_t buffer) {
     std::longjmp(*point, 1);
 }
 
+void discard_fiber(void* fiber) {
+    for (auto it = g_saved.begin(); it != g_saved.end();) {
+        it = it->second.fiber == fiber ? g_saved.erase(it) : std::next(it);
+    }
+    for (auto it = g_jumps.begin(); it != g_jumps.end();) {
+        it = it->second.fiber == fiber ? g_jumps.erase(it) : std::next(it);
+    }
+    if (fiber == GetCurrentFiber()) {
+        return;
+    }
+#ifdef WP_TRACE
+    g_traces.erase(fiber);
+#endif
+    DeleteFiber(fiber);
+}
+
 VOID CALLBACK start_thread(PVOID parameter) {
     uint32_t context = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(parameter));
     Cpu& c = *g_cpu;
@@ -205,7 +223,7 @@ void init_threads(Cpu& c) {
 void save_context(Cpu& c, std::jmp_buf* point) {
     uint32_t context = c.r[3];
     store(c, context);
-    g_saved[context] = SavedContext{GetCurrentFiber(), point};
+    g_saved[context] = SavedContext{GetCurrentFiber(), point, c.lr};
     c.r[3] = 0;
 }
 
@@ -217,6 +235,10 @@ void resume_context(Cpu& c) {
 void load_context(Cpu& c) {
     uint32_t context = c.r[3];
     auto it = g_saved.find(context);
+    if (it != g_saved.end() && rd32(context + kSrr0Offset) != it->second.resume) {
+        discard_fiber(it->second.fiber);
+        it = g_saved.find(context);
+    }
     if (it == g_saved.end()) {
         void* fiber = CreateFiber(kFiberStackSize, start_thread, reinterpret_cast<void*>(static_cast<uintptr_t>(context)));
 #ifdef WP_TRACE

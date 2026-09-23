@@ -139,6 +139,7 @@ void window_thread() {
     window_class.lpfnWndProc = window_proc;
     window_class.hInstance = GetModuleHandle(nullptr);
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    window_class.hIcon = LoadIcon(window_class.hInstance, MAKEINTRESOURCE(1));
     window_class.lpszClassName = kWindowClass;
     RegisterClassA(&window_class);
     std::string title = window_title();

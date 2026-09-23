@@ -13,6 +13,7 @@
 #include <map>
 #include <vector>
 
+#include "wp/input.h"
 #include "wp/ios.h"
 #include "wp/memory.h"
 #include "wp/wiimote.h"
@@ -122,7 +123,7 @@ struct Channel {
     bool complete = false;
 };
 
-enum class Baseband { Inactive, RequestConnection, Complete };
+enum class Baseband { Inactive, RequestConnection, Pending, Complete };
 
 struct Wiimote {
     Baseband baseband = Baseband::Inactive;
@@ -649,13 +650,16 @@ void execute_command(uint32_t data) {
 
 void update_wiimote(uint32_t index) {
     Wiimote& wiimote = g_wiimotes[index];
+    if (wiimote.baseband == Baseband::Inactive && index < kConnectedWiimotes && input::sample(index).buttons != 0) {
+        wiimote.baseband = Baseband::RequestConnection;
+    }
     if (wiimote.baseband == Baseband::RequestConnection && (g_scan_enable & kPageScanEnable)) {
         std::vector<uint8_t> body;
         put_address(body, index);
         body.insert(body.end(), kWiimoteClass, kWiimoteClass + 3);
         body.push_back(0x01);
         event(kEventConnectionRequest, body);
-        wiimote.baseband = Baseband::Inactive;
+        wiimote.baseband = Baseband::Pending;
     }
     if (wiimote.baseband != Baseband::Complete) {
         return;
