@@ -672,7 +672,7 @@ void load_bp(uint32_t word) {
     if (reg == kBpCopyExecute) {
         execute_copy(g_bp[reg]);
     } else if (reg == kBpLoadTlut) {
-        uint32_t address = kRamBase | ((g_bp[0x64] & 0x1FFFFF) << 5);
+        uint32_t address = kRamBase | ((g_bp[0x64] & 0xFFFFFF) << 5);
         render::load_tlut(address, (g_bp[reg] & 0x3FF) << 9, ((g_bp[reg] >> 10) & 0x7FF) << 5);
     }
 }

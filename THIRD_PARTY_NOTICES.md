@@ -25,7 +25,17 @@ Adapted third-party components are included (see below). This file records what 
 - Parts adapted: the USB V0 control, bulk and interrupt message handling, the HCI command replies (reset, buffer size, local version and features, controller address, stored link keys, scan enable, supervision timeout, vendor commands), the event queue and the pending event and ACL endpoints.
 - Copyright: "Copyright 2008 Dolphin Emulator Project" (upstream header). License: GPL-2.0-or-later (SPDX identifier in the upstream files), compatible with GPL-3.0-or-later.
 - Not copied: `hci.h` and `l2cap.h`, which mix Dolphin code with BSD-licensed code from NetBSD and FreeBSD. The HCI opcodes and event codes used here were written from the Bluetooth specification.
-- Changes (2026-09-23, this project): rewritten around this project's IOS request handling (deferred replies taken by `ios::take_completion`), byte vectors instead of packed structs, no save states, no Wii Remotes attached yet.
+- Also adapted, from `Source/Core/Core/IOS/USB/Bluetooth/WiimoteDevice.cpp` ("Copyright 2008 Dolphin Emulator Project", GPL-2.0-or-later): the connection sequence of an emulated Wii Remote (connection request, accept, remote name, features, authentication) and the L2CAP signalling for the HID control and interrupt channels (connection, configuration, disconnection).
+- Changes (2026-09-23, this project): rewritten around this project's IOS request handling (deferred replies taken by `ios::take_completion`), byte vectors instead of packed structs, no save states, one Wii Remote attached, channels opened once the host has configured the link.
+
+### Emulated Wii Remote from the Dolphin Emulator
+
+- Repository files: `src/wiimote.cpp` and `include/wp/wiimote.h`, kept apart from the project's own code, with the upstream copyright lines and SPDX identifier.
+- Upstream files (same 2606 snapshot, exact commit unknown): `Source/Core/Core/HW/WiimoteEmu/EmuSubroutines.cpp` and `WiimoteEmu.cpp` ("Copyright 2010 Dolphin Emulator Project"), and `Camera.cpp` ("Copyright 2019 Dolphin Emulator Project"). Report layouts were read from `WiimoteCommon/WiimoteReport.h` and `WiimoteConstants.h`; no code from those headers was copied.
+- Parts adapted: the output report handling (LEDs, report mode, IR camera enable, status request, memory and register read and write, acknowledgements), the EEPROM contents with calibration data, the I2C register spaces of the IR camera and speaker, the data report layouts (buttons, accelerometer, IR in basic, extended and full formats, extension bytes) and the 200 Hz report timing.
+- License: `SPDX-License-Identifier: GPL-2.0-or-later` in every upstream file, compatible with GPL-3.0-or-later.
+- Not copied: the motion simulation (`Dynamics.cpp`), extensions, MotionPlus, the speaker decoder and the encryption code. The mapping from the PC pointer to the two IR dots is this project's own: it was measured against the game's own KPAD so that KPAD reports the same position as the input.
+- Changes (2026-09-23, this project): reads a simple input sample (buttons and pointer) instead of Dolphin's input configuration; sends reports through a callback into `src/bluetooth.cpp`; no save states.
 
 ## Rules for adding third-party code
 

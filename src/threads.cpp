@@ -177,7 +177,7 @@ VOID CALLBACK start_thread(PVOID parameter) {
     uint32_t exit_function = c.lr;
     call(c, entry);
     call(c, exit_function);
-    std::fputs("thread function returned without exiting\n", stderr);
+    std::fprintf(stderr, "thread function %08x returned without exiting (exit function %08x)\n", entry, exit_function);
     std::abort();
 }
 

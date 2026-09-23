@@ -13,9 +13,6 @@ OSReport
 OSPanic
 longjmp
 GXDrawDone
-KPADReadEx
-WPADProbe
-WPADGetInfoAsync
 HleZero_8015EA40
 HleZero_8015EAA0
 HleZero_8015ECF0

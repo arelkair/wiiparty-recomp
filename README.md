@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays a full round of Board Game Island (minigame, results, dice rolls and board moves), but it is silent, some elements are missing and it has not been played to the end. Overall progress is about 50% (estimate, see below).
+> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, but it is silent, some elements are missing, it can crash when a minigame loads and it has not been played to the end. Overall progress is about 54% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -12,7 +12,7 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
-The game runs natively on Windows at a steady 50 fps (PAL), with keyboard and mouse input. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
+The game runs natively on Windows at a steady 50 fps (PAL). Input goes through an emulated Wii Remote: the mouse is the pointer and the keyboard gives the buttons. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
 
 ### Progress
 
@@ -21,11 +21,11 @@ The overall figure is the equal-weight average of the components below. They are
 | Component | Progress | Basis |
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
-| System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD and NAND work; free of known blockers except finished fibers not freed |
-| Graphics (GX to Direct3D 11) | 74% | Menus, text, 3D models and lit Miis draw with correct RGBA8 colors, mipmaps, texture filtering and EFB copies in every format; no indirect textures |
-| Input | 40% | Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes |
+| System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD, NAND and Bluetooth work; a reused thread slot can resume a finished thread (crash when loading some minigames) |
+| Graphics (GX to Direct3D 11) | 80% | Menus, text, cursor, 3D models and lit Miis with correct faces draw with correct colors, paletted textures, mipmaps, filtering, TEV compare modes and EFB copies in every format; no indirect textures |
+| Input | 55% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons; no motion, gamepads or real Wii Remotes |
 | Audio | 0% | AX sound layer is stubbed; the game is silent |
-| Game flow | 45% | Plays a full Board Game Island round: minigame, results, dice rolls and board moves, up to the next minigame |
+| Game flow | 55% | Plays Board Game Island through a full first round (minigame, results, dice, board events, 1 vs 3 minigame) into the second round |
 | PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
 
 ### Working
@@ -38,17 +38,16 @@ The overall figure is the equal-weight average of the components below. They are
 
 ### Known problems
 
-- The minigame is drawn incorrectly (upside down or black) and the barrel of the first minigame does not appear.
 - Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked.
-- Text such as "Round 1" is not drawn: the translucent band appears, the text does not.
-- The Wii Remote pointer uses a different horizontal range in widescreen, so the game cursor is not yet under the mouse, and the game does not draw its hand cursor.
-- The pictures in the board explanation are black rectangles.
-- `unsupported EFB copy format 8` (R8 EFB copy) is logged.
+- The game can crash when a minigame loads ("thread function returned without exiting"): a thread slot that the game reuses can resume the previous, finished thread.
+- The gold, silver and bronze bonus dice above the Miis after a minigame show no pips.
+- The Miis that cheer at the sides when something good happens are drawn without heads.
+- Some minigames may still be drawn incorrectly; not all have been checked.
 
 ### Not implemented
 
 - Audio: the AX sound layer is stubbed, so the game is silent.
-- Generic gamepads and real Wii Remotes.
+- Wii Remote motion (tilt, swing), generic gamepads and real Wii Remotes.
 - GX: indirect textures, lines and points, depth (Z) EFB copies.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 

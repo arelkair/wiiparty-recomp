@@ -1,5 +1,6 @@
 #include "wp/nand.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -21,6 +22,7 @@ constexpr uint8_t kTypeBigArray = 1;
 constexpr uint8_t kTypeSmallArray = 2;
 constexpr uint8_t kTypeByte = 3;
 constexpr uint8_t kTypeLong = 5;
+constexpr uint8_t kTypeBool = 7;
 constexpr uint8_t kLanguageEnglish = 1;
 
 fs::path g_root;
@@ -56,23 +58,61 @@ void add_item(std::vector<std::vector<uint8_t>>& items, uint8_t type, const std:
     items.push_back(item);
 }
 
+std::vector<uint8_t> paired_remotes() {
+    constexpr size_t kDeviceSize = 6 + 0x40;
+    constexpr size_t kRegistered = 10;
+    constexpr size_t kActive = 5;
+    constexpr uint8_t kRemotes = 4;
+    static const char kName[] = "Nintendo RVL-CNT-01";
+    std::vector<uint8_t> data(1 + kDeviceSize * (kRegistered + kActive + 1), 0);
+    data[0] = kRemotes;
+    for (uint8_t i = 0; i < kRemotes; i++) {
+        const uint8_t address[6] = {i, 0x00, 0x79, 0x19, 0x02, 0x11};
+        for (size_t slot : {1 + kDeviceSize * i, 1 + kDeviceSize * (kRegistered + i)}) {
+            std::memcpy(&data[slot], address, 6);
+            std::memcpy(&data[slot + 6], kName, sizeof(kName) - 1);
+        }
+    }
+    return data;
+}
+
 std::vector<uint8_t> default_sysconf() {
     std::vector<std::vector<uint8_t>> items;
-    add_item(items, kTypeByte, "IPL.LNG", {kLanguageEnglish});
-    add_item(items, kTypeByte, "IPL.AR", {1});
-    add_item(items, kTypeByte, "IPL.SND", {1});
-    add_item(items, kTypeByte, "IPL.PGS", {0});
-    add_item(items, kTypeByte, "IPL.E60", {0});
-    add_item(items, kTypeByte, "IPL.SSV", {1});
-    add_item(items, kTypeLong, "IPL.CB", {0, 0, 0, 0});
-    add_item(items, kTypeLong, "IPL.UPT", {0, 0, 0, 0});
-    add_item(items, kTypeSmallArray, "IPL.IDL", {0, 1});
-    add_item(items, kTypeSmallArray, "IPL.AREA", {'E', 'U', 'R', 0});
-    add_item(items, kTypeSmallArray, "IPL.CODE", {'L', 'E', 'H', 0});
-    add_item(items, kTypeByte, "BT.MOT", {1});
-    add_item(items, kTypeByte, "BT.SPKV", {88});
+    add_item(items, kTypeBigArray, "BT.DINF", paired_remotes());
+    add_item(items, kTypeBigArray, "BT.CDIF", std::vector<uint8_t>(0x205, 0));
     add_item(items, kTypeLong, "BT.SENS", {0, 0, 0, 3});
     add_item(items, kTypeByte, "BT.BAR", {1});
+    add_item(items, kTypeByte, "BT.SPKV", {0x58});
+    add_item(items, kTypeByte, "BT.MOT", {1});
+    add_item(items, kTypeSmallArray, "IPL.NIK", {0, 'w', 0, 'i', 0, 'i', 0, 'p', 0, 'a', 0, 'r', 0, 't', 0, 'y'});
+    add_item(items, kTypeByte, "IPL.LNG", {kLanguageEnglish});
+    std::vector<uint8_t> address(0x1008, 0);
+    address[0] = 0x6c;
+    add_item(items, kTypeBigArray, "IPL.SADR", address);
+    std::vector<uint8_t> parental(0x4A, 0);
+    parental[1] = 0x04;
+    parental[2] = 0x14;
+    add_item(items, kTypeSmallArray, "IPL.PC", parental);
+    add_item(items, kTypeLong, "IPL.CB", {0, 0, 0, 0});
+    add_item(items, kTypeByte, "IPL.AR", {1});
+    add_item(items, kTypeByte, "IPL.SSV", {1});
+    add_item(items, kTypeBool, "IPL.CD", {0});
+    add_item(items, kTypeBool, "IPL.CD2", {0});
+    add_item(items, kTypeBool, "IPL.EULA", {1});
+    add_item(items, kTypeByte, "IPL.UPT", {2});
+    add_item(items, kTypeByte, "IPL.PGS", {0});
+    add_item(items, kTypeByte, "IPL.E60", {0});
+    add_item(items, kTypeByte, "IPL.DH", {0});
+    add_item(items, kTypeLong, "IPL.INC", {0, 0, 0, 8});
+    add_item(items, kTypeLong, "IPL.FRC", {0, 0, 0, 0x28});
+    add_item(items, kTypeSmallArray, "IPL.IDL", {0, 1});
+    add_item(items, kTypeByte, "IPL.SND", {1});
+    add_item(items, kTypeSmallArray, "IPL.AREA", {'E', 'U', 'R', 0});
+    add_item(items, kTypeSmallArray, "IPL.CODE", {'L', 'E', 'H', 0});
+    add_item(items, kTypeLong, "NET.WCFG", {0, 0, 0, 1});
+    add_item(items, kTypeLong, "NET.CTPC", {0, 0, 0, 0});
+    add_item(items, kTypeByte, "WWW.RST", {0});
+    add_item(items, kTypeBool, "MPLS.MOVIE", {1});
 
     std::vector<uint8_t> file;
     file.push_back('S');
@@ -124,6 +164,11 @@ bool valid_sysconf(const fs::path& path) {
             return false;
         }
         previous = offset;
+    }
+    for (const char* name : {"BT.DINF", "BT.CDIF", "IPL.SADR"}) {
+        if (std::search(data.begin(), data.end(), name, name + std::strlen(name)) == data.end()) {
+            return false;
+        }
     }
     return true;
 }

@@ -9,7 +9,6 @@
 
 #include "wp/format.h"
 #include "wp/gx.h"
-#include "wp/input.h"
 #include "wp/ios.h"
 #include "wp/threads.h"
 
@@ -22,26 +21,7 @@ constexpr uint32_t kRequestArgument = 0x24;
 constexpr uint32_t kIpcHeapSlot = 0xFFFF871C;
 constexpr uint32_t kFreeRequestFunction = 0x80177300;
 constexpr uint32_t kDrawDoneSlot = 0xFFFF8F38;
-constexpr uint32_t kKpadStatusSize = 0xF0;
-constexpr uint32_t kKpadTrigger = 0x04;
-constexpr uint32_t kKpadRelease = 0x08;
-constexpr uint32_t kKpadAcceleration = 0x0C;
-constexpr uint32_t kKpadPointer = 0x20;
-constexpr uint32_t kKpadHorizon = 0x34;
-constexpr uint32_t kKpadDeviceType = 0x5C;
-constexpr uint32_t kKpadError = 0x5D;
-constexpr uint32_t kKpadPointerValid = 0x5E;
-constexpr uint32_t kDeviceCore = 0;
-constexpr uint32_t kDeviceNotFound = 0xFD;
-constexpr uint32_t kChannelCount = 4;
 constexpr const char* kSilentPrefix = "HleZero_";
-constexpr float kPointerHeightScale = 1.0f;
-constexpr uint32_t kWpadInfoSize = 0x18;
-constexpr uint32_t kWpadInfoBattery = 0x14;
-constexpr uint32_t kWpadInfoLed = 0x15;
-constexpr uint32_t kWpadFullBattery = 4;
-constexpr int32_t kWpadNoController = -1;
-uint32_t g_previous_buttons[kChannelCount] = {};
 
 struct PendingRequest {
     uint32_t request;
@@ -54,17 +34,6 @@ struct PendingRequest {
 constexpr std::chrono::microseconds kIpcLatency(1000);
 
 std::deque<PendingRequest> g_pending_ipc;
-
-struct PendingWpadCallback {
-    uint32_t callback;
-    uint32_t channel;
-    int32_t result;
-    std::chrono::steady_clock::time_point ready;
-};
-
-constexpr std::chrono::milliseconds kWpadLatency(10);
-
-std::deque<PendingWpadCallback> g_pending_wpad;
 
 struct Replacement {
     const char* name;
@@ -118,83 +87,8 @@ void gx_draw_done(Cpu& c) {
     wr8(c.r[13] + kDrawDoneSlot, 1);
 }
 
-void kpad_read(Cpu& c) {
-    uint32_t channel = c.r[3];
-    uint32_t buffer = c.r[4];
-    uint32_t count = c.r[5];
-    uint32_t error = c.r[6];
-    uint32_t samples = 0;
-    int32_t result = -1;
-    if (buffer != 0 && count != 0) {
-        std::memset(host(buffer), 0, kKpadStatusSize);
-        if (channel < kChannelCount && input::connected(channel)) {
-            input::Sample sample = input::sample(channel);
-            uint32_t previous = g_previous_buttons[channel];
-            g_previous_buttons[channel] = sample.buttons;
-            wr32(buffer, sample.buttons);
-            wr32(buffer + kKpadTrigger, sample.buttons & ~previous);
-            wr32(buffer + kKpadRelease, previous & ~sample.buttons);
-            wrf32(buffer + kKpadAcceleration + 8, 1.0f);
-            wrf32(buffer + kKpadHorizon, 1.0f);
-            wrf32(buffer + kKpadPointer, sample.pointer_x);
-            wrf32(buffer + kKpadPointer + 4, sample.pointer_y * kPointerHeightScale);
-            wr8(buffer + kKpadDeviceType, kDeviceCore);
-            wr8(buffer + kKpadError, 0);
-            wr8(buffer + kKpadPointerValid, sample.pointer_valid ? 1 : 0);
-            samples = 1;
-            result = 0;
-        } else {
-            wr8(buffer + kKpadDeviceType, kDeviceNotFound);
-            wr8(buffer + kKpadError, 0xFF);
-        }
-    }
-    if (error != 0) {
-        wr32(error, static_cast<uint32_t>(result));
-    }
-    c.r[3] = samples;
-}
-
-void wpad_get_info_async(Cpu& c) {
-    uint32_t channel = c.r[3];
-    uint32_t info = c.r[4];
-    uint32_t callback = c.r[5];
-    bool present = channel < kChannelCount && input::connected(channel);
-    if (!present) {
-        if (callback != 0) {
-            c.r[3] = channel;
-            c.r[4] = static_cast<uint32_t>(kWpadNoController);
-            call(c, callback);
-        }
-        c.r[3] = static_cast<uint32_t>(kWpadNoController);
-        return;
-    }
-    if (info != 0) {
-        std::memset(host(info), 0, kWpadInfoSize);
-        wr8(info + kWpadInfoBattery, kWpadFullBattery);
-        wr8(info + kWpadInfoLed, 1u << channel);
-    }
-    if (callback != 0) {
-        g_pending_wpad.push_back({callback, channel, 0, std::chrono::steady_clock::now() + kWpadLatency});
-    }
-    c.r[3] = 0;
-}
-
-bool wpad_pending() {
-    return !g_pending_wpad.empty() && g_pending_wpad.front().ready <= std::chrono::steady_clock::now();
-}
-
 bool request_pending() {
     return !g_pending_ipc.empty() && g_pending_ipc.front().ready <= std::chrono::steady_clock::now();
-}
-
-void wpad_probe(Cpu& c) {
-    uint32_t channel = c.r[3];
-    uint32_t type = c.r[4];
-    bool present = channel < kChannelCount && input::connected(channel);
-    if (type != 0) {
-        wr32(type, present ? kDeviceCore : kDeviceNotFound);
-    }
-    c.r[3] = present ? 0 : static_cast<uint32_t>(-1);
 }
 
 void os_report(Cpu& c) {
@@ -228,9 +122,6 @@ const Replacement kReplacements[] = {
     {"OSSwitchFiber", switch_fiber},
     {"longjmp", long_jump},
     {"GXDrawDone", gx_draw_done},
-    {"KPADReadEx", kpad_read},
-    {"WPADProbe", wpad_probe},
-    {"WPADGetInfoAsync", wpad_get_info_async},
 };
 
 }
@@ -243,17 +134,10 @@ bool ipc_pending() {
         g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument),
                                  std::chrono::steady_clock::now()});
     }
-    return request_pending() || wpad_pending();
+    return request_pending();
 }
 
 void ipc_deliver(Cpu& c) {
-    while (wpad_pending()) {
-        PendingWpadCallback pending = g_pending_wpad.front();
-        g_pending_wpad.pop_front();
-        c.r[3] = pending.channel;
-        c.r[4] = static_cast<uint32_t>(pending.result);
-        call(c, pending.callback);
-    }
     while (request_pending()) {
         PendingRequest pending = g_pending_ipc.front();
         g_pending_ipc.pop_front();

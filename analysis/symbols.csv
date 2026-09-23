@@ -34,9 +34,6 @@ address,name
 0x801c8a1c,setjmp
 0x801c8b20,longjmp
 0x8014fe50,GXDrawDone
-0x801934d0,KPADReadEx
-0x8017c9e0,WPADProbe
-0x8017cd60,WPADGetInfoAsync
 0x8015ea40,HleZero_8015EA40
 0x8015eaa0,HleZero_8015EAA0
 0x8015ecf0,HleZero_8015ECF0

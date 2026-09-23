@@ -1,8 +1,8 @@
 component,percent,basis
 Recompilation toolchain,95,"DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified"
-System runtime,85,"OS, threads, interrupts, decrementer, IOS, DVD and NAND work; free of known blockers except finished fibers not freed"
-Graphics (GX to Direct3D 11),76,"Menus, text, 3D models and lit Miis draw with correct RGBA8 colors, mipmaps, texture filtering and EFB copies in every format; no indirect textures"
-Input,40,"Keyboard and mouse as a Wii Remote; no gamepads or real Wii Remotes"
+System runtime,85,"OS, threads, interrupts, decrementer, IOS, DVD, NAND and Bluetooth work; a reused thread slot can resume a finished thread (crash when loading some minigames)"
+Graphics (GX to Direct3D 11),80,"Menus, text, cursor, 3D models and lit Miis with correct faces draw with correct colors, paletted textures, mipmaps, filtering, TEV compare modes and EFB copies in every format; no indirect textures"
+Input,55,"Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons; no motion, gamepads or real Wii Remotes"
 Audio,0,"AX sound layer is stubbed; the game is silent"
-Game flow,45,"Plays a full Board Game Island round: minigame, results, dice rolls and board moves, up to the next minigame"
+Game flow,55,"Plays Board Game Island through a full first round (minigame, results, dice, board events, 1 vs 3 minigame) into the second round"
 PC features,10,"Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started"

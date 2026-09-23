@@ -207,9 +207,7 @@ void present() {
     if (!window) {
         return;
     }
-    if (!gx::render::present_frame(window, g_aspect)) {
-        return;
-    }
+    gx::render::present_frame(window, g_aspect);
     static int frames = 0;
     const char* save = std::getenv("WP_SAVE_FRAME");
     if (save && ++frames % 100 == 0) {

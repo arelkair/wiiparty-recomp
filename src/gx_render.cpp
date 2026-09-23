@@ -258,6 +258,35 @@ bool compare_alpha(uint mode, uint value, uint reference) {
     }
 }
 
+int3 quantize(float3 value) {
+    return int3(round(value * 255.0)) & 255;
+}
+
+bool compare_inputs(uint mode, bool equal, float3 a, float3 b) {
+    int3 qa = quantize(a);
+    int3 qb = quantize(b);
+    int left = qa.r;
+    int right = qb.r;
+    if (mode == 1) {
+        left = qa.r + qa.g * 256;
+        right = qb.r + qb.g * 256;
+    } else if (mode == 2) {
+        left = qa.r + qa.g * 256 + qa.b * 65536;
+        right = qb.r + qb.g * 256 + qb.b * 65536;
+    }
+    return equal ? left == right : left > right;
+}
+
+float3 compare_color(uint mode, bool equal, float3 a, float3 b, float3 c) {
+    if (mode == 3) {
+        int3 qa = quantize(a);
+        int3 qb = quantize(b);
+        bool3 passed = equal ? (qa == qb) : (qa > qb);
+        return float3(passed.r ? c.r : 0.0, passed.g ? c.g : 0.0, passed.b ? c.b : 0.0);
+    }
+    return compare_inputs(mode, equal, a, b) ? c : float3(0, 0, 0);
+}
+
 float4 apply_swap(float4 value, uint table) {
     uint packed = swaps[table];
     float components[4] = {value.r, value.g, value.b, value.a};
@@ -305,7 +334,12 @@ float4 pixel_main(PixelInput p) : SV_Target {
         float bias = bias_code == 1 ? 0.5 : (bias_code == 2 ? -0.5 : 0.0);
         uint scale_code = (ce >> 20) & 3;
         float scale = scale_code == 1 ? 2.0 : (scale_code == 2 ? 4.0 : (scale_code == 3 ? 0.5 : 1.0));
-        float3 color = (d + sign * lerp(a, b, c) + bias) * scale;
+        float3 color;
+        if (bias_code == 3) {
+            color = d + compare_color(scale_code, ((ce >> 18) & 1) != 0, a, b, c);
+        } else {
+            color = (d + sign * lerp(a, b, c) + bias) * scale;
+        }
         if (((ce >> 19) & 1) != 0) {
             color = saturate(color);
         } else {
@@ -320,7 +354,21 @@ float4 pixel_main(PixelInput p) : SV_Target {
         float abias = abias_code == 1 ? 0.5 : (abias_code == 2 ? -0.5 : 0.0);
         uint ascale_code = (ae >> 20) & 3;
         float ascale = ascale_code == 1 ? 2.0 : (ascale_code == 2 ? 4.0 : (ascale_code == 3 ? 0.5 : 1.0));
-        float alpha = (ad + asign * lerp(aa, ab, ac) + abias) * ascale;
+        float alpha;
+        if (abias_code == 3) {
+            bool aequal = ((ae >> 18) & 1) != 0;
+            bool apass;
+            if (ascale_code == 3) {
+                int qa = int(round(aa * 255.0)) & 255;
+                int qb = int(round(ab * 255.0)) & 255;
+                apass = aequal ? qa == qb : qa > qb;
+            } else {
+                apass = compare_inputs(ascale_code, aequal, a, b);
+            }
+            alpha = ad + (apass ? ac : 0.0);
+        } else {
+            alpha = (ad + asign * lerp(aa, ab, ac) + abias) * ascale;
+        }
         if (((ae >> 19) & 1) != 0) {
             alpha = saturate(alpha);
         } else {
@@ -337,7 +385,14 @@ float4 pixel_main(PixelInput p) : SV_Target {
         else if (alpha_dest == 2) r[2].a = alpha;
         else r[3].a = alpha;
     }
-    float4 result = saturate(r[0]);
+    float4 result = r[0];
+    if (count > 0) {
+        uint last_color = (stage[count - 1].x >> 22) & 3;
+        uint last_alpha = (stage[count - 1].y >> 22) & 3;
+        result.rgb = r[last_color].rgb;
+        result.a = r[last_alpha].a;
+    }
+    result = saturate(result);
     uint compare = header.y;
     uint value = (uint)round(result.a * 255.0);
     bool first = compare_alpha((compare >> 16) & 7, value, compare & 255);
