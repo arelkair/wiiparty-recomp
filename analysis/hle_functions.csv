@@ -9,8 +9,6 @@ OSRealModeCall
 IOSSendRequest
 OSLoadContext
 OSSwitchFiber
-WPADInit
-KPADInit
 OSReport
 OSPanic
 longjmp

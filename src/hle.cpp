@@ -36,17 +36,6 @@ constexpr uint32_t kDeviceNotFound = 0xFD;
 constexpr uint32_t kChannelCount = 4;
 constexpr const char* kSilentPrefix = "HleZero_";
 constexpr float kPointerHeightScale = 1.0f;
-constexpr uint32_t kWpadResetChannel = 0x8017afd0;
-constexpr uint32_t kOsCreateAlarm = 0x8013f780;
-constexpr uint32_t kWpadState = 0x802b62a0;
-constexpr uint32_t kWpadBlockTable = kWpadState + 0x30;
-constexpr uint32_t kWpadChannelFlags = kWpadState + 0x1040;
-constexpr uint32_t kWpadChannelFlagCount = 16;
-constexpr uint32_t kWpadBlocks = kWpadState + 0x1060;
-constexpr uint32_t kWpadBlockSize = 0xbe0;
-constexpr uint32_t kWpadBlockReset = 0x8e8;
-constexpr uint32_t kWpadBlockAlarm = 0x928;
-constexpr uint32_t kWpadBlockPending = 0xbae;
 constexpr uint32_t kWpadInfoSize = 0x18;
 constexpr uint32_t kWpadInfoBattery = 0x14;
 constexpr uint32_t kWpadInfoLed = 0x15;
@@ -104,6 +93,13 @@ void ios_send(Cpu& c) {
     uint32_t request = c.r[3];
     bool asynchronous = c.r[4] != 0;
     int32_t result = ios::send(request);
+    if (result == ios::kDeferred) {
+        if (!asynchronous) {
+            std::fprintf(stderr, "IOS synchronous request %08x cannot wait for a deferred reply\n", request);
+        }
+        c.r[3] = 0;
+        return;
+    }
     if (asynchronous && ios::never_completes(request)) {
         c.r[3] = 0;
         return;
@@ -156,22 +152,6 @@ void kpad_read(Cpu& c) {
         wr32(error, static_cast<uint32_t>(result));
     }
     c.r[3] = samples;
-}
-
-void wpad_init(Cpu& c) {
-    for (uint32_t i = 0; i < kWpadChannelFlagCount; i++) {
-        wr8(kWpadChannelFlags + i, 0xFF);
-    }
-    for (uint32_t channel = 0; channel < kChannelCount; channel++) {
-        uint32_t block = kWpadBlocks + channel * kWpadBlockSize;
-        wr32(kWpadBlockTable + 4 * channel, block);
-        wr32(block + kWpadBlockReset, 0);
-        c.r[3] = channel;
-        call(c, kWpadResetChannel);
-        c.r[3] = block + kWpadBlockAlarm;
-        call(c, kOsCreateAlarm);
-        wr8(block + kWpadBlockPending, 0);
-    }
 }
 
 void wpad_get_info_async(Cpu& c) {
@@ -244,8 +224,6 @@ const Replacement kReplacements[] = {
     {"IOSSendRequest", ios_send},
     {"OSReport", os_report},
     {"OSPanic", os_panic},
-    {"WPADInit", wpad_init},
-    {"KPADInit", wpad_init},
     {"OSLoadContext", load_context},
     {"OSSwitchFiber", switch_fiber},
     {"longjmp", long_jump},
@@ -258,6 +236,13 @@ const Replacement kReplacements[] = {
 }
 
 bool ipc_pending() {
+    ios::update();
+    uint32_t request = 0;
+    int32_t result = 0;
+    while (ios::take_completion(request, result)) {
+        g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument),
+                                 std::chrono::steady_clock::now()});
+    }
     return request_pending() || wpad_pending();
 }
 

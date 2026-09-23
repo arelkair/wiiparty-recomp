@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 
+#include "wp/bluetooth.h"
 #include "wp/disc.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
@@ -160,6 +161,18 @@ int32_t fs_vector_command(uint32_t command, uint32_t input_count, uint32_t vecto
 
 }
 
+void update() {
+    bluetooth::update();
+}
+
+bool take_completion(uint32_t& request, int32_t& result) {
+    if (!bluetooth::take_completion(request, result)) {
+        return false;
+    }
+    wr32(request + 4, static_cast<uint32_t>(result));
+    return true;
+}
+
 bool never_completes(uint32_t request) {
     auto device = g_devices.find(static_cast<int32_t>(rd32(request + 8)));
     return rd32(request) == kIoctl && device != g_devices.end() && device->second.path == kEventHook;
@@ -182,6 +195,9 @@ int32_t send(uint32_t request) {
         break;
     case kClose:
         if (device != g_devices.end()) {
+            if (bluetooth::handles(device->second.path)) {
+                bluetooth::close();
+            }
             nand::close(device->second.file);
             g_devices.erase(device);
         }
@@ -205,6 +221,13 @@ int32_t send(uint32_t request) {
                        rd32(request + 28));
         break;
     case kIoctlv:
+        if (device != g_devices.end() && bluetooth::handles(device->second.path)) {
+            result = bluetooth::ioctlv(request, rd32(request + 12), rd32(request + 16), rd32(request + 20), rd32(request + 24));
+            if (result == kDeferred) {
+                return result;
+            }
+            break;
+        }
         result = ioctlv(descriptor, rd32(request + 12), rd32(request + 16), rd32(request + 20), rd32(request + 24));
         break;
     default:

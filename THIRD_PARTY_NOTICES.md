@@ -4,7 +4,7 @@ The original code of this project is licensed under GPL-3.0-or-later (see `LICEN
 
 ## Status
 
-One adapted third-party component is included (see below). This file records what was reviewed and what is still pending. It is not a legal audit.
+Adapted third-party components are included (see below). This file records what was reviewed and what is still pending. It is not a legal audit.
 
 ## Third-party code included in the repository
 
@@ -17,6 +17,15 @@ One adapted third-party component is included (see below). This file records wha
 - License: `SPDX-License-Identifier: GPL-2.0-or-later`, as stated in the upstream file header. Dolphin's `COPYING` and `LICENSES/GPL-2.0-or-later.txt` confirm it. GPL-2.0-or-later code may be used under GPL-3.0-or-later, so it is compatible with this project.
 - Dependencies: none copied. Dolphin's `Common::Vec3`, logging, assertion and memory types were replaced by small local equivalents; no other Dolphin file is included.
 - Changes (2026-09-22, this project): reads lights and channel registers from this project's flat XF register array instead of Dolphin's `XFMemory` struct; works on RGBA bytes instead of Dolphin's ABGR layout; removes the panic alerts; returns the normal instead of dividing by zero when its length is zero; exposes two functions (`transform_normal`, `light_channels`) used by `src/gx.cpp`.
+
+### Emulated Bluetooth controller from the Dolphin Emulator
+
+- Repository files: `src/bluetooth.cpp` and `include/wp/bluetooth.h`, kept apart from the project's own code, with the upstream copyright line and SPDX identifier.
+- Upstream file: `Source/Core/Core/IOS/USB/Bluetooth/BTEmu.cpp` (same 2606 snapshot as above, exact commit unknown), plus the USB V0 message layout from `Source/Core/Core/IOS/USB/USBV0.cpp` and the buffer constants from `BTBase.h`.
+- Parts adapted: the USB V0 control, bulk and interrupt message handling, the HCI command replies (reset, buffer size, local version and features, controller address, stored link keys, scan enable, supervision timeout, vendor commands), the event queue and the pending event and ACL endpoints.
+- Copyright: "Copyright 2008 Dolphin Emulator Project" (upstream header). License: GPL-2.0-or-later (SPDX identifier in the upstream files), compatible with GPL-3.0-or-later.
+- Not copied: `hci.h` and `l2cap.h`, which mix Dolphin code with BSD-licensed code from NetBSD and FreeBSD. The HCI opcodes and event codes used here were written from the Bluetooth specification.
+- Changes (2026-09-23, this project): rewritten around this project's IOS request handling (deferred replies taken by `ios::take_completion`), byte vectors instead of packed structs, no save states, no Wii Remotes attached yet.
 
 ## Rules for adding third-party code
 
