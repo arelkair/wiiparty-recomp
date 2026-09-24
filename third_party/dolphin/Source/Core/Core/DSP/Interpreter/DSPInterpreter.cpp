@@ -495,7 +495,7 @@ s64 Interpreter::GetMultiplyProduct(u16 a, u16 b, u8 sign) const
 
   // Unsigned
   if (sign == 1 && IsSRFlagSet(SR_MUL_UNSIGNED))
-    prod = static_cast<u32>(a * b);
+    prod = static_cast<u32>(a) * b;
   else if (sign == 2 && IsSRFlagSet(SR_MUL_UNSIGNED))  // mixed
     prod = a * static_cast<s16>(b);
   else  // Signed

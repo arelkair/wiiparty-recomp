@@ -327,7 +327,7 @@ void SDSP::DoDMA()
                   "DMA ERROR: PC: {:04x}, Control: {:04x}, Address: {:08x}, DSP Address: {:04x}, "
                   "Size: {:04x}",
                   pc, ctl, addr, dsp_addr, len);
-    std::exit(0);
+    return;
   }
 #if defined(_DEBUG) || defined(DEBUGFAST)
   DEBUG_LOG_FMT(

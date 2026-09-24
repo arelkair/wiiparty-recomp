@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -189,10 +190,14 @@ std::vector<uint8_t> save_state() {
     return buffer;
 }
 
+bool g_restoring = false;
+
 void load_state(std::vector<uint8_t>& buffer) {
     TranslatedFunction translated = g_translated;
     PointerWrap reader(buffer, PointerWrap::Mode::Read);
+    g_restoring = true;
     g_core->DSPState().DoState(reader);
+    g_restoring = false;
     g_translated = translated;
 }
 
@@ -232,14 +237,35 @@ bool same_state(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
     return std::memcmp(a.data(), b.data(), skip) == 0 && std::memcmp(a.data() + skip + 8, b.data() + skip + 8, a.size() - skip - 8) == 0;
 }
 
+uint64_t g_verify_checks = 0;
+bool g_self_testing = false;
+bool g_iram_written = false;
+uint64_t g_verify_skipped = 0;
+uint64_t g_verify_failures = 0;
+uint8_t g_verified_pc[kIramWords] = {};
+
+int coverage_percent(int& covered, int& total) {
+    covered = 0;
+    total = 0;
+    const DSP::Analyzer& analyzer = g_core->DSPState().GetAnalyzer();
+    for (uint16_t address = 0; address < kIramWords; address++) {
+        if (analyzer.IsStartOfInstruction(address)) {
+            total++;
+            covered += g_verified_pc[address] != 0;
+        }
+    }
+    return total ? covered * 100 / total : 0;
+}
+
 int run_translated_verified(DSP::SDSP& state, int left, bool& idle) {
-    static uint64_t checks = 0;
-    static uint64_t failures = 0;
+    uint64_t& checks = g_verify_checks;
+    uint64_t& failures = g_verify_failures;
     std::vector<uint8_t> before = save_state();
     uint16_t start_pc = state.pc;
     std::vector<MemoryWrite> translated_writes;
     std::vector<MemoryWrite> interpreted_writes;
     g_write_log = &translated_writes;
+    g_iram_written = false;
     int remaining = g_translated(g_core->GetInterpreter(), state, left, idle);
     g_write_log = nullptr;
     int executed = left - remaining;
@@ -248,6 +274,9 @@ int run_translated_verified(DSP::SDSP& state, int left, bool& idle) {
     load_state(before);
     g_write_log = &interpreted_writes;
     for (int i = 0; i < executed; i++) {
+        if (state.pc < kIramWords) {
+            g_verified_pc[state.pc] = 1;
+        }
         g_core->GetInterpreter().Step();
     }
     g_write_log = nullptr;
@@ -255,7 +284,12 @@ int run_translated_verified(DSP::SDSP& state, int left, bool& idle) {
     undo_writes(interpreted_writes);
     redo_writes(translated_writes);
     checks++;
-    if (!same_writes(translated_writes, interpreted_writes)) {
+    if (g_iram_written) {
+        g_verify_skipped++;
+        if (!g_self_testing) {
+            std::fprintf(stderr, "DSP verify: the microcode overwrote its own instruction memory at pc %04x; not comparable\n", start_pc);
+        }
+    } else if (!same_writes(translated_writes, interpreted_writes)) {
         failures++;
         if (failures <= 20) {
             std::fprintf(stderr, "DSP verify: memory writes differ after %d instructions from pc %04x (%zu vs %zu bytes)\n", executed, start_pc,
@@ -297,11 +331,86 @@ int run_translated_verified(DSP::SDSP& state, int left, bool& idle) {
         }
     }
     if (checks % 20000 == 0) {
-        std::fprintf(stderr, "DSP verify: %llu runs checked, %llu mismatches\n", static_cast<unsigned long long>(checks),
-                     static_cast<unsigned long long>(failures));
+        int covered = 0;
+        int total = 0;
+        int percent = coverage_percent(covered, total);
+        std::fprintf(stderr, "DSP verify: %llu runs checked, %llu mismatches, %d of %d instructions covered (%d%%)\n",
+                     static_cast<unsigned long long>(checks), static_cast<unsigned long long>(failures), covered, total, percent);
     }
     load_state(translated);
     return remaining;
+}
+
+void randomize_state(DSP::SDSP& state, std::mt19937& random, uint16_t pc) {
+    auto next = [&random](uint32_t range) { return static_cast<uint32_t>(random() % range); };
+    for (int i = 0; i < 4; i++) {
+        state.r.ar[i] = static_cast<uint16_t>(next(8) == 0 ? 0x1000 | next(0x800) : next(0x1000));
+        state.r.ix[i] = static_cast<uint16_t>(next(4) == 0 ? next(0x10000) : next(9) - 4);
+        state.r.wr[i] = static_cast<uint16_t>(next(2) == 0 ? 0xFFFF : next(0x10000));
+    }
+    for (int i = 0; i < 2; i++) {
+        uint64_t value = (static_cast<uint64_t>(random()) << 32) | random();
+        if (next(4) == 0) {
+            value = next(3) == 0 ? 0 : (next(2) == 0 ? 0x7FFF0000ull : 0xFFFFFF8000000000ull);
+        }
+        state.r.ac[i].val = static_cast<uint64_t>((static_cast<int64_t>(value) << 24) >> 24);
+        state.r.ax[i].val = random();
+    }
+    state.r.prod.l = static_cast<uint16_t>(random());
+    state.r.prod.m = static_cast<uint16_t>(random());
+    state.r.prod.h = static_cast<uint16_t>(random() & 0xFF);
+    state.r.prod.m2 = static_cast<uint16_t>(random());
+    state.r.sr = static_cast<uint16_t>(random() & ~(DSP::SR_100 | DSP::SR_INT_ENABLE | DSP::SR_EXT_INT_ENABLE));
+    state.r.cr = static_cast<uint16_t>(next(0xFF));
+    if (next(2) == 0) {
+        state.r.st[2] = static_cast<uint16_t>(pc + next(4));
+        state.r.st[3] = static_cast<uint16_t>(next(3));
+    }
+    for (uint32_t i = 0; i < DSP::DSP_DRAM_SIZE; i++) {
+        state.dram[i] = static_cast<uint16_t>(random());
+    }
+    state.pc = pc;
+    state.exceptions = 0;
+}
+
+void run_self_test(int trials) {
+    DSP::SDSP& state = g_core->DSPState();
+    const DSP::Analyzer& analyzer = state.GetAnalyzer();
+    std::vector<uint8_t> original = save_state();
+    uint16_t control = g_control;
+    std::mt19937 random(0x5eed);
+    const int budgets[] = {1, 2, 3, 8};
+    g_self_testing = true;
+    uint64_t checks_before = g_verify_checks;
+    uint64_t failures_before = g_verify_failures;
+    uint64_t skipped_before = g_verify_skipped;
+    int instructions = 0;
+    for (uint16_t address = 0; address < kIramWords; address++) {
+        if (!(analyzer.IsStartOfInstruction(address))) {
+            continue;
+        }
+        instructions++;
+        for (int trial = 0; trial < trials; trial++) {
+            for (int budget : budgets) {
+                load_state(original);
+                randomize_state(state, random, address);
+                bool idle = false;
+                run_translated_verified(state, budget, idle);
+            }
+        }
+    }
+    load_state(original);
+    g_control = control;
+    g_self_testing = false;
+    uint64_t checks = g_verify_checks - checks_before;
+    uint64_t failures = g_verify_failures - failures_before;
+    uint64_t skipped = g_verify_skipped - skipped_before;
+    std::fprintf(stderr, "DSP self test: %d instructions, %llu random runs, %llu mismatches, %llu runs skipped because they overwrote the instruction memory\n",
+                 instructions, static_cast<unsigned long long>(checks), static_cast<unsigned long long>(failures), static_cast<unsigned long long>(skipped));
+    log::write("audio", "DSP self test: %d instructions, %llu random runs, %llu mismatches, %llu skipped", instructions, static_cast<unsigned long long>(checks),
+               static_cast<unsigned long long>(failures), static_cast<unsigned long long>(skipped));
+    std::fflush(stderr);
+    std::_Exit(failures == 0 ? 0 : 1);
 }
 
 int run_dsp(int cycles) {
@@ -665,21 +774,37 @@ void WriteHostMemory(u8 value, u32 address) {
     wp::wr8(wp::dsp::kMem2Base | (address & wp::dsp::kMem2Mask), value);
 }
 
+u32 dma_address(u32 address) {
+    return (address & wp::dsp::kMem2Base) ? wp::dsp::kMem2Base | (address & wp::dsp::kMem2Mask) : address & wp::dsp::kMem1Mask;
+}
+
+u32 dsp_words(const u16* pointer, u32 size) {
+    DSP::SDSP& state = wp::dsp::g_core->DSPState();
+    for (const u16* base : {state.dram, state.iram}) {
+        if (pointer >= base && pointer < base + DSP_DRAM_SIZE) {
+            return std::min<u32>(size / 2, static_cast<u32>(base + DSP_DRAM_SIZE - pointer));
+        }
+    }
+    return 0;
+}
+
 void DMAToDSP(u16* destination, u32 address, u32 size) {
-    for (u32 i = 0; i < size / 2; i++) {
-        destination[i] = __builtin_bswap16(wp::rd16_reversed(address + 2 * i));
+    u32 words = dsp_words(destination, size);
+    for (u32 i = 0; i < words; i++) {
+        destination[i] = __builtin_bswap16(wp::rd16_reversed(dma_address(address + 2 * i)));
     }
 }
 
 void DMAFromDSP(const u16* source, u32 address, u32 size) {
+    u32 words = dsp_words(source, size);
     if (wp::dsp::g_write_log) {
-        for (u32 i = 0; i < size / 2; i++) {
-            wp::dsp::record_write(address + 2 * i, static_cast<uint8_t>(source[i] >> 8));
-            wp::dsp::record_write(address + 2 * i + 1, static_cast<uint8_t>(source[i]));
+        for (u32 i = 0; i < words; i++) {
+            wp::dsp::record_write(dma_address(address + 2 * i), static_cast<uint8_t>(source[i] >> 8));
+            wp::dsp::record_write(dma_address(address + 2 * i) + 1, static_cast<uint8_t>(source[i]));
         }
     }
-    for (u32 i = 0; i < size / 2; i++) {
-        wp::wr16_reversed(address + 2 * i, __builtin_bswap16(source[i]));
+    for (u32 i = 0; i < words; i++) {
+        wp::wr16_reversed(dma_address(address + 2 * i), __builtin_bswap16(source[i]));
     }
 }
 
@@ -708,6 +833,13 @@ void CodeLoaded(DSPCore& dsp, u32 address, size_t size) {
 }
 
 void CodeLoaded(DSPCore& dsp, const u8* pointer, size_t size) {
+    if (wp::dsp::g_restoring) {
+        return;
+    }
+    wp::dsp::g_iram_written = true;
+    if (wp::dsp::g_self_testing) {
+        return;
+    }
     SDSP& state = dsp.DSPState();
     uint32_t crc = 0;
     for (size_t i = 0; i < size; i++) {
@@ -735,6 +867,16 @@ void CodeLoaded(DSPCore& dsp, const u8* pointer, size_t size) {
     }
     dsp.ClearIRAM();
     state.GetAnalyzer().Analyze(state);
+    if (const char* trials = std::getenv("WP_DSP_SELFTEST")) {
+        if (wp::dsp::g_translated) {
+            static int count = std::max(1, std::atoi(trials));
+            HANDLE thread = CreateThread(nullptr, 64u << 20, [](void*) -> DWORD {
+                wp::dsp::run_self_test(count);
+                return 0;
+            }, nullptr, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+            WaitForSingleObject(thread, INFINITE);
+        }
+    }
 }
 
 }
