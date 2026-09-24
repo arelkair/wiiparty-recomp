@@ -244,13 +244,8 @@ void update_statistics(double fps) {
     PostMessageA(window, kTitleMessage, 0, 0);
 }
 
-void present() {
-    gx::process();
-    HWND window = g_window;
-    if (!window) {
-        return;
-    }
-    gx::render::present_frame(window, g_aspect);
+void present_on_gpu(HWND window, double aspect) {
+    gx::render::present_frame(window, aspect);
     static int frames = 0;
     const char* save = std::getenv("WP_SAVE_FRAME");
     if (save && ++frames % 100 == 0) {
@@ -263,6 +258,16 @@ void present() {
             save_png(path, pixels, width, height);
         }
     }
+}
+
+void present() {
+    HWND window = g_window;
+    if (!window) {
+        gx::process();
+        return;
+    }
+    double aspect = g_aspect;
+    gx::run_frame_task([window, aspect] { present_on_gpu(window, aspect); });
 }
 
 }

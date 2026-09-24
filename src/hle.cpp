@@ -8,7 +8,6 @@
 #include <string>
 
 #include "wp/format.h"
-#include "wp/gx.h"
 #include "wp/ios.h"
 #include "wp/threads.h"
 
@@ -20,7 +19,6 @@ constexpr uint32_t kRequestCallback = 0x20;
 constexpr uint32_t kRequestArgument = 0x24;
 constexpr uint32_t kIpcHeapSlot = 0xFFFF871C;
 constexpr uint32_t kFreeRequestFunction = 0x80177300;
-constexpr uint32_t kDrawDoneSlot = 0xFFFF8F38;
 constexpr const char* kSilentPrefix = "HleZero_";
 
 struct PendingRequest {
@@ -80,11 +78,6 @@ void ios_send(Cpu& c) {
     c.r[3] = 0;
 }
 
-void gx_draw_done(Cpu& c) {
-    gx::process();
-    wr8(c.r[13] + kDrawDoneSlot, 1);
-}
-
 bool request_pending() {
     return !g_pending_ipc.empty() && g_pending_ipc.front().ready <= std::chrono::steady_clock::now();
 }
@@ -118,7 +111,6 @@ const Replacement kReplacements[] = {
     {"OSLoadContext", load_context},
     {"OSSwitchFiber", switch_fiber},
     {"longjmp", long_jump},
-    {"GXDrawDone", gx_draw_done},
 };
 
 }

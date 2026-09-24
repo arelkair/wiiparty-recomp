@@ -115,7 +115,8 @@ AudioDma g_audio_dma;
 double g_owed = 0.0;
 Clock::time_point g_last_update = Clock::now();
 Statistics g_statistics;
-bool g_code_loaded = false;
+std::atomic<bool> g_code_loaded{false};
+std::atomic<bool> g_native{false};
 struct BlockHistory {
     uint32_t writes = 0;
     bool played = false;
@@ -140,7 +141,7 @@ void note_block_played(uint32_t address) {
     history.writes = 0;
     history.played = true;
 }
-double g_load_percent = 0.0;
+std::atomic<double> g_load_percent{0.0};
 bool g_log = std::getenv("WP_LOG_DSP") != nullptr;
 bool g_force_interpreter = std::getenv("WP_DSP_INTERPRETER") != nullptr;
 bool g_verify = std::getenv("WP_DSP_VERIFY") != nullptr;
@@ -768,7 +769,7 @@ void write16(uint32_t address, uint16_t value) {
 }
 
 Status status() {
-    return {g_code_loaded, g_translated != nullptr, g_load_percent};
+    return {g_code_loaded, g_native, g_load_percent};
 }
 
 uint32_t pending_interrupt() {
@@ -888,6 +889,7 @@ void CodeLoaded(DSPCore& dsp, const u8* pointer, size_t size) {
         std::fprintf(stderr, "DSP code loaded, %zu bytes, checksum %08x\n", size, crc);
     }
     wp::dsp::g_code_loaded = true;
+    wp::dsp::g_native = wp::dsp::g_translated != nullptr;
     wp::log::write("audio", "DSP microcode loaded, %u bytes, checksum %08x, %s", static_cast<unsigned>(size), crc,
                    wp::dsp::g_translated ? "recompiled" : "interpreted");
     if (const char* directory = std::getenv("WP_DUMP_DSP_CODE")) {

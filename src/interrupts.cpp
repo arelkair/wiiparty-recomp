@@ -5,6 +5,7 @@
 #include "wp/audio.h"
 #include "wp/cpu.h"
 #include "wp/dsp.h"
+#include "wp/gx.h"
 #include "wp/log.h"
 #include "wp/hle.h"
 #include "wp/memory.h"
@@ -20,6 +21,7 @@ namespace {
 constexpr uint32_t kMsrExternalInterrupt = 0x8000;
 constexpr uint32_t kInterruptTable = 0x80003040;
 constexpr uint32_t kVideoInterrupt = 24;
+constexpr uint32_t kFinishInterrupt = 19;
 constexpr uint32_t kVideoInterruptRegisters[] = {0xCC002030, 0xCC002034};
 constexpr uint16_t kVideoInterruptEnable = 0x1000;
 constexpr uint16_t kVideoInterruptFlag = 0x8000;
@@ -101,7 +103,7 @@ void deliver_ipc_interrupt(Cpu& c) {
     c = saved;
 }
 
-void deliver_dsp_interrupt(Cpu& c, uint32_t index) {
+void deliver_external_interrupt(Cpu& c, uint32_t index) {
     uint32_t handler = rd32(kInterruptTable + 4 * index);
     if (handler == 0) {
         return;
@@ -150,6 +152,7 @@ void poll_interrupts(Cpu& c) {
     dsp::update();
     log::watch_modules();
     if (g_in_interrupt || !(c.msr & kMsrExternalInterrupt)) {
+        gx::process();
         return;
     }
     if (decrementer_due()) {
@@ -163,8 +166,12 @@ void poll_interrupts(Cpu& c) {
         if (index == 0) {
             break;
         }
-        deliver_dsp_interrupt(c, index);
+        deliver_external_interrupt(c, index);
     }
+    if (gx::take_finish_interrupt()) {
+        deliver_external_interrupt(c, kFinishInterrupt);
+    }
+    gx::process();
     Clock::time_point now = Clock::now();
     if (now < g_next_retrace) {
         return;

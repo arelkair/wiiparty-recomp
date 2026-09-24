@@ -1,11 +1,17 @@
 #include "wp/gx.h"
 
+#include <windows.h>
+
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <thread>
+#include <utility>
 #include <vector>
 
 #include "wp/gx_lighting.h"
@@ -36,6 +42,7 @@ constexpr uint32_t kPiFifoBase = 0xCC00300C;
 constexpr uint32_t kPiFifoWritePointer = 0xCC003014;
 constexpr uint32_t kFifoPhysicalMask = 0x03FFFFFF;
 constexpr uint32_t kCopyToFramebuffer = 1u << 14;
+constexpr uint32_t kBpDrawDone = 0x45;
 constexpr uint32_t kCopyClear = 1u << 11;
 constexpr uint32_t kXfSize = 0x1100;
 constexpr uint32_t kArrayCount = 16;
@@ -670,6 +677,8 @@ void execute_copy(uint32_t value) {
     }
 }
 
+std::atomic<bool> g_finish_pending{false};
+
 void load_bp(uint32_t word) {
     uint32_t reg = word >> 24;
     uint32_t value = word & 0xFFFFFF;
@@ -685,7 +694,9 @@ void load_bp(uint32_t word) {
         return;
     }
     g_bp[reg] = (g_bp[reg] & ~mask) | (value & mask);
-    if (reg == kBpCopyExecute) {
+    if (reg == kBpDrawDone && (value & 2)) {
+        g_finish_pending = true;
+    } else if (reg == kBpCopyExecute) {
         execute_copy(g_bp[reg]);
     } else if (reg == kBpLoadTlut) {
         uint32_t address = kRamBase | ((g_bp[0x64] & 0xFFFFFF) << 5);
@@ -862,12 +873,106 @@ void push(uint64_t value, unsigned bytes) {
     }
 }
 
+bool take_finish_interrupt() {
+    return g_finish_pending.exchange(false);
+}
+
+namespace {
+
+constexpr int kMaxFramesAhead = 2;
+
+struct GpuItem {
+    std::vector<uint8_t> bytes;
+    std::function<void()> task;
+    bool frame = false;
+};
+
+struct GpuQueue {
+    SRWLOCK lock = SRWLOCK_INIT;
+    CONDITION_VARIABLE work = CONDITION_VARIABLE_INIT;
+    CONDITION_VARIABLE progress = CONDITION_VARIABLE_INIT;
+    std::deque<GpuItem> items;
+    int frames = 0;
+    bool started = false;
+};
+
+GpuQueue g_gpu;
+const bool g_threaded = [] {
+    const char* setting = std::getenv("WP_GPU_THREAD");
+    return !setting || std::atoi(setting) != 0;
+}();
+
+void gpu_thread() {
+    std::vector<uint8_t> buffer;
+    while (true) {
+        AcquireSRWLockExclusive(&g_gpu.lock);
+        while (g_gpu.items.empty()) {
+            SleepConditionVariableSRW(&g_gpu.work, &g_gpu.lock, INFINITE, 0);
+        }
+        GpuItem item = std::move(g_gpu.items.front());
+        g_gpu.items.pop_front();
+        ReleaseSRWLockExclusive(&g_gpu.lock);
+        if (!item.bytes.empty()) {
+            buffer.insert(buffer.end(), item.bytes.begin(), item.bytes.end());
+            size_t used = parse(buffer.data(), buffer.size(), false);
+            buffer.erase(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(used));
+        }
+        if (item.task) {
+            item.task();
+        }
+        if (item.frame) {
+            AcquireSRWLockExclusive(&g_gpu.lock);
+            g_gpu.frames--;
+            ReleaseSRWLockExclusive(&g_gpu.lock);
+            WakeAllConditionVariable(&g_gpu.progress);
+        }
+    }
+}
+
+void enqueue(GpuItem item) {
+    AcquireSRWLockExclusive(&g_gpu.lock);
+    if (!g_gpu.started) {
+        g_gpu.started = true;
+        std::thread(gpu_thread).detach();
+    }
+    if (item.frame) {
+        while (g_gpu.frames >= kMaxFramesAhead) {
+            SleepConditionVariableSRW(&g_gpu.progress, &g_gpu.lock, INFINITE, 0);
+        }
+        g_gpu.frames++;
+    }
+    g_gpu.items.push_back(std::move(item));
+    ReleaseSRWLockExclusive(&g_gpu.lock);
+    WakeConditionVariable(&g_gpu.work);
+}
+
+}
+
 void process() {
     if (g_fifo.empty()) {
         return;
     }
-    size_t used = parse(g_fifo.data(), g_fifo.size(), false);
-    g_fifo.erase(g_fifo.begin(), g_fifo.begin() + static_cast<std::ptrdiff_t>(used));
+    if (!g_threaded) {
+        size_t used = parse(g_fifo.data(), g_fifo.size(), false);
+        g_fifo.erase(g_fifo.begin(), g_fifo.begin() + static_cast<std::ptrdiff_t>(used));
+        return;
+    }
+    GpuItem item;
+    item.bytes.swap(g_fifo);
+    g_fifo.reserve(item.bytes.capacity());
+    enqueue(std::move(item));
+}
+
+void run_frame_task(std::function<void()> task) {
+    process();
+    if (!g_threaded) {
+        task();
+        return;
+    }
+    GpuItem item;
+    item.task = std::move(task);
+    item.frame = true;
+    enqueue(std::move(item));
 }
 
 }

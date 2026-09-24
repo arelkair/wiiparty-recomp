@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 64% (estimate, see below).
+> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 66% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -21,18 +21,19 @@ The overall figure is the equal-weight average of the components below. They are
 | Component | Progress | Basis |
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
-| System runtime | 85% | OS, threads, interrupts, decrementer, IOS, DVD, NAND and Bluetooth work; free of known blockers |
+| System runtime | 88% | OS, threads, interrupts, decrementer, GPU draw-done interrupt, IOS, DVD, NAND and Bluetooth work; graphics on their own thread as on the separate Wii GPU; free of known blockers |
 | Graphics (GX to Direct3D 11) | 80% | Menus, text, cursor, 3D models and lit Miis with correct faces draw with correct colors, paletted textures, mipmaps, filtering, TEV compare modes and EFB copies in every format; no indirect textures |
 | Input | 55% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons; no motion, gamepads or real Wii Remotes |
-| Audio | 70% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; WASAPI output; minigames not checked |
+| Audio | 80% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no late audio buffers in the minigames checked; windowed-sinc WASAPI output |
 | Game flow | 55% | Plays Board Game Island through a full first round (minigame, results, dice, board events, 1 vs 3 minigame) into the second round |
 | PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
 
 ### Working
 
 - **Recompilation:** the main executable (about 7,350 functions) and all 115 REL modules are translated to C++ and build into one native program of roughly 300 MB. Unit tests cover the translator; one game function is checked against the C++ standard library.
-- **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace and decrementer interrupts, OS alarms, module loading and linking, disc reads from the extracted files, IOS at request level and a virtual NAND. Real Mii databases (`RFL_DB.dat`) load.
+- **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace, decrementer and GPU draw-done (PE finish) interrupts, OS alarms, module loading and linking, disc reads from the extracted files, IOS at request level and a virtual NAND. Real Mii databases (`RFL_DB.dat`) load.
 - **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, depth, scissor, EFB copies to textures, texture coordinates generated from normals with per-vertex texture matrices and the dual texture transform, and per-vertex color-channel lighting (adapted from Dolphin's software renderer, see `THIRD_PARTY_NOTICES.md`).
+- **GPU thread:** as on the Wii, where the GPU is a separate chip, graphics commands are processed and drawn on their own thread while the CPU thread keeps running the game and answering interrupts (`WP_GPU_THREAD=0` processes them on the CPU thread, for debugging).
 - **Window:** 16:9 when the virtual Wii is set to widescreen (the default, as in Dolphin), 4:3 otherwise; native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain. The title bar shows the game, graphics API, region, frames per second and whether the DSP microcode runs recompiled (`NATIVE`) or on the interpreter (`INTERP`) with its share of the CPU thread; its texts are in `src/ui_text.cpp`, ready for other languages.
 - **Diagnostics:** `WP_DSP_VERIFY` (replays every recompiled DSP run on Dolphin's interpreter and compares, with a coverage count), `WP_DSP_SELFTEST=N` (runs every instruction of the recompiled microcode from N random states against the interpreter and exits), `WP_DUMP_AUDIO` / `WP_DUMP_OUTPUT` (WAV of the emulated audio / of what goes to the speakers), `WP_LOG_FILE` (timestamped log of fps, slow frames, audio, disc reads, modules and IOS opens), `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
 
@@ -43,7 +44,6 @@ The overall figure is the equal-weight average of the components below. They are
 - The Miis that cheer at the sides when something good happens are drawn without heads.
 - Some minigames may still be drawn incorrectly; not all have been checked.
 - Entering the main menu still causes one frame of about 60 ms, while the game decompresses about 40 files and draws its first menu frame (on a real Wii this frame is slower). Minigame sound has not been checked.
-- Graphics are processed on the CPU thread, which stops answering interrupts for 4-12 ms every frame; the audio DMA compensates for it (see `DECOMP_PROGRESS.md`).
 
 ### Not implemented
 
