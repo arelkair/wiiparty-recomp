@@ -253,7 +253,9 @@ void update_statistics(double fps) {
 std::string g_next_frame_path;
 
 void present_on_gpu(HWND window, double aspect) {
-    gx::render::present_frame(window, aspect);
+    if (window) {
+        gx::render::present_frame(window, aspect);
+    }
     if (!g_next_frame_path.empty()) {
         std::vector<uint32_t> pixels;
         uint32_t width = 0;
@@ -283,7 +285,8 @@ void save_next_frame(const char* path) {
 
 void present() {
     HWND window = g_window;
-    if (!window) {
+    static const bool saving = std::getenv("WP_SAVE_FRAME") || std::getenv("WP_CAPTURE_AT");
+    if (!window && !saving) {
         gx::process();
         return;
     }

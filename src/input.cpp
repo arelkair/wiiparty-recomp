@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -114,7 +115,16 @@ bool connected(uint32_t channel) {
 Sample sample(uint32_t channel) {
     static const char* script_text = std::getenv("WP_INPUT_SCRIPT");
     if (script_text) {
-        static const std::vector<ScriptEntry> script = parse_script(script_text);
+        static const std::vector<ScriptEntry> script = [] {
+            std::string text = script_text;
+            if (!text.empty() && text[0] == '@') {
+                std::ifstream file(text.substr(1), std::ios::binary);
+                std::stringstream contents;
+                contents << file.rdbuf();
+                text = contents.str();
+            }
+            return parse_script(text.c_str());
+        }();
         static const auto origin = std::chrono::steady_clock::now();
         int elapsed = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - origin).count());
         return channel == 0 ? scripted(script, elapsed) : Sample{};
