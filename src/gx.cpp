@@ -552,6 +552,7 @@ void emit_triangle(std::vector<ScreenVertex>& out, const Prepared& a, const Prep
 
 uint32_t g_indirect_draws = 0;
 uint32_t g_coordinate_draws = 0;
+std::atomic<uint32_t> g_skipped_presents{0};
 
 void count_indirect() {
     uint32_t stages = ((g_bp[0x00] >> 10) & 15) + 1;
@@ -846,8 +847,8 @@ void execute_copy(uint32_t value) {
                     std::fprintf(stderr, "fps %.1f batches %u vertices %u cpu-side draw time %.0f ms", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
                     std::fputc(10, stderr);
                 }
-                log::write("fps", "%.1f fps, %u draw batches, %u vertices, %.0f ms drawing, %u draws with indirect texturing, %u with wrapped coordinates", g_frames / seconds, batches,
-                           vertices, batch_seconds * 1000.0, g_indirect_draws, g_coordinate_draws);
+                log::write("fps", "%.1f fps, %u draw batches, %u vertices, %.0f ms drawing, %u draws with indirect texturing, %u with wrapped coordinates, %u presents skipped", g_frames / seconds, batches,
+                           vertices, batch_seconds * 1000.0, g_indirect_draws, g_coordinate_draws, g_skipped_presents.exchange(0));
                 g_indirect_draws = 0;
                 g_coordinate_draws = 0;
                 video::update_statistics(g_frames / seconds);
@@ -1139,8 +1140,10 @@ void enqueue(GpuItem item) {
         std::thread(gpu_thread).detach();
     }
     if (item.frame) {
-        while (g_gpu.frames >= kMaxFramesAhead) {
-            SleepConditionVariableSRW(&g_gpu.progress, &g_gpu.lock, INFINITE, 0);
+        if (g_gpu.frames >= kMaxFramesAhead) {
+            ReleaseSRWLockExclusive(&g_gpu.lock);
+            g_skipped_presents++;
+            return;
         }
         g_gpu.frames++;
     }

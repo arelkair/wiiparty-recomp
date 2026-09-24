@@ -49,13 +49,12 @@ void print_call_stack();
 void start_profiler();
 void print_profile();
 
-constexpr uint32_t kPollInterval = 1u << 14;
 extern uint32_t g_poll_counter;
 void poll_interrupts(Cpu& c);
 
 #define WP_POLL(c)                                          \
     do {                                                    \
-        if (++::wp::g_poll_counter >= ::wp::kPollInterval) { \
+        if (--::wp::g_poll_counter == 0) {                  \
             ::wp::poll_interrupts(c);                       \
         }                                                   \
     } while (0)

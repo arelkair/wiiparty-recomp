@@ -15,7 +15,7 @@
 
 namespace wp {
 
-uint32_t g_poll_counter = 0;
+uint32_t g_poll_counter = 1u << 10;
 
 namespace {
 
@@ -136,7 +136,12 @@ void interrupt_left() {
 }
 
 void poll_interrupts(Cpu& c) {
-    g_poll_counter = 0;
+    static const uint32_t interval = [] {
+        const char* setting = std::getenv("WP_POLL_INTERVAL");
+        uint32_t value = setting ? static_cast<uint32_t>(std::strtoul(setting, nullptr, 10)) : 0;
+        return value ? value : 1u << 10;
+    }();
+    g_poll_counter = interval;
     audio::update();
     dsp::update();
     log::watch_modules();

@@ -199,7 +199,7 @@ bool load_rom(int id, uint16_t* words, size_t count) {
 }
 
 void assert_interrupt_line() {
-    g_poll_counter = kPollInterval;
+    g_poll_counter = 1;
 }
 
 void raise(uint16_t interrupt) {
