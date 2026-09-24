@@ -42,7 +42,7 @@ The overall figure is the equal-weight average of the components below. They are
 - The gold, silver and bronze bonus dice above the Miis after a minigame show no pips.
 - The Miis that cheer at the sides when something good happens are drawn without heads.
 - Some minigames may still be drawn incorrectly; not all have been checked.
-- Entering the main menu still causes one frame of about 0.1 s. It is not the DSP (the same with the interpreter and with the recompiled microcode). Minigame sound has not been checked.
+- Entering the main menu still causes one frame of about 60 ms, while the game decompresses about 40 files and draws its first menu frame (on a real Wii this frame is slower). Minigame sound has not been checked.
 - Graphics are processed on the CPU thread, which stops answering interrupts for 4-12 ms every frame; the audio DMA compensates for it (see `DECOMP_PROGRESS.md`).
 
 ### Not implemented

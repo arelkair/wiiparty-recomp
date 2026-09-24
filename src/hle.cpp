@@ -31,8 +31,6 @@ struct PendingRequest {
     std::chrono::steady_clock::time_point ready;
 };
 
-constexpr std::chrono::microseconds kIpcLatency(1000);
-
 std::deque<PendingRequest> g_pending_ipc;
 
 struct Replacement {
@@ -78,7 +76,7 @@ void ios_send(Cpu& c) {
         return;
     }
     g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument),
-                             std::chrono::steady_clock::now() + kIpcLatency});
+                             std::chrono::steady_clock::now()});
     c.r[3] = 0;
 }
 
