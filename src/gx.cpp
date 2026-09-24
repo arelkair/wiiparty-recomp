@@ -541,9 +541,24 @@ void emit_triangle(std::vector<ScreenVertex>& out, const Prepared& a, const Prep
     out.push_back(c.vertex);
 }
 
+uint32_t g_indirect_draws = 0;
+
+bool uses_indirect() {
+    uint32_t stages = ((g_bp[0x00] >> 10) & 15) + 1;
+    for (uint32_t i = 0; i < stages; i++) {
+        if (g_bp[0x10 + i] & 0x1FFFFF) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     if (!g_render_enabled) {
         return;
+    }
+    if (uses_indirect()) {
+        g_indirect_draws++;
     }
     Layout layout = make_layout(command & 7);
     std::vector<Prepared> vertices;
@@ -642,7 +657,9 @@ void execute_copy(uint32_t value) {
                     std::fprintf(stderr, "fps %.1f batches %u vertices %u cpu-side draw time %.0f ms", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
                     std::fputc(10, stderr);
                 }
-                log::write("fps", "%.1f fps, %u draw batches, %u vertices, %.0f ms drawing", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
+                log::write("fps", "%.1f fps, %u draw batches, %u vertices, %.0f ms drawing, %u draws with indirect texturing", g_frames / seconds, batches, vertices,
+                           batch_seconds * 1000.0, g_indirect_draws);
+                g_indirect_draws = 0;
                 video::update_statistics(g_frames / seconds);
                 g_frames = 0;
                 g_fps_start = now;

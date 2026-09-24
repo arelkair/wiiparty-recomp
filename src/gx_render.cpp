@@ -203,64 +203,70 @@ float4 sample_map(uint m, float2 uv, float2 dx, float2 dy) {
     }
 }
 
-float3 konst_color(uint sel) {
+static const int kFractions[8] = {255, 223, 191, 159, 128, 96, 64, 32};
+
+int4 quantized(float4 value) {
+    return int4(round(value * 255.0));
+}
+
+int3 konst_color(uint sel, int4 k[4]) {
     if (sel < 8) {
-        return float3(1, 1, 1) * ((8 - sel) / 8.0);
+        return int3(1, 1, 1) * kFractions[sel];
     }
     if (sel >= 12 && sel < 16) {
-        return konst[sel - 12].rgb;
+        return k[sel - 12].rgb;
     }
     if (sel >= 16) {
-        uint k = (sel - 16) & 3;
-        uint ch = (sel - 16) >> 2;
-        return float3(1, 1, 1) * konst[k][ch];
+        uint index = (sel - 16) & 3;
+        uint component = (sel - 16) >> 2;
+        return int3(1, 1, 1) * k[index][component];
     }
-    return float3(1, 1, 1);
+    return int3(0, 0, 0);
 }
 
-float konst_alpha(uint sel) {
+int konst_alpha(uint sel, int4 k[4]) {
     if (sel < 8) {
-        return (8 - sel) / 8.0;
+        return kFractions[sel];
     }
     if (sel >= 16) {
-        uint k = (sel - 16) & 3;
-        uint ch = (sel - 16) >> 2;
-        return konst[k][ch];
+        uint index = (sel - 16) & 3;
+        uint component = (sel - 16) >> 2;
+        return k[index][component];
     }
-    return 1.0;
+    return 0;
 }
 
-float3 color_input(uint sel, float4 r0, float4 r1, float4 r2, float4 r3, float4 tex, float4 ras, float3 kc) {
+int3 color_input(uint sel, int4 r[4], int4 tex, int4 ras, int3 kc) {
     switch (sel) {
-    case 0: return r0.rgb;
-    case 1: return r0.aaa;
-    case 2: return r1.rgb;
-    case 3: return r1.aaa;
-    case 4: return r2.rgb;
-    case 5: return r2.aaa;
-    case 6: return r3.rgb;
-    case 7: return r3.aaa;
+    case 0: return r[0].rgb;
+    case 1: return r[0].aaa;
+    case 2: return r[1].rgb;
+    case 3: return r[1].aaa;
+    case 4: return r[2].rgb;
+    case 5: return r[2].aaa;
+    case 6: return r[3].rgb;
+    case 7: return r[3].aaa;
     case 8: return tex.rgb;
     case 9: return tex.aaa;
     case 10: return ras.rgb;
     case 11: return ras.aaa;
-    case 12: return float3(1, 1, 1);
-    case 13: return float3(0.5, 0.5, 0.5);
+    case 12: return int3(255, 255, 255);
+    case 13: return int3(128, 128, 128);
     case 14: return kc;
-    default: return float3(0, 0, 0);
+    default: return int3(0, 0, 0);
     }
 }
 
-float alpha_input(uint sel, float4 r0, float4 r1, float4 r2, float4 r3, float4 tex, float4 ras, float ka) {
+int alpha_input(uint sel, int4 r[4], int4 tex, int4 ras, int ka) {
     switch (sel) {
-    case 0: return r0.a;
-    case 1: return r1.a;
-    case 2: return r2.a;
-    case 3: return r3.a;
+    case 0: return r[0].a;
+    case 1: return r[1].a;
+    case 2: return r[2].a;
+    case 3: return r[3].a;
     case 4: return tex.a;
     case 5: return ras.a;
     case 6: return ka;
-    default: return 0.0;
+    default: return 0;
     }
 }
 
@@ -277,143 +283,116 @@ bool compare_alpha(uint mode, uint value, uint reference) {
     }
 }
 
-int3 quantize(float3 value) {
-    return int3(round(value * 255.0)) & 255;
-}
-
-bool compare_inputs(uint mode, bool equal, float3 a, float3 b) {
-    int3 qa = quantize(a);
-    int3 qb = quantize(b);
-    int left = qa.r;
-    int right = qb.r;
+bool compare_inputs(uint mode, bool equal, int3 a, int3 b) {
+    int left = a.r;
+    int right = b.r;
     if (mode == 1) {
-        left = qa.r + qa.g * 256;
-        right = qb.r + qb.g * 256;
+        left = a.r + a.g * 256;
+        right = b.r + b.g * 256;
     } else if (mode == 2) {
-        left = qa.r + qa.g * 256 + qa.b * 65536;
-        right = qb.r + qb.g * 256 + qb.b * 65536;
+        left = a.r + a.g * 256 + a.b * 65536;
+        right = b.r + b.g * 256 + b.b * 65536;
     }
     return equal ? left == right : left > right;
 }
 
-float3 compare_color(uint mode, bool equal, float3 a, float3 b, float3 c) {
+int3 compare_color(uint mode, bool equal, int3 a, int3 b, int3 c) {
     if (mode == 3) {
-        int3 qa = quantize(a);
-        int3 qb = quantize(b);
-        bool3 passed = equal ? (qa == qb) : (qa > qb);
-        return float3(passed.r ? c.r : 0.0, passed.g ? c.g : 0.0, passed.b ? c.b : 0.0);
+        bool3 passed = equal ? (a == b) : (a > b);
+        return int3(passed.r ? c.r : 0, passed.g ? c.g : 0, passed.b ? c.b : 0);
     }
-    return compare_inputs(mode, equal, a, b) ? c : float3(0, 0, 0);
+    return compare_inputs(mode, equal, a, b) ? c : int3(0, 0, 0);
 }
 
-float4 apply_swap(float4 value, uint table) {
+int4 apply_swap(int4 value, uint table) {
     uint packed = swaps[table];
-    float components[4] = {value.r, value.g, value.b, value.a};
-    return float4(components[packed & 3], components[(packed >> 2) & 3], components[(packed >> 4) & 3], components[(packed >> 6) & 3]);
+    int components[4] = {value.r, value.g, value.b, value.a};
+    return int4(components[packed & 3], components[(packed >> 2) & 3], components[(packed >> 4) & 3], components[(packed >> 6) & 3]);
+}
+
+int3 combine(int3 a, int3 b, int3 c, int3 d, uint bias_code, bool subtract, uint scale_code) {
+    int bias = bias_code == 1 ? 128 : (bias_code == 2 ? -128 : 0);
+    int shift = scale_code == 1 ? 1 : (scale_code == 2 ? 2 : 0);
+    int rounding = scale_code == 3 ? 0 : (subtract ? 127 : 128);
+    int3 lerp = ((((a << 8) + (b - a) * (c + (c >> 7))) << shift) + rounding) >> 8;
+    int3 base = (d + bias) << shift;
+    int3 value = subtract ? base - lerp : base + lerp;
+    return scale_code == 3 ? value >> 1 : value;
 }
 
 float4 pixel_main(PixelInput p) : SV_Target {
     float2 gradient_x[8] = {ddx(p.uv0), ddx(p.uv1), ddx(p.uv2), ddx(p.uv3), ddx(p.uv4), ddx(p.uv5), ddx(p.uv6), ddx(p.uv7)};
     float2 gradient_y[8] = {ddy(p.uv0), ddy(p.uv1), ddy(p.uv2), ddy(p.uv3), ddy(p.uv4), ddy(p.uv5), ddy(p.uv6), ddy(p.uv7)};
-    float4 r[4];
-    r[0] = initial[0];
-    r[1] = initial[1];
-    r[2] = initial[2];
-    r[3] = initial[3];
+    int4 k[4] = {quantized(konst[0]), quantized(konst[1]), quantized(konst[2]), quantized(konst[3])};
+    int4 r[4] = {quantized(initial[0]), quantized(initial[1]), quantized(initial[2]), quantized(initial[3])};
+    int4 c0 = quantized(p.c0);
+    int4 c1 = quantized(p.c1);
     uint count = header.x;
     if (count == 0) {
-        r[0] = p.c0;
+        r[0] = c0;
     }
     for (uint i = 0; i < count; i++) {
         uint ce = stage[i].x;
         uint ae = stage[i].y;
         uint order = stage[i].z;
         uint ksel = stage[i].w;
-        float4 tex = float4(1, 1, 1, 1);
+        int4 tex = int4(255, 255, 255, 255);
         if ((order & 0x40) != 0) {
             uint coord = (order >> 3) & 7;
-            tex = apply_swap(sample_map(order & 7, select_uv(p, coord), gradient_x[coord], gradient_y[coord]), (ae >> 2) & 3);
+            tex = apply_swap(quantized(sample_map(order & 7, select_uv(p, coord), gradient_x[coord], gradient_y[coord])), (ae >> 2) & 3);
         }
-        float4 ras = float4(0, 0, 0, 0);
+        int4 ras = int4(0, 0, 0, 0);
         uint chan = (order >> 7) & 7;
         if (chan == 0) {
-            ras = p.c0;
+            ras = c0;
         } else if (chan == 1) {
-            ras = p.c1;
+            ras = c1;
         }
         ras = apply_swap(ras, ae & 3);
-        float3 kc = konst_color(ksel & 31);
-        float ka = konst_alpha((ksel >> 5) & 31);
-        float3 a = color_input((ce >> 12) & 15, r[0], r[1], r[2], r[3], tex, ras, kc);
-        float3 b = color_input((ce >> 8) & 15, r[0], r[1], r[2], r[3], tex, ras, kc);
-        float3 c = color_input((ce >> 4) & 15, r[0], r[1], r[2], r[3], tex, ras, kc);
-        float3 d = color_input(ce & 15, r[0], r[1], r[2], r[3], tex, ras, kc);
-        float sign = ((ce >> 18) & 1) != 0 ? -1.0 : 1.0;
+        int3 kc = konst_color(ksel & 31, k);
+        int ka = konst_alpha((ksel >> 5) & 31, k);
+        int3 a = color_input((ce >> 12) & 15, r, tex, ras, kc) & 255;
+        int3 b = color_input((ce >> 8) & 15, r, tex, ras, kc) & 255;
+        int3 c = color_input((ce >> 4) & 15, r, tex, ras, kc) & 255;
+        int3 d = color_input(ce & 15, r, tex, ras, kc);
         uint bias_code = (ce >> 16) & 3;
-        float bias = bias_code == 1 ? 0.5 : (bias_code == 2 ? -0.5 : 0.0);
         uint scale_code = (ce >> 20) & 3;
-        float scale = scale_code == 1 ? 2.0 : (scale_code == 2 ? 4.0 : (scale_code == 3 ? 0.5 : 1.0));
-        float3 color;
+        int3 color;
         if (bias_code == 3) {
             color = d + compare_color(scale_code, ((ce >> 18) & 1) != 0, a, b, c);
         } else {
-            color = (d + sign * lerp(a, b, c) + bias) * scale;
+            color = combine(a, b, c, d, bias_code, ((ce >> 18) & 1) != 0, scale_code);
         }
-        if (((ce >> 19) & 1) != 0) {
-            color = saturate(color);
-        } else {
-            color = clamp(color, -1024.0 / 255.0, 1023.0 / 255.0);
-        }
-        float aa = alpha_input((ae >> 13) & 7, r[0], r[1], r[2], r[3], tex, ras, ka);
-        float ab = alpha_input((ae >> 10) & 7, r[0], r[1], r[2], r[3], tex, ras, ka);
-        float ac = alpha_input((ae >> 7) & 7, r[0], r[1], r[2], r[3], tex, ras, ka);
-        float ad = alpha_input((ae >> 4) & 7, r[0], r[1], r[2], r[3], tex, ras, ka);
-        float asign = ((ae >> 18) & 1) != 0 ? -1.0 : 1.0;
+        color = ((ce >> 19) & 1) != 0 ? clamp(color, 0, 255) : clamp(color, -1024, 1023);
+        int aa = alpha_input((ae >> 13) & 7, r, tex, ras, ka) & 255;
+        int ab = alpha_input((ae >> 10) & 7, r, tex, ras, ka) & 255;
+        int ac = alpha_input((ae >> 7) & 7, r, tex, ras, ka) & 255;
+        int ad = alpha_input((ae >> 4) & 7, r, tex, ras, ka);
         uint abias_code = (ae >> 16) & 3;
-        float abias = abias_code == 1 ? 0.5 : (abias_code == 2 ? -0.5 : 0.0);
         uint ascale_code = (ae >> 20) & 3;
-        float ascale = ascale_code == 1 ? 2.0 : (ascale_code == 2 ? 4.0 : (ascale_code == 3 ? 0.5 : 1.0));
-        float alpha;
+        int alpha;
         if (abias_code == 3) {
             bool aequal = ((ae >> 18) & 1) != 0;
-            bool apass;
-            if (ascale_code == 3) {
-                int qa = int(round(aa * 255.0)) & 255;
-                int qb = int(round(ab * 255.0)) & 255;
-                apass = aequal ? qa == qb : qa > qb;
-            } else {
-                apass = compare_inputs(ascale_code, aequal, a, b);
-            }
-            alpha = ad + (apass ? ac : 0.0);
+            bool apass = ascale_code == 3 ? (aequal ? aa == ab : aa > ab) : compare_inputs(ascale_code, aequal, a, b);
+            alpha = ad + (apass ? ac : 0);
         } else {
-            alpha = (ad + asign * lerp(aa, ab, ac) + abias) * ascale;
+            alpha = combine(int3(aa, 0, 0), int3(ab, 0, 0), int3(ac, 0, 0), int3(ad, 0, 0), abias_code, ((ae >> 18) & 1) != 0, ascale_code).x;
         }
-        if (((ae >> 19) & 1) != 0) {
-            alpha = saturate(alpha);
-        } else {
-            alpha = clamp(alpha, -1024.0 / 255.0, 1023.0 / 255.0);
-        }
+        alpha = ((ae >> 19) & 1) != 0 ? clamp(alpha, 0, 255) : clamp(alpha, -1024, 1023);
         uint color_dest = (ce >> 22) & 3;
         uint alpha_dest = (ae >> 22) & 3;
-        if (color_dest == 0) r[0].rgb = color;
-        else if (color_dest == 1) r[1].rgb = color;
-        else if (color_dest == 2) r[2].rgb = color;
-        else r[3].rgb = color;
-        if (alpha_dest == 0) r[0].a = alpha;
-        else if (alpha_dest == 1) r[1].a = alpha;
-        else if (alpha_dest == 2) r[2].a = alpha;
-        else r[3].a = alpha;
+        r[color_dest].rgb = color;
+        r[alpha_dest].a = alpha;
     }
-    float4 result = r[0];
+    int4 result = r[0];
     if (count > 0) {
         uint last_color = (stage[count - 1].x >> 22) & 3;
         uint last_alpha = (stage[count - 1].y >> 22) & 3;
-        result.rgb = r[last_color].rgb;
-        result.a = r[last_alpha].a;
+        result = int4(r[last_color].rgb, r[last_alpha].a);
     }
-    result = saturate(result);
+    result &= 255;
     uint compare = header.y;
-    uint value = (uint)round(result.a * 255.0);
+    uint value = (uint)result.a;
     bool first = compare_alpha((compare >> 16) & 7, value, compare & 255);
     bool second = compare_alpha((compare >> 19) & 7, value, (compare >> 8) & 255);
     uint logic = (compare >> 22) & 3;
@@ -421,7 +400,7 @@ float4 pixel_main(PixelInput p) : SV_Target {
     if (!accepted) {
         discard;
     }
-    return result;
+    return float4(result) / 255.0;
 }
 )HLSL";
 
