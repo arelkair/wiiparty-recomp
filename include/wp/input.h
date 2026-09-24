@@ -25,5 +25,6 @@ struct Sample {
 
 bool connected(uint32_t channel);
 Sample sample(uint32_t channel);
+bool wakes_remote(uint32_t channel);
 
 }

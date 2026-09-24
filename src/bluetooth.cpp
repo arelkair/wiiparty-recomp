@@ -477,7 +477,9 @@ void execute_command(uint32_t data) {
     }
     case kCommandReadBdAddr: {
         std::vector<uint8_t> reply = {0x00};
-        reply.insert(reply.end(), kControllerAddress, kControllerAddress + 6);
+        for (uint8_t byte : kControllerAddress) {
+            reply.push_back(byte);
+        }
         command_complete(opcode, reply);
         break;
     }
@@ -613,7 +615,9 @@ void execute_command(uint32_t data) {
     case kCommandReadRemoteFeatures: {
         command_status(opcode);
         std::vector<uint8_t> body = {0x00, rd8(parameters), rd8(parameters + 1)};
-        body.insert(body.end(), kWiimoteFeatures, kWiimoteFeatures + 8);
+        for (uint8_t byte : kWiimoteFeatures) {
+            body.push_back(byte);
+        }
         event(kEventRemoteFeaturesComplete, body);
         break;
     }
@@ -650,7 +654,7 @@ void execute_command(uint32_t data) {
 
 void update_wiimote(uint32_t index) {
     Wiimote& wiimote = g_wiimotes[index];
-    if (wiimote.baseband == Baseband::Inactive && index < kConnectedWiimotes && input::sample(index).buttons != 0) {
+    if (wiimote.baseband == Baseband::Inactive && index < kConnectedWiimotes && input::wakes_remote(index)) {
         wiimote.baseband = Baseband::RequestConnection;
     }
     if (wiimote.baseband == Baseband::RequestConnection && (g_scan_enable & kPageScanEnable)) {

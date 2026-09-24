@@ -86,6 +86,27 @@ Sample scripted(const std::vector<ScriptEntry>& script, int milliseconds) {
 
 }
 
+bool wakes_remote(uint32_t channel) {
+    Sample current = sample(channel);
+    if (current.buttons != 0) {
+        return true;
+    }
+    static const bool pointer_wakes = [] {
+        const char* setting = std::getenv("WP_RECONNECT_ON_POINTER");
+        return !setting || std::atoi(setting) != 0;
+    }();
+    static bool had_pointer = false;
+    static float last_x = 0.0f;
+    static float last_y = 0.0f;
+    bool moved = pointer_wakes && channel == 0 && current.pointer_valid && had_pointer && (current.pointer_x != last_x || current.pointer_y != last_y);
+    if (channel == 0) {
+        had_pointer = current.pointer_valid;
+        last_x = current.pointer_x;
+        last_y = current.pointer_y;
+    }
+    return moved;
+}
+
 bool connected(uint32_t channel) {
     return channel == 0;
 }
