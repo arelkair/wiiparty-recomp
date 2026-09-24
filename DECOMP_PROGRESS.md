@@ -603,3 +603,8 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 
 - The usage count showed the early depth test bit (`0x43` bit 6) on about 82 million draws. On the GX the depth test and write then happen before texturing and the alpha test, so pixels rejected by the alpha test still write depth; in our shader `discard` also cancelled the depth write. As in Dolphin (`EmulatedZ::ForcedEarly`), when the bit is set, the depth test is enabled and the alpha test can both pass and fail, the batch uses a second compiled variant of the pixel shader with `[earlydepthstencil]`. The alpha test analysis now reports whether it can pass and whether it can fail.
 - Verified: the Board Game Island scenes with alpha-tested foliage look the same; `ctest` 3/3.
+
+## Lines, points and the second quad command (2026-09-24)
+
+- `draw_primitive` in `src/gx.cpp` dropped primitive types 1 (`0x88`, quads), 5 (lines), 6 (line strips) and 7 (points). `0x88` is now drawn like `0x80`. Lines become two triangles, widened by the line width of `0x22` (bits 0-7, sixths of a pixel) along the minor screen axis as the GX does (horizontal-ish lines grow vertically and vice versa), with no face culling; points become squares of the point size (`0x22` bits 8-15). The per-vertex texture coordinate offsets of lines and points (`0x22` bits 16-21) are not applied yet. Segments or points behind the camera are skipped.
+- Verified: no change in the scenes of the scripted path (no lines or points seen there); `ctest` 3/3.

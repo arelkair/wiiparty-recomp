@@ -557,6 +557,56 @@ void count_indirect() {
     g_coordinate_draws += coordinates && !indirect;
 }
 
+void emit_unculled(std::vector<ScreenVertex>& out, const ScreenVertex& a, const ScreenVertex& b, const ScreenVertex& c) {
+    out.push_back(a);
+    out.push_back(b);
+    out.push_back(c);
+}
+
+ScreenVertex shifted(const ScreenVertex& vertex, float dx, float dy) {
+    ScreenVertex result = vertex;
+    result.x += dx * vertex.w;
+    result.y += dy * vertex.w;
+    return result;
+}
+
+void emit_line(std::vector<ScreenVertex>& out, const Prepared& a, const Prepared& b) {
+    if (!a.valid || !b.valid || a.vertex.w <= 0.0f || b.vertex.w <= 0.0f) {
+        return;
+    }
+    float width = static_cast<float>(g_bp[0x22] & 0xFF) / 6.0f;
+    float dx = std::fabs(b.vertex.x / b.vertex.w - a.vertex.x / a.vertex.w) * kEfbWidth;
+    float dy = std::fabs(b.vertex.y / b.vertex.w - a.vertex.y / a.vertex.w) * kEfbHeight;
+    float ox = 0.0f;
+    float oy = 0.0f;
+    if (dy > dx) {
+        ox = width / kEfbWidth;
+    } else {
+        oy = width / kEfbHeight;
+    }
+    ScreenVertex a0 = shifted(a.vertex, -ox, -oy);
+    ScreenVertex a1 = shifted(a.vertex, ox, oy);
+    ScreenVertex b0 = shifted(b.vertex, -ox, -oy);
+    ScreenVertex b1 = shifted(b.vertex, ox, oy);
+    emit_unculled(out, a0, a1, b1);
+    emit_unculled(out, a0, b1, b0);
+}
+
+void emit_point(std::vector<ScreenVertex>& out, const Prepared& a) {
+    if (!a.valid || a.vertex.w <= 0.0f) {
+        return;
+    }
+    float size = static_cast<float>((g_bp[0x22] >> 8) & 0xFF) / 6.0f;
+    float ox = size / kEfbWidth;
+    float oy = size / kEfbHeight;
+    ScreenVertex v0 = shifted(a.vertex, -ox, -oy);
+    ScreenVertex v1 = shifted(a.vertex, ox, -oy);
+    ScreenVertex v2 = shifted(a.vertex, ox, oy);
+    ScreenVertex v3 = shifted(a.vertex, -ox, oy);
+    emit_unculled(out, v0, v1, v2);
+    emit_unculled(out, v0, v2, v3);
+}
+
 void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     if (!g_render_enabled) {
         return;
@@ -573,6 +623,7 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     uint32_t primitive = (command >> 3) & 7;
     switch (primitive) {
     case 0:
+    case 1:
         for (uint32_t i = 0; i + 3 < count; i += 4) {
             emit_triangle(triangles, vertices[i], vertices[i + 1], vertices[i + 2]);
             emit_triangle(triangles, vertices[i], vertices[i + 2], vertices[i + 3]);
@@ -597,7 +648,20 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
             emit_triangle(triangles, vertices[0], vertices[i], vertices[i + 1]);
         }
         break;
+    case 5:
+        for (uint32_t i = 0; i + 1 < count; i += 2) {
+            emit_line(triangles, vertices[i], vertices[i + 1]);
+        }
+        break;
+    case 6:
+        for (uint32_t i = 0; i + 1 < count; i++) {
+            emit_line(triangles, vertices[i], vertices[i + 1]);
+        }
+        break;
     default:
+        for (uint32_t i = 0; i < count; i++) {
+            emit_point(triangles, vertices[i]);
+        }
         break;
     }
     if (g_log_draws && g_copy_total >= g_log_from && g_logged_prepared < 4000) {
