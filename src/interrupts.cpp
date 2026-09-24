@@ -8,6 +8,7 @@
 #include "wp/gx.h"
 #include "wp/log.h"
 #include "wp/hle.h"
+#include "wp/ipc.h"
 #include "wp/memory.h"
 #include "wp/threads.h"
 #include "wp/video.h"
@@ -91,18 +92,6 @@ void deliver_decrementer(Cpu& c) {
     g_in_interrupt = false;
 }
 
-void deliver_ipc_interrupt(Cpu& c) {
-    Cpu saved = c;
-    g_in_interrupt = true;
-    c.msr &= ~kMsrExternalInterrupt;
-    ipc_deliver(c);
-    c = saved;
-    g_in_interrupt = false;
-    c.r[3] = 0;
-    call(c, symbol_address("OSSelectThread"));
-    c = saved;
-}
-
 void deliver_external_interrupt(Cpu& c, uint32_t index) {
     uint32_t handler = rd32(kInterruptTable + 4 * index);
     if (handler == 0) {
@@ -151,6 +140,7 @@ void poll_interrupts(Cpu& c) {
     audio::update();
     dsp::update();
     log::watch_modules();
+    ipc::update();
     if (g_in_interrupt || !(c.msr & kMsrExternalInterrupt)) {
         gx::process();
         return;
@@ -158,8 +148,8 @@ void poll_interrupts(Cpu& c) {
     if (decrementer_due()) {
         deliver_decrementer(c);
     }
-    if (ipc_pending()) {
-        deliver_ipc_interrupt(c);
+    if (ipc::interrupt_pending()) {
+        deliver_external_interrupt(c, ipc::kInterrupt);
     }
     for (int delivered = 0; delivered < 3; delivered++) {
         uint32_t index = dsp::pending_interrupt();

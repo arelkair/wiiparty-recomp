@@ -5,7 +5,6 @@ EXIUnlock
 EXIProbe
 EXIGetID
 OSRealModeCall
-IOSSendRequest
 OSLoadContext
 OSSwitchFiber
 OSReport

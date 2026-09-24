@@ -24,8 +24,17 @@ uint16_t read16(uint32_t address);
 void write16(uint32_t address, uint16_t value);
 }
 
+namespace ipc {
+uint32_t read32(uint32_t address);
+void write32(uint32_t address, uint32_t value);
+}
+
 constexpr bool dsp_register(uint32_t address) {
     return (address >> 12) == 0xCC005;
+}
+
+constexpr bool ipc_register(uint32_t address) {
+    return (address >> 8) == 0xCD0000;
 }
 
 inline uint8_t* host(uint32_t address) {
@@ -51,6 +60,9 @@ inline uint16_t rd16(uint32_t address) {
 inline uint32_t rd32(uint32_t address) {
     if (__builtin_expect(dsp_register(address), 0)) {
         return (static_cast<uint32_t>(dsp::read16(address)) << 16) | dsp::read16(address + 2);
+    }
+    if (__builtin_expect(ipc_register(address), 0)) {
+        return ipc::read32(address);
     }
     uint32_t value;
     std::memcpy(&value, host(address), sizeof value);
@@ -104,6 +116,10 @@ inline void wr32(uint32_t address, uint32_t value) {
     if (__builtin_expect(dsp_register(address), 0)) {
         dsp::write16(address, static_cast<uint16_t>(value >> 16));
         dsp::write16(address + 2, static_cast<uint16_t>(value));
+        return;
+    }
+    if (__builtin_expect(ipc_register(address), 0)) {
+        ipc::write32(address, value);
         return;
     }
     value = __builtin_bswap32(value);

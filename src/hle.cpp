@@ -1,35 +1,18 @@
 #include "wp/hle.h"
 
 #include <cstdio>
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <string>
 
 #include "wp/format.h"
-#include "wp/ios.h"
 #include "wp/threads.h"
 
 namespace wp {
 
 namespace {
 
-constexpr uint32_t kRequestCallback = 0x20;
-constexpr uint32_t kRequestArgument = 0x24;
-constexpr uint32_t kIpcHeapSlot = 0xFFFF871C;
-constexpr uint32_t kFreeRequestFunction = 0x80177300;
 constexpr const char* kSilentPrefix = "HleZero_";
-
-struct PendingRequest {
-    uint32_t request;
-    uint32_t result;
-    uint32_t callback;
-    uint32_t argument;
-    std::chrono::steady_clock::time_point ready;
-};
-
-std::deque<PendingRequest> g_pending_ipc;
 
 struct Replacement {
     const char* name;
@@ -52,34 +35,6 @@ void return_zero(Cpu& c) {
 
 void return_one(Cpu& c) {
     c.r[3] = 1;
-}
-
-void ios_send(Cpu& c) {
-    uint32_t request = c.r[3];
-    bool asynchronous = c.r[4] != 0;
-    int32_t result = ios::send(request);
-    if (result == ios::kDeferred) {
-        if (!asynchronous) {
-            std::fprintf(stderr, "IOS synchronous request %08x cannot wait for a deferred reply\n", request);
-        }
-        c.r[3] = 0;
-        return;
-    }
-    if (asynchronous && ios::never_completes(request)) {
-        c.r[3] = 0;
-        return;
-    }
-    if (!asynchronous) {
-        c.r[3] = static_cast<uint32_t>(result);
-        return;
-    }
-    g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument),
-                             std::chrono::steady_clock::now()});
-    c.r[3] = 0;
-}
-
-bool request_pending() {
-    return !g_pending_ipc.empty() && g_pending_ipc.front().ready <= std::chrono::steady_clock::now();
 }
 
 void os_report(Cpu& c) {
@@ -105,7 +60,6 @@ const Replacement kReplacements[] = {
     {"EXIProbe", return_zero},
     {"EXIGetID", return_zero},
     {"OSRealModeCall", do_nothing},
-    {"IOSSendRequest", ios_send},
     {"OSReport", os_report},
     {"OSPanic", os_panic},
     {"OSLoadContext", load_context},
@@ -113,42 +67,6 @@ const Replacement kReplacements[] = {
     {"longjmp", long_jump},
 };
 
-}
-
-bool ipc_pending() {
-    ios::update();
-    uint32_t request = 0;
-    int32_t result = 0;
-    while (ios::take_completion(request, result)) {
-        g_pending_ipc.push_back({request, static_cast<uint32_t>(result), rd32(request + kRequestCallback), rd32(request + kRequestArgument),
-                                 std::chrono::steady_clock::now()});
-    }
-    return request_pending();
-}
-
-void ipc_deliver(Cpu& c) {
-    while (request_pending()) {
-        PendingRequest pending = g_pending_ipc.front();
-        g_pending_ipc.pop_front();
-        uint32_t heap = rd32(c.r[13] + kIpcHeapSlot);
-        static const bool log_requests = std::getenv("WP_LOG_IOS") != nullptr;
-        if (log_requests) {
-            std::fprintf(stderr, "IOS complete request=%08x result=%d callback=%08x", pending.request, static_cast<int32_t>(pending.result), pending.callback);
-            std::fputc(10, stderr);
-        }
-        if (pending.callback != 0) {
-            c.r[3] = pending.result;
-            c.r[4] = pending.argument;
-            call(c, pending.callback);
-            if (log_requests) {
-                std::fprintf(stderr, "IOS callback returned request=%08x", pending.request);
-                std::fputc(10, stderr);
-            }
-        }
-        c.r[3] = heap;
-        c.r[4] = pending.request;
-        call(c, kFreeRequestFunction);
-    }
 }
 
 HleFunction find_replacement(const char* name) {
