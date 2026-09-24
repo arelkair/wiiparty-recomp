@@ -48,6 +48,11 @@ Adapted third-party components are included (see below). This file records what 
 - Source: the Dolphin Emulator's `Source/Core/Core/HW/WII_IPC.cpp` and `WII_IPC.h` ("Copyright 2008 Dolphin Emulator Project"), `Source/Core/Core/IOS/IOS.cpp` and `IOS.h` (`EnqueueIPCRequest`, `EnqueueIPCReply`, `UpdateIPC`, `IPC_OVERHEAD_TICKS`, the default reply delay) and `Source/Core/Core/IOS/FS/FileSystemProxy.cpp` ("Copyright 2018 Dolphin Emulator Project"), current `master` read on 2026-09-24. License: GPL-2.0-or-later, compatible with this project's GPL-3.0-or-later.
 - Adapted, not copied verbatim: the logic and the measured constants (500 timebase ticks to acknowledge a request, 100 ticks from Y1/Y2 to the interrupt, 2700 ticks of IPC overhead, 4000 ticks for a default reply, and for IOS 56 a superblock write of 3,170,000 ticks, a cluster write of 300,000, a cluster read of 115,000, `0.636 * size + 150` for cached copies, 1000 for a free-cluster check, 680 per path component for a lookup and `1000 + 340` per component for a split lookup) are rewritten for this runtime. Dolphin's scheduler is replaced by a small event list on the guest time base.
 
+### Wii Remote motion defaults from the Dolphin Emulator
+
+- Repository files: `update_motion` in `src/wiimote.cpp` and the motion bindings in `src/input.cpp`, own code.
+- Behaviour studied in the Dolphin Emulator's `Source/Core/Core/HW/WiimoteEmu/Dynamics.cpp`, `WiimoteEmu.cpp` and `Source/Core/InputCommon/ControllerEmu/ControlGroup/Force.cpp` and `Tilt.cpp` ("Copyright 2019 Dolphin Emulator Project" and related years, GPL-2.0-or-later), current `master` read on 2026-09-24. No code was copied: the conventions (accelerometer at rest reads +1 g on Z, tilting right moves gravity to +X, 10-bit values from the calibration's zero and one-g points, clamped to 0-1023) and the defaults (shake on the middle mouse button, 10 cm of travel at 6 shakes per second on all three axes) are reimplemented with a simpler model.
+
 ### DSP core and free DSP ROMs from the Dolphin Emulator
 
 - Repository files: everything under `third_party/dolphin/`, kept in Dolphin's own directory layout so it stays separate from this project's code. `third_party/dolphin/COPYING` and `third_party/dolphin/LICENSES/GPL-2.0-or-later.txt` are copied from the same snapshot.

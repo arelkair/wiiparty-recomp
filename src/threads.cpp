@@ -281,6 +281,25 @@ void long_jump(Cpu& c) {
     bool resumable = it != g_jumps.end() && it->second.link == rd32(buffer + kJumpLinkOffset) &&
                      it->second.stack == rd32(buffer + kJumpStackOffset);
     if (!resumable) {
+        uint32_t link = rd32(buffer + kJumpLinkOffset);
+        uint32_t stack = rd32(buffer + kJumpStackOffset);
+        if (link < 0x80000000u) {
+            std::fprintf(stderr, "longjmp to %08x (link %08x, stack %08x) has no live setjmp: %s", buffer, link, stack,
+                         it == g_jumps.end() ? "never saved at this address" : "saved here with different contents");
+            if (it != g_jumps.end()) {
+                std::fprintf(stderr, " (saved link %08x, stack %08x, fiber %s)", it->second.link, it->second.stack,
+                             it->second.fiber == GetCurrentFiber() ? "current" : "other");
+            }
+            std::fputc(10, stderr);
+            for (const auto& [other, saved] : g_jumps) {
+                if (saved.link == link && saved.stack == stack) {
+                    std::fprintf(stderr, "  same contents saved at %08x (fiber %s)", other, saved.fiber == GetCurrentFiber() ? "current" : "other");
+                    std::fputc(10, stderr);
+                }
+            }
+            std::fprintf(stderr, "  %zu saved jumps", g_jumps.size());
+            std::fputc(10, stderr);
+        }
         if (it != g_jumps.end()) {
             g_jumps.erase(it);
         }

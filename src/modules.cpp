@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #include "wp/log.h"
@@ -185,4 +186,17 @@ const char* module_name_at(uint32_t address) {
     return found != nullptr ? found : "?";
 }
 
+
+bool module_loaded(const char* name) {
+    uint32_t info = rd32(kModuleListHead);
+    for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
+        uint32_t identifier = rd32(info + kInfoIdentifier);
+        for (size_t m = 0; m < g_module_count; m++) {
+            if (g_module_table[m]->identifier == identifier && std::strcmp(g_module_table[m]->name, name) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 }

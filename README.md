@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays Board Game Island through several rounds with their minigames, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 69% (estimate, see below).
+> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 73% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -12,7 +12,7 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
-The game runs natively on Windows at a steady 50 fps (PAL). Input goes through an emulated Wii Remote: the mouse is the pointer and the keyboard gives the buttons. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
+The game runs natively on Windows at a steady 50 fps (PAL), using about one and a half CPU threads and 200 MB of memory. Input goes through an emulated Wii Remote: the mouse is the pointer and the keyboard gives the buttons and the motion. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
 
 ### Progress
 
@@ -23,10 +23,10 @@ The overall figure is the equal-weight average of the components below. They are
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
 | System runtime | 91% | OS, threads, interrupts, decrementer and time base, GPU draw-done interrupt, the IPC hardware with IOS's measured file system timing, DVD, NAND (a first boot creates the save) and Bluetooth work; graphics on their own thread as on the separate Wii GPU; free of known blockers |
 | Graphics (GX to Direct3D 11) | 85% | Menus, text, 3D models, lit Miis, integer TEV, indirect textures, fog, the hardware's blending rules, lines and points, vertex arrays in MEM2 and EFB copies in every format; depth EFB copies, logic operations and dithering missing |
-| Input | 57% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons, mouse movement wakes a sleeping remote; no motion, gamepads or real Wii Remotes |
+| Input | 65% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons and as an accelerometer model (tilt, swing, shake) with the grip chosen per minigame; no gyroscope gamepads or real Wii Remotes |
 | Audio | 83% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no stale audio blocks on busy board scenes or scene loads; windowed-sinc WASAPI output |
-| Game flow | 62% | Plays Board Game Island past the five-minute mark through three rounds with their minigames, results, dice and board events; a first boot without a save works; not played to the end |
-| PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
+| Game flow | 75% | A complete game of Board Game Island (17 rounds, final ranking, save) played by hand without faults; a first boot without a save works; other modes not played through |
+| PC features | 15% | Native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; launcher, options menu, ultrawide and online not started |
 
 ### Working
 
@@ -37,17 +37,37 @@ The overall figure is the equal-weight average of the components below. They are
 - **Window:** 16:9 when the virtual Wii is set to widescreen (the default, as in Dolphin), 4:3 otherwise; native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain. The title bar shows the game, graphics API, region, frames per second and whether the DSP microcode runs recompiled (`NATIVE`) or on the interpreter (`INTERP`) with its share of the CPU thread; its texts are in `src/ui_text.cpp`, ready for other languages.
 - **Diagnostics:** `WP_DSP_VERIFY` (replays every recompiled DSP run on Dolphin's interpreter and compares, with a coverage count), `WP_DSP_SELFTEST=N` (runs every instruction of the recompiled microcode from N random states against the interpreter and exits), `WP_DUMP_AUDIO` / `WP_DUMP_OUTPUT` (WAV of the emulated audio / of what goes to the speakers), `WP_LOG_FILE` (timestamped log of fps, slow frames, audio, disc reads, modules and IOS opens), `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_RECONNECT_ON_POINTER` (0 stops mouse movement from waking a disconnected Wii Remote), `WP_POLL_INTERVAL` (loop back-edges between interrupt and audio checks, 1024 by default), `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, F12 in the game window (saves every GPU draw of the next frame, with the registers it changes and its first vertices, to `gx_capture_NNN.txt` plus the frame as `gx_capture_NNN.png` in the working directory; `WP_CAPTURE_AT=seconds,...` does the same at those times), a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
 
+### Controls
+
+| Wii Remote | Keyboard and mouse |
+| --- | --- |
+| Pointer | Mouse over the window |
+| A | Enter, Space or left click |
+| B | Backspace or right click |
+| 1 / 2 | 1 / 2 |
+| + / - | + / - |
+| HOME | H |
+| D-pad, remote upright | Arrow keys |
+| D-pad, remote sideways | W, A, S, D as seen on screen |
+| Tilt left / right | Q / E |
+| Tilt forward / back | R / F |
+| Swing up / down | Mouse wheel, or T / G |
+| Shake | Middle click or left Shift |
+| Swap upright and sideways | Tab |
+
+The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
+
 ### Known problems
 
 - Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked. The Mii faces that came out black or pale in House Party are fixed; other screens with Miis have not all been checked.
-- The gold, silver and bronze bonus dice above the Miis after a minigame show no pips.
-- The Miis that cheer at the sides when something good happens are drawn without heads.
+- Some Miis are drawn with a different mouth (for example with lips) in a minigame than on the board or in the results.
+- A crash was seen once when the Hurdle Hover race ended (a coroutine jump the runtime could not resume); it is being investigated.
 - Some minigames may still be drawn incorrectly; not all have been checked.
 - Entering the main menu still causes one frame of about 60 ms, while the game decompresses about 40 files and draws its first menu frame (on a real Wii this frame is slower). Minigame sound has not been checked.
 
 ### Not implemented
 
-- Wii Remote motion (tilt, swing), generic gamepads and real Wii Remotes.
+- Motion with gyroscope gamepads (DualSense, DualShock 4, Switch Pro), generic gamepads and real Wii Remotes; the keyboard motion keys are a stopgap.
 - GX: depth (Z) EFB copies, logic operations, dithering, texture offsets of lines and points.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 

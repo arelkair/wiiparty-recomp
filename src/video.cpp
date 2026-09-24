@@ -15,6 +15,7 @@
 #include "wp/dsp.h"
 #include "wp/gx.h"
 #include "wp/gx_render.h"
+#include "wp/input.h"
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
@@ -126,6 +127,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
         return DefWindowProc(window, message, wparam, lparam);
+    case WM_MOUSEWHEEL:
+        input::note_wheel(GET_WHEEL_DELTA_WPARAM(wparam));
+        return 0;
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT: {

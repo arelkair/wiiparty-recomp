@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -10,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "wp/modules.h"
 #include "wp/video.h"
 
 namespace wp::input {
@@ -27,7 +29,47 @@ constexpr Binding kBindings[] = {
     {VK_RETURN, kButtonA},    {VK_SPACE, kButtonA},     {VK_LBUTTON, kButtonA},        {VK_BACK, kButtonB},
     {VK_RBUTTON, kButtonB},   {'1', kButtonOne},        {'2', kButtonTwo},             {VK_OEM_PLUS, kButtonPlus},
     {VK_ADD, kButtonPlus},    {VK_OEM_MINUS, kButtonMinus}, {VK_SUBTRACT, kButtonMinus}, {'H', kButtonHome},
+    {VK_MBUTTON, kMotionShake}, {VK_LSHIFT, kMotionShake}, {'T', kMotionSwingUp},        {'G', kMotionSwingDown},
+    {'Q', kMotionTiltLeft},   {'E', kMotionTiltRight},  {'R', kMotionTiltUp},          {'F', kMotionTiltDown},
 };
+
+constexpr const char* kSidewaysMinigames[] = {
+    "mg102", "mg104", "mg108", "mg109", "mg202", "mg210", "mg212", "mg213", "mg218", "mg221", "mg222", "mg223", "mg224",
+    "mg302", "mg404", "mg407", "mg412", "mg415", "mg422", "mg428", "mg430", "mg431", "mg432", "mg433", "mg436", "mg437",
+    "mg438", "mg440", "mg441", "mg445", "mg446", "mg503", "mg504", "mg505", "mg507", "mg508", "mg509",
+};
+
+constexpr auto kWheelSwing = std::chrono::milliseconds(120);
+std::atomic<int64_t> g_wheel_up{0};
+std::atomic<int64_t> g_wheel_down{0};
+
+int64_t now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+bool sideways_minigame() {
+    static const bool automatic = [] {
+        const char* setting = std::getenv("WP_AUTO_ORIENTATION");
+        return !setting || std::atoi(setting) != 0;
+    }();
+    if (!automatic) {
+        return false;
+    }
+    static int64_t next = 0;
+    static bool cached = false;
+    int64_t now = now_ms();
+    if (now >= next) {
+        next = now + 100;
+        cached = false;
+        for (const char* name : kSidewaysMinigames) {
+            if (module_loaded(name)) {
+                cached = true;
+                break;
+            }
+        }
+    }
+    return cached;
+}
 
 bool pressed(int key) {
     return (GetAsyncKeyState(key) & 0x8000) != 0;
@@ -87,9 +129,17 @@ Sample scripted(const std::vector<ScriptEntry>& script, int milliseconds) {
 
 }
 
+void note_wheel(int delta) {
+    if (delta > 0) {
+        g_wheel_up = now_ms();
+    } else if (delta < 0) {
+        g_wheel_down = now_ms();
+    }
+}
+
 bool wakes_remote(uint32_t channel) {
     Sample current = sample(channel);
-    if (current.buttons != 0) {
+    if ((current.buttons & ~kMotionSideways) != 0) {
         return true;
     }
     static const bool pointer_wakes = [] {
@@ -156,6 +206,23 @@ Sample sample(uint32_t channel) {
         if (pressed(binding.key)) {
             result.buttons |= binding.button;
         }
+    }
+    static bool flipped = false;
+    static bool toggle_held = false;
+    bool toggle = pressed(VK_TAB);
+    if (toggle && !toggle_held) {
+        flipped = !flipped;
+    }
+    toggle_held = toggle;
+    if (sideways_minigame() != flipped) {
+        result.buttons |= kMotionSideways;
+    }
+    int64_t now = now_ms();
+    if (now - g_wheel_up.load() < kWheelSwing.count()) {
+        result.buttons |= kMotionSwingUp;
+    }
+    if (now - g_wheel_down.load() < kWheelSwing.count()) {
+        result.buttons |= kMotionSwingDown;
     }
     static uint32_t logged_buttons = 0;
     if (log_input && result.buttons != logged_buttons) {

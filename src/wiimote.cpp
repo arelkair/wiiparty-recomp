@@ -67,6 +67,16 @@ constexpr std::array<uint8_t, 24> kEeprom16D0 = {0x00, 0x00, 0x00, 0xFF, 0x11, 0
                                                  0x00, 0x00, 0x66, 0x99, 0x77, 0x88, 0x00, 0x00, 0x2B, 0x01, 0xE8, 0x13};
 
 constexpr auto kReportInterval = std::chrono::microseconds(5000);
+constexpr double kReportSeconds = 0.005;
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kGravity = 9.80665;
+constexpr double kMaxTilt = kPi / 3.0;
+constexpr double kTiltSpeed = 2.0 * kPi;
+constexpr double kShakeFrequency = 6.0;
+constexpr double kShakeTravel = 0.10;
+constexpr double kSwingSeconds = 0.2;
+constexpr double kSwingAcceleration = 2.5;
+constexpr int kAccelMax = 1023;
 
 struct ReadRequest {
     uint8_t space = 0;
@@ -90,6 +100,14 @@ struct State {
     std::array<uint8_t, 0x100> speaker_registers{};
     ReadRequest read;
     std::chrono::steady_clock::time_point next_report{};
+    double roll = 0.0;
+    double pitch = 0.0;
+    double shake_phase = 0.0;
+    double swing_time = kSwingSeconds;
+    double swing_direction = 0.0;
+    uint32_t motion_held = 0;
+    std::array<uint16_t, 3> accel{};
+    std::array<uint16_t, 3> reported_accel{};
 };
 
 std::array<State, kMaxWiimotes> g_state;
@@ -280,6 +298,68 @@ void update_camera(State& state, const input::Sample& sample) {
     }
 }
 
+bool accel_mode(uint8_t mode) {
+    return mode == 0x31 || mode == 0x33 || mode == 0x35 || mode == 0x37;
+}
+
+double approach(double current, double target, double step) {
+    if (current < target) {
+        return std::min(current + step, target);
+    }
+    return std::max(current - step, target);
+}
+
+void update_motion(State& state, uint32_t held) {
+    uint32_t pressed = held & ~state.motion_held;
+    state.motion_held = held;
+    double side = 0.0;
+    double far = 0.0;
+    if (held & input::kMotionTiltLeft) {
+        side -= kMaxTilt;
+    }
+    if (held & input::kMotionTiltRight) {
+        side += kMaxTilt;
+    }
+    if (held & input::kMotionTiltUp) {
+        far += kMaxTilt;
+    }
+    if (held & input::kMotionTiltDown) {
+        far -= kMaxTilt;
+    }
+    bool sideways = (held & input::kMotionSideways) != 0;
+    double roll_target = sideways ? -far : side;
+    double pitch_target = sideways ? side : far;
+    state.roll = approach(state.roll, roll_target, kTiltSpeed * kReportSeconds);
+    state.pitch = approach(state.pitch, pitch_target, kTiltSpeed * kReportSeconds);
+    double accel[3] = {std::sin(state.roll) * std::cos(state.pitch), std::sin(state.pitch), std::cos(state.roll) * std::cos(state.pitch)};
+    if (pressed & (input::kMotionSwingUp | input::kMotionSwingDown)) {
+        state.swing_time = 0.0;
+        state.swing_direction = (pressed & input::kMotionSwingUp) ? 1.0 : -1.0;
+    }
+    if (state.swing_time < kSwingSeconds) {
+        double sign = state.swing_time < kSwingSeconds / 2.0 ? 1.0 : -1.0;
+        accel[2] += sign * state.swing_direction * kSwingAcceleration;
+        state.swing_time += kReportSeconds;
+    }
+    if (held & input::kMotionShake) {
+        double omega = 2.0 * kPi * kShakeFrequency;
+        double amplitude = omega * omega * (kShakeTravel / 2.0) / kGravity;
+        double value = amplitude * std::sin(state.shake_phase);
+        accel[0] += value;
+        accel[1] += value;
+        accel[2] += value;
+        state.shake_phase += omega * kReportSeconds;
+    } else {
+        state.shake_phase = 0.0;
+    }
+    int zero = static_cast<int>(kAccelZeroG) << 2;
+    int one = (static_cast<int>(kAccelOneG) << 2) - zero;
+    for (int i = 0; i < 3; i++) {
+        long value = std::lround(zero + accel[i] * one);
+        state.accel[i] = static_cast<uint16_t>(std::clamp<long>(value, 0, kAccelMax));
+    }
+}
+
 void send_data_report(State& state, const Sender& send, const input::Sample& sample) {
     uint8_t mode = state.mode;
     bool accel = mode == 0x31 || mode == 0x33 || mode == 0x35 || mode == 0x37;
@@ -310,9 +390,9 @@ void send_data_report(State& state, const Sender& send, const input::Sample& sam
     std::vector<uint8_t> payload = {mode};
     if (mode != 0x3d) {
         uint16_t buttons = state.buttons;
-        uint16_t x = static_cast<uint16_t>(kAccelZeroG) << 2;
-        uint16_t y = static_cast<uint16_t>(kAccelZeroG) << 2;
-        uint16_t z = static_cast<uint16_t>(kAccelOneG) << 2;
+        uint16_t x = state.accel[0];
+        uint16_t y = state.accel[1];
+        uint16_t z = state.accel[2];
         if (accel) {
             buttons = static_cast<uint16_t>(buttons | ((x & 3) << 5) | (((y >> 1) & 1) << 13) | (((z >> 1) & 1) << 14));
         }
@@ -476,14 +556,16 @@ void update(uint32_t index, const Sender& send) {
     state.next_report = now + kReportInterval;
     input::Sample sample = input::sample(index);
     state.buttons = static_cast<uint16_t>(sample.buttons & 0x9F1F);
+    update_motion(state, sample.buttons);
     if (process_read(state, send)) {
         return;
     }
-    bool changed = state.buttons != state.reported_buttons || state.first_report;
+    bool changed = state.buttons != state.reported_buttons || (accel_mode(state.mode) && state.accel != state.reported_accel) || state.first_report;
     if (state.mode == kInputCore && !state.continuous && !changed) {
         return;
     }
     state.reported_buttons = state.buttons;
+    state.reported_accel = state.accel;
     state.first_report = false;
     send_data_report(state, send, sample);
 }

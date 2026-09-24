@@ -29,5 +29,6 @@ bool call_module_function(Cpu& c, uint32_t address);
 void describe_loaded_modules(uint32_t address);
 uint32_t external_address(uint32_t module_identifier, uint32_t section, uint32_t offset);
 const char* module_name_at(uint32_t address);
+bool module_loaded(const char* name);
 
 }

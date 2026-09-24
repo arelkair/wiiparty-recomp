@@ -15,6 +15,14 @@ constexpr uint32_t kButtonB = 0x0400;
 constexpr uint32_t kButtonA = 0x0800;
 constexpr uint32_t kButtonMinus = 0x1000;
 constexpr uint32_t kButtonHome = 0x8000;
+constexpr uint32_t kMotionShake = 0x10000;
+constexpr uint32_t kMotionSwingUp = 0x20000;
+constexpr uint32_t kMotionSwingDown = 0x40000;
+constexpr uint32_t kMotionTiltLeft = 0x80000;
+constexpr uint32_t kMotionTiltRight = 0x100000;
+constexpr uint32_t kMotionTiltUp = 0x200000;
+constexpr uint32_t kMotionTiltDown = 0x400000;
+constexpr uint32_t kMotionSideways = 0x800000;
 
 struct Sample {
     uint32_t buttons = 0;
@@ -26,5 +34,6 @@ struct Sample {
 bool connected(uint32_t channel);
 Sample sample(uint32_t channel);
 bool wakes_remote(uint32_t channel);
+void note_wheel(int delta);
 
 }

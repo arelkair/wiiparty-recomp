@@ -1,7 +1,10 @@
 #include "wp/nand.h"
 
+#include <windows.h>
+
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -24,6 +27,11 @@ constexpr uint8_t kTypeByte = 3;
 constexpr uint8_t kTypeLong = 5;
 constexpr uint8_t kTypeBool = 7;
 constexpr uint8_t kLanguageEnglish = 1;
+constexpr uint8_t kLanguageGerman = 2;
+constexpr uint8_t kLanguageFrench = 3;
+constexpr uint8_t kLanguageSpanish = 4;
+constexpr uint8_t kLanguageItalian = 5;
+constexpr uint8_t kLanguageDutch = 6;
 
 fs::path g_root;
 std::map<int32_t, std::FILE*> g_files;
@@ -76,6 +84,36 @@ std::vector<uint8_t> paired_remotes() {
     return data;
 }
 
+uint8_t console_language() {
+    struct Name {
+        const char* code;
+        uint8_t language;
+    };
+    static const Name kNames[] = {{"en", kLanguageEnglish}, {"de", kLanguageGerman}, {"fr", kLanguageFrench},
+                                  {"es", kLanguageSpanish}, {"it", kLanguageItalian}, {"nl", kLanguageDutch}};
+    if (const char* setting = std::getenv("WP_LANGUAGE")) {
+        for (const Name& name : kNames) {
+            if (std::strcmp(setting, name.code) == 0) {
+                return name.language;
+            }
+        }
+    }
+    switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {
+    case LANG_GERMAN:
+        return kLanguageGerman;
+    case LANG_FRENCH:
+        return kLanguageFrench;
+    case LANG_SPANISH:
+        return kLanguageSpanish;
+    case LANG_ITALIAN:
+        return kLanguageItalian;
+    case LANG_DUTCH:
+        return kLanguageDutch;
+    default:
+        return kLanguageEnglish;
+    }
+}
+
 std::vector<uint8_t> default_sysconf() {
     std::vector<std::vector<uint8_t>> items;
     add_item(items, kTypeBigArray, "BT.DINF", paired_remotes());
@@ -85,7 +123,7 @@ std::vector<uint8_t> default_sysconf() {
     add_item(items, kTypeByte, "BT.SPKV", {0x58});
     add_item(items, kTypeByte, "BT.MOT", {1});
     add_item(items, kTypeSmallArray, "IPL.NIK", {0, 'w', 0, 'i', 0, 'i', 0, 'p', 0, 'a', 0, 'r', 0, 't', 0, 'y'});
-    add_item(items, kTypeByte, "IPL.LNG", {kLanguageEnglish});
+    add_item(items, kTypeByte, "IPL.LNG", {console_language()});
     std::vector<uint8_t> address(0x1008, 0);
     address[0] = 0x6c;
     add_item(items, kTypeBigArray, "IPL.SADR", address);
@@ -173,9 +211,32 @@ bool valid_sysconf(const fs::path& path) {
     return true;
 }
 
+void apply_language(const fs::path& path) {
+    std::FILE* file = std::fopen(path.string().c_str(), "r+b");
+    if (!file) {
+        return;
+    }
+    std::vector<uint8_t> data(kSysconfSize);
+    size_t count = std::fread(data.data(), 1, data.size(), file);
+    static const char kName[] = "IPL.LNG";
+    constexpr size_t kNameLength = sizeof(kName) - 1;
+    for (size_t i = 1; i + kNameLength < count; i++) {
+        if (data[i - 1] == ((kTypeByte << 5) | (kNameLength - 1)) && std::memcmp(&data[i], kName, kNameLength) == 0) {
+            uint8_t language = console_language();
+            if (data[i + kNameLength] != language) {
+                std::fseek(file, static_cast<long>(i + kNameLength), SEEK_SET);
+                std::fwrite(&language, 1, 1, file);
+            }
+            break;
+        }
+    }
+    std::fclose(file);
+}
+
 void ensure_sysconf() {
     fs::path path = host_path("/shared2/sys/SYSCONF");
     if (fs::exists(path) && valid_sysconf(path)) {
+        apply_language(path);
         return;
     }
     fs::create_directories(path.parent_path());
