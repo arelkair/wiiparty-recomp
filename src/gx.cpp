@@ -491,20 +491,11 @@ bool project(const float* eye, float* screen) {
         z = e * eye[2] + f;
         w = -eye[2];
     }
-    if (w <= 0.0f) {
-        return false;
-    }
-    float ndc_x = x / w;
-    float ndc_y = y / w;
-    float ndc_z = z / w;
-    float sx = ndc_x * xf_float(0x101A) + xf_float(0x101D) - kViewportOffset;
-    float sy = ndc_y * xf_float(0x101B) + xf_float(0x101E) - kViewportOffset;
-    float sz = ndc_z * xf_float(0x101C) + xf_float(0x101F);
-    screen[0] = sx / kEfbWidth * 2.0f - 1.0f;
-    screen[1] = 1.0f - sy / kEfbHeight * 2.0f;
-    float depth = sz / kDepthRange;
-    screen[2] = depth < 0.0f ? 0.0f : depth > 1.0f ? 1.0f : depth;
-    return true;
+    screen[0] = x * (2.0f * xf_float(0x101A) / kEfbWidth) + w * (2.0f * (xf_float(0x101D) - kViewportOffset) / kEfbWidth - 1.0f);
+    screen[1] = y * (-2.0f * xf_float(0x101B) / kEfbHeight) + w * (1.0f - 2.0f * (xf_float(0x101E) - kViewportOffset) / kEfbHeight);
+    screen[2] = (z * xf_float(0x101C) + w * xf_float(0x101F)) / kDepthRange;
+    screen[3] = w;
+    return std::isfinite(screen[0]) && std::isfinite(screen[1]) && std::isfinite(screen[2]) && std::isfinite(w);
 }
 
 struct Prepared {
@@ -517,11 +508,12 @@ Prepared prepare(const Vertex& vertex) {
     std::memset(&prepared.vertex, 0, sizeof prepared.vertex);
     float eye[3];
     transform_position(vertex, eye);
-    float screen[3] = {0, 0, 0};
+    float screen[4] = {0, 0, 0, 1};
     prepared.valid = project(eye, screen);
     prepared.vertex.x = screen[0];
     prepared.vertex.y = screen[1];
     prepared.vertex.z = screen[2];
+    prepared.vertex.w = screen[3];
     rasterize_colors(vertex, eye, prepared.vertex.color);
     generate_texture_coordinates(vertex, prepared.vertex.uv);
     return prepared;
@@ -535,7 +527,7 @@ bool culled(const ScreenVertex& a, const ScreenVertex& b, const ScreenVertex& c)
     if (mode == 3) {
         return true;
     }
-    float area = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
+    float area = a.x * (b.y * c.w - c.y * b.w) - a.y * (b.x * c.w - c.x * b.w) + a.w * (b.x * c.y - c.x * b.y);
     bool front = area < 0.0f;
     return mode == 1 ? !front : front;
 }

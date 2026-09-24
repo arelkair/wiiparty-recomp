@@ -134,7 +134,7 @@ SamplerState s6 : register(s6);
 SamplerState s7 : register(s7);
 
 struct VertexInput {
-    float3 position : POSITION;
+    float4 position : POSITION;
     float4 c0 : COLOR0;
     float4 c1 : COLOR1;
     float2 uv0 : TEXCOORD0;
@@ -163,7 +163,7 @@ struct PixelInput {
 
 PixelInput vertex_main(VertexInput input) {
     PixelInput output;
-    output.position = float4(input.position, 1.0);
+    output.position = input.position;
     output.c0 = input.c0;
     output.c1 = input.c1;
     output.uv0 = input.uv0;
@@ -588,12 +588,12 @@ bool create_pipeline() {
               SUCCEEDED(g_device.device->CreatePixelShader(pixel_code->GetBufferPointer(), pixel_code->GetBufferSize(), nullptr, &g_device.pixel_shader));
     if (ok) {
         std::vector<D3D11_INPUT_ELEMENT_DESC> elements = {
-            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"COLOR", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
         for (UINT i = 0; i < 8; i++) {
-            elements.push_back({"TEXCOORD", i, DXGI_FORMAT_R32G32_FLOAT, 0, 44 + 8 * i, D3D11_INPUT_PER_VERTEX_DATA, 0});
+            elements.push_back({"TEXCOORD", i, DXGI_FORMAT_R32G32_FLOAT, 0, 48 + 8 * i, D3D11_INPUT_PER_VERTEX_DATA, 0});
         }
         ok = SUCCEEDED(g_device.device->CreateInputLayout(elements.data(), static_cast<UINT>(elements.size()), vertex_code->GetBufferPointer(),
                                                          vertex_code->GetBufferSize(), &g_device.layout));

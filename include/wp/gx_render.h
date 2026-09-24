@@ -10,6 +10,7 @@ struct ScreenVertex {
     float x;
     float y;
     float z;
+    float w;
     float color[2][4];
     float uv[8][2];
 };
