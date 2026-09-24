@@ -581,6 +581,7 @@ struct Device {
     ID3D11DeviceContext* context = nullptr;
     ID3D11VertexShader* vertex_shader = nullptr;
     ID3D11PixelShader* pixel_shader = nullptr;
+    ID3D11PixelShader* early_pixel_shader = nullptr;
     ID3D11InputLayout* layout = nullptr;
     ID3D11Buffer* vertex_buffer = nullptr;
     ID3D11Buffer* constants = nullptr;
@@ -626,6 +627,7 @@ struct PendingBatch {
     ID3D11SamplerState* samplers[kTextureMaps];
     uint32_t blend = 0;
     uint32_t depth = 0;
+    bool early_depth = false;
     uint32_t top_left = 0;
     uint32_t bottom_right = 0;
 };
@@ -691,8 +693,18 @@ bool create_pipeline() {
     if (!compile(kShaderSource, "vertex_main", "vs_5_0", &vertex_code) || !compile(kShaderSource, "pixel_main", "ps_5_0", &pixel_code)) {
         return false;
     }
+    std::string early_source = kShaderSource;
+    early_source.replace(early_source.find("PixelOutput pixel_main("), 0, "[earlydepthstencil] ");
+    ID3DBlob* early_code = nullptr;
+    if (!compile(early_source.c_str(), "pixel_main", "ps_5_0", &early_code)) {
+        release(vertex_code);
+        release(pixel_code);
+        return false;
+    }
     bool ok = SUCCEEDED(g_device.device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, &g_device.vertex_shader)) &&
-              SUCCEEDED(g_device.device->CreatePixelShader(pixel_code->GetBufferPointer(), pixel_code->GetBufferSize(), nullptr, &g_device.pixel_shader));
+              SUCCEEDED(g_device.device->CreatePixelShader(pixel_code->GetBufferPointer(), pixel_code->GetBufferSize(), nullptr, &g_device.pixel_shader)) &&
+              SUCCEEDED(g_device.device->CreatePixelShader(early_code->GetBufferPointer(), early_code->GetBufferSize(), nullptr, &g_device.early_pixel_shader));
+    release(early_code);
     if (ok) {
         std::vector<D3D11_INPUT_ELEMENT_DESC> elements = {
             {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
@@ -1404,7 +1416,7 @@ void flush_pending() {
     context->IASetInputLayout(g_device.layout);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context->VSSetShader(g_device.vertex_shader, nullptr, 0);
-    context->PSSetShader(g_device.pixel_shader, nullptr, 0);
+    context->PSSetShader(pending.early_depth ? g_device.early_pixel_shader : g_device.pixel_shader, nullptr, 0);
     context->PSSetConstantBuffers(0, 1, &g_device.constants);
     size_t total = pending.vertices.size();
     size_t offset = 0;
@@ -1434,9 +1446,14 @@ const char* api_name() {
     return "Direct3D 11";
 }
 
-bool alpha_test_fails(uint32_t test) {
+struct AlphaTestResult {
+    bool can_pass;
+    bool can_fail;
+};
+
+AlphaTestResult alpha_test_result(uint32_t test) {
     static uint32_t cached_test = 0xFFFFFFFF;
-    static bool cached_result = false;
+    static AlphaTestResult cached_result{};
     if (test == cached_test) {
         return cached_result;
     }
@@ -1452,17 +1469,18 @@ bool alpha_test_fails(uint32_t test) {
         default: return true;
         }
     };
-    bool fails = true;
-    for (uint32_t alpha = 0; alpha < 256 && fails; alpha++) {
+    AlphaTestResult result{false, false};
+    for (uint32_t alpha = 0; alpha < 256; alpha++) {
         bool first = compare((test >> 16) & 7, alpha, test & 255);
         bool second = compare((test >> 19) & 7, alpha, (test >> 8) & 255);
         uint32_t logic = (test >> 22) & 3;
         bool accepted = logic == 0 ? (first && second) : (logic == 1 ? (first || second) : (logic == 2 ? (first != second) : (first == second)));
-        fails = !accepted;
+        result.can_pass |= accepted;
+        result.can_fail |= !accepted;
     }
     cached_test = test;
-    cached_result = fails;
-    return fails;
+    cached_result = result;
+    return result;
 }
 
 void draw(const ScreenVertex* vertices, uint32_t count) {
@@ -1487,11 +1505,13 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
         }
     }
     uint32_t pixel_format = bp[0x43] & 7;
+    AlphaTestResult alpha_test = alpha_test_result(bp[0xF3]);
     uint32_t blend = (bp[0x41] & 0xFFFF) | (static_cast<uint32_t>(pixel_format == 1) << 16) | (((bp[0x42] >> 8) & 1) << 17) |
-                     (static_cast<uint32_t>(alpha_test_fails(bp[0xF3])) << 18);
+                     (static_cast<uint32_t>(!alpha_test.can_pass) << 18);
     uint32_t depth = bp[0x40] & 0x1F;
+    bool early_depth = (depth & 1) != 0 && (bp[0x43] & (1u << 6)) != 0 && alpha_test.can_pass && alpha_test.can_fail;
     PendingBatch& pending = g_pending;
-    bool same = !pending.vertices.empty() && pending.blend == blend && pending.depth == depth && pending.top_left == bp[0x20] &&
+    bool same = !pending.vertices.empty() && pending.blend == blend && pending.depth == depth && pending.early_depth == early_depth && pending.top_left == bp[0x20] &&
                 pending.bottom_right == bp[0x21] && std::memcmp(&pending.constants, &constants, sizeof constants) == 0 &&
                 std::memcmp(pending.views, views, sizeof views) == 0 && std::memcmp(pending.samplers, samplers, sizeof samplers) == 0;
     if (!same) {
@@ -1501,6 +1521,7 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
         std::memcpy(pending.samplers, samplers, sizeof samplers);
         pending.blend = blend;
         pending.depth = depth;
+        pending.early_depth = early_depth;
         pending.top_left = bp[0x20];
         pending.bottom_right = bp[0x21];
     }
