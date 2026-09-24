@@ -47,7 +47,7 @@ constexpr uint32_t kCopyClear = 1u << 11;
 constexpr uint32_t kXfSize = 0x1100;
 constexpr uint32_t kArrayCount = 16;
 constexpr uint32_t kRamBase = 0x80000000;
-constexpr uint32_t kArrayAddressMask = 0x03FFFFFF;
+constexpr uint32_t kArrayAddressMask = 0x1FFFFFFF;
 constexpr float kViewportOffset = 342.0f;
 constexpr float kEfbWidth = 640.0f;
 constexpr float kEfbHeight = 528.0f;
@@ -650,6 +650,13 @@ void capture_draw(uint8_t command, uint32_t count, size_t triangles, const Layou
     uint32_t vat = command & 7;
     std::fprintf(g_capture, "draw %d primitive=%u vat=%u vertices=%u triangles=%zu vcd=%08x %08x vat=%08x %08x %08x size=%u\n", g_capture_draws++,
                  (command >> 3) & 7, vat, count, triangles, g_vcd_low, g_vcd_high, g_vat[0][vat], g_vat[1][vat], g_vat[2][vat], layout.size);
+    std::fprintf(g_capture, " arrays");
+    for (uint32_t i = 0; i < kArrayCount; i++) {
+        if (g_array_base[i] != 0) {
+            std::fprintf(g_capture, " %u=%08x/%u", i, g_array_base[i], g_array_stride[i]);
+        }
+    }
+    std::fputc(10, g_capture);
     capture_registers();
     uint32_t texgens = g_bp[0x00] & 15;
     for (uint32_t i = 0; i < count && i < 3; i++) {
@@ -774,7 +781,18 @@ void capture_frame_boundary() {
         log::write("gx", "capture saved to %s.txt and %s.png", g_capture_name, g_capture_name);
         return;
     }
-    if (!g_capture_requested.exchange(false)) {
+    static const char* scheduled = std::getenv("WP_CAPTURE_AT");
+    static const auto start = std::chrono::steady_clock::now();
+    bool due = false;
+    if (scheduled) {
+        static const char* next = scheduled;
+        if (*next && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= std::atof(next)) {
+            due = true;
+            const char* comma = std::strchr(next, ',');
+            next = comma ? comma + 1 : next + std::strlen(next);
+        }
+    }
+    if (!g_capture_requested.exchange(false) && !due) {
         return;
     }
     char path[80];

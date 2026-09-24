@@ -33,3 +33,4 @@
 *.bak
 *.swp
 __pycache__/
+gx_capture_*
