@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and plays Board Game Island through its first round into the second, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 66% (estimate, see below).
+> **Status:** The game boots, reaches the menu and plays Board Game Island through several rounds with their minigames, controlled through an emulated Wii Remote, with sound from the game's own audio microcode, but some elements are missing, and it has not been played to the end. Overall progress is about 69% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -21,11 +21,11 @@ The overall figure is the equal-weight average of the components below. They are
 | Component | Progress | Basis |
 | --- | --- | --- |
 | Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
-| System runtime | 88% | OS, threads, interrupts, decrementer, GPU draw-done interrupt, IOS, DVD, NAND and Bluetooth work; graphics on their own thread as on the separate Wii GPU; free of known blockers |
-| Graphics (GX to Direct3D 11) | 80% | Menus, text, cursor, 3D models and lit Miis with correct faces draw with correct colors, paletted textures, mipmaps, filtering, TEV compare modes and EFB copies in every format; no indirect textures |
-| Input | 55% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons; no motion, gamepads or real Wii Remotes |
-| Audio | 80% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no late audio buffers in the minigames checked; windowed-sinc WASAPI output |
-| Game flow | 55% | Plays Board Game Island through a full first round (minigame, results, dice, board events, 1 vs 3 minigame) into the second round |
+| System runtime | 91% | OS, threads, interrupts, decrementer and time base, GPU draw-done interrupt, the IPC hardware with IOS's measured file system timing, DVD, NAND (a first boot creates the save) and Bluetooth work; graphics on their own thread as on the separate Wii GPU; free of known blockers |
+| Graphics (GX to Direct3D 11) | 85% | Menus, text, 3D models, lit Miis, integer TEV, indirect textures, fog, the hardware's blending rules, lines and points, vertex arrays in MEM2 and EFB copies in every format; depth EFB copies, logic operations and dithering missing |
+| Input | 57% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons, mouse movement wakes a sleeping remote; no motion, gamepads or real Wii Remotes |
+| Audio | 83% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no stale audio blocks on busy board scenes or scene loads; windowed-sinc WASAPI output |
+| Game flow | 62% | Plays Board Game Island past the five-minute mark through three rounds with their minigames, results, dice and board events; a first boot without a save works; not played to the end |
 | PC features | 10% | Native resolution multiplier and 16:9 window (as on a widescreen Wii) only; launcher, options menu, ultrawide and online not started |
 
 ### Working
