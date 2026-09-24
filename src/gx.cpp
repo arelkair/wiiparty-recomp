@@ -120,6 +120,15 @@ bool g_render_enabled = std::getenv("WP_NO_RENDER") == nullptr;
 bool g_log_fps = std::getenv("WP_LOG_FPS") != nullptr;
 int g_frames = 0;
 std::chrono::steady_clock::time_point g_fps_start = std::chrono::steady_clock::now();
+std::atomic<bool> g_capture_requested{false};
+FILE* g_capture = nullptr;
+int g_capture_index = 0;
+int g_capture_draws = 0;
+bool g_capture_first = true;
+uint32_t g_captured_bp[256] = {};
+uint32_t g_captured_konst[8] = {};
+uint32_t g_captured_xf[kXfSize] = {};
+char g_capture_name[64] = {};
 
 uint32_t be32(const uint8_t* data) {
     return (static_cast<uint32_t>(data[0]) << 24) | (static_cast<uint32_t>(data[1]) << 16) |
@@ -607,6 +616,59 @@ void emit_point(std::vector<ScreenVertex>& out, const Prepared& a) {
     emit_unculled(out, v0, v2, v3);
 }
 
+void capture_registers() {
+    int written = 0;
+    auto field = [&](const char* format, uint32_t index, uint32_t value) {
+        std::fprintf(g_capture, format, index, value);
+        if (++written % 8 == 0) {
+            std::fputc(10, g_capture);
+        }
+    };
+    for (uint32_t i = 0; i < 256; i++) {
+        if (g_capture_first || g_bp[i] != g_captured_bp[i]) {
+            field(" bp%02x=%06x", i, g_bp[i]);
+            g_captured_bp[i] = g_bp[i];
+        }
+    }
+    for (uint32_t i = 0; i < 8; i++) {
+        if (g_capture_first || g_konst[i] != g_captured_konst[i]) {
+            field(" konst%u=%06x", i, g_konst[i]);
+            g_captured_konst[i] = g_konst[i];
+        }
+    }
+    for (uint32_t i = 0; i < kXfSize; i++) {
+        if ((g_capture_first && g_xf[i] != 0) || g_xf[i] != g_captured_xf[i]) {
+            field(" xf%04x=%08x", i, g_xf[i]);
+            g_captured_xf[i] = g_xf[i];
+        }
+    }
+    g_capture_first = false;
+    std::fputc(10, g_capture);
+}
+
+void capture_draw(uint8_t command, uint32_t count, size_t triangles, const Layout& layout, const Vertex* raw, const std::vector<Prepared>& vertices) {
+    uint32_t vat = command & 7;
+    std::fprintf(g_capture, "draw %d primitive=%u vat=%u vertices=%u triangles=%zu vcd=%08x %08x vat=%08x %08x %08x size=%u\n", g_capture_draws++,
+                 (command >> 3) & 7, vat, count, triangles, g_vcd_low, g_vcd_high, g_vat[0][vat], g_vat[1][vat], g_vat[2][vat], layout.size);
+    capture_registers();
+    uint32_t texgens = g_bp[0x00] & 15;
+    for (uint32_t i = 0; i < count && i < 3; i++) {
+        const Vertex& v = raw[i];
+        const ScreenVertex& s = vertices[i].vertex;
+        std::fprintf(g_capture, "  v%u pos=(%g %g %g) normal=(%g %g %g) pnmtx=%u screen=(%g %g %g %g)%s", i, v.position[0], v.position[1], v.position[2], v.normal[0],
+                     v.normal[1], v.normal[2], v.position_matrix, s.x, s.y, s.z, s.w, vertices[i].valid ? "" : " invalid");
+        for (uint32_t t = 0; t < kTexCoordCount; t++) {
+            if (layout.texture[t].mode != 0) {
+                std::fprintf(g_capture, " tex%u=(%g %g)", t, v.texture[t][0], v.texture[t][1]);
+            }
+        }
+        for (uint32_t t = 0; t < texgens && t < kTexCoordCount; t++) {
+            std::fprintf(g_capture, " uv%u=(%g %g) mtx%u=%u", t, s.uv[t][0], s.uv[t][1], t, v.texture_matrix[t]);
+        }
+        std::fputc(10, g_capture);
+    }
+}
+
 void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     if (!g_render_enabled) {
         return;
@@ -616,8 +678,13 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
     std::vector<Prepared> vertices;
     vertices.reserve(count);
     const uint8_t* stream = data;
+    Vertex raw[3];
     for (uint32_t i = 0; i < count; i++) {
-        vertices.push_back(prepare(decode_vertex(layout, stream)));
+        Vertex vertex = decode_vertex(layout, stream);
+        if (i < 3) {
+            raw[i] = vertex;
+        }
+        vertices.push_back(prepare(vertex));
     }
     std::vector<ScreenVertex> triangles;
     uint32_t primitive = (command >> 3) & 7;
@@ -677,6 +744,9 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
                      g_konst[3], g_bp[0x28], g_bp[0xF6], vertices[0].vertex.color[0][0], vertices[0].vertex.color[0][1], vertices[0].vertex.color[0][2],
                      vertices[0].vertex.color[0][3], g_xf[0x100C], g_xf[0x100E]);
     }
+    if (g_capture) {
+        capture_draw(command, count, triangles.size() / 3, layout, raw, vertices);
+    }
     render::draw(triangles.data(), static_cast<uint32_t>(triangles.size()));
 }
 
@@ -691,13 +761,48 @@ void report_copy() {
     g_stats = Statistics{};
 }
 
+void capture_frame_boundary() {
+    if (g_capture) {
+        std::fprintf(g_capture, "end of frame, %d draws\n", g_capture_draws);
+        std::fclose(g_capture);
+        g_capture = nullptr;
+        char image[80];
+        std::snprintf(image, sizeof image, "%s.png", g_capture_name);
+        video::save_next_frame(image);
+        std::fprintf(stderr, "GX capture saved to %s.txt and %s.png", g_capture_name, g_capture_name);
+        std::fputc(10, stderr);
+        log::write("gx", "capture saved to %s.txt and %s.png", g_capture_name, g_capture_name);
+        return;
+    }
+    if (!g_capture_requested.exchange(false)) {
+        return;
+    }
+    char path[80];
+    while (true) {
+        std::snprintf(g_capture_name, sizeof g_capture_name, "gx_capture_%03d", ++g_capture_index);
+        std::snprintf(path, sizeof path, "%s.txt", g_capture_name);
+        FILE* existing = std::fopen(path, "rb");
+        if (!existing) {
+            break;
+        }
+        std::fclose(existing);
+    }
+    g_capture = std::fopen(path, "w");
+    g_capture_draws = 0;
+    g_capture_first = true;
+}
+
 void execute_copy(uint32_t value) {
     g_copy_total++;
     report_copy();
     if (!g_render_enabled) {
         return;
     }
+    if (g_capture && !(value & kCopyToFramebuffer)) {
+        std::fprintf(g_capture, "copy to texture at %06x, source %06x size %06x, control %06x\n", g_bp[0x4B] << 5, g_bp[0x49], g_bp[0x4A], value);
+    }
     if (value & kCopyToFramebuffer) {
+        capture_frame_boundary();
         uint32_t source = g_bp[0x49];
         uint32_t size = g_bp[0x4A];
         int x = static_cast<int>(source & 0x3FF);
@@ -951,6 +1056,10 @@ void push(uint64_t value, unsigned bytes) {
 
 bool take_finish_interrupt() {
     return g_finish_pending.exchange(false);
+}
+
+void request_capture() {
+    g_capture_requested = true;
 }
 
 namespace {

@@ -624,3 +624,9 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 ## Keyboard D-pad for the sideways Wii Remote (2026-09-24)
 
 - `src/input.cpp`: at the user's request, W, A, S and D now follow the Wii Remote held sideways, as most minigames use it: W is D-pad right, S is left, A is up and D is down. The arrow keys keep the upright mapping.
+
+## GPU frame capture with F12; dice faces investigation (2026-09-24)
+
+- New diagnostic: pressing F12 in the game window (`WM_KEYDOWN` in `src/video.cpp`) makes `src/gx.cpp` record the next frame: for each draw, the primitive, vertex descriptor and attribute formats, every BP, TEV constant and XF register that changed since the previous draw (all of them for the first one), and the first three vertices with position, normal, raw texture coordinates, generated coordinates, texture matrix indices and screen position; EFB copies to textures are listed too. The text goes to `gx_capture_NNN.txt` and the displayed frame to `gx_capture_NNN.png` in the working directory. Checked on the title screen: one capture of 4758 draws, about 2.4 MB.
+- Dice faces missing after a minigame (user report): the bonus dice are `result/model/dice/op001_dice0N.brres` (0 normal, 1 gold, 2 silver, 3 copper). Material `mr001m201` has 4 texgens and 4 TEV stages: stage 0 base CMPR texture times the vertex color, stage 1 `mr001_t201b` (RGB565), stage 2 adds the `RIMTEXq` rim light (texgen 1 from the normals, 3x4 matrix) times a constant, and stage 3 blends `mr001_t201c` (256x128 RGB5A3, the pips) over the result by its alpha (`lerp(CPREV, TEXC, TEXA)`, order register `0x29`: map 2, texgen 2). Texgen 2 takes `TEX2`, which the polygon maps to the second UV set (VCD high `0x2a`). The TEV configuration, the vertex format decoding (VAT B), the texgen code and the RGB5A3 decoder were checked by reading them and look right, so the cause needs a capture of that screen (pending, the user will press F12 there).
+

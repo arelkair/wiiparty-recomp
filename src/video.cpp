@@ -120,6 +120,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         SetWindowTextA(window, title.c_str());
         return 0;
     }
+    case WM_KEYDOWN:
+        if (wparam == VK_F12 && !(lparam & (1 << 30))) {
+            gx::request_capture();
+            return 0;
+        }
+        return DefWindowProc(window, message, wparam, lparam);
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT: {
@@ -244,8 +250,19 @@ void update_statistics(double fps) {
     PostMessageA(window, kTitleMessage, 0, 0);
 }
 
+std::string g_next_frame_path;
+
 void present_on_gpu(HWND window, double aspect) {
     gx::render::present_frame(window, aspect);
+    if (!g_next_frame_path.empty()) {
+        std::vector<uint32_t> pixels;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        if (gx::render::read_frame(pixels, width, height)) {
+            save_png(g_next_frame_path.c_str(), pixels, width, height);
+        }
+        g_next_frame_path.clear();
+    }
     static int frames = 0;
     const char* save = std::getenv("WP_SAVE_FRAME");
     if (save && ++frames % 100 == 0) {
@@ -258,6 +275,10 @@ void present_on_gpu(HWND window, double aspect) {
             save_png(path, pixels, width, height);
         }
     }
+}
+
+void save_next_frame(const char* path) {
+    g_next_frame_path = path;
 }
 
 void present() {
