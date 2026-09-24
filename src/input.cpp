@@ -22,7 +22,7 @@ struct Binding {
 
 constexpr Binding kBindings[] = {
     {VK_LEFT, kButtonLeft},   {VK_RIGHT, kButtonRight}, {VK_DOWN, kButtonDown},        {VK_UP, kButtonUp},
-    {'A', kButtonLeft},       {'D', kButtonRight},      {'S', kButtonDown},            {'W', kButtonUp},
+    {'S', kButtonLeft},       {'W', kButtonRight},      {'D', kButtonDown},            {'A', kButtonUp},
     {VK_RETURN, kButtonA},    {VK_SPACE, kButtonA},     {VK_LBUTTON, kButtonA},        {VK_BACK, kButtonB},
     {VK_RBUTTON, kButtonB},   {'1', kButtonOne},        {'2', kButtonTwo},             {VK_OEM_PLUS, kButtonPlus},
     {VK_ADD, kButtonPlus},    {VK_OEM_MINUS, kButtonMinus}, {VK_SUBTRACT, kButtonMinus}, {'H', kButtonHome},

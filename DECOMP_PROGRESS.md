@@ -620,3 +620,7 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - `/dev/es` ioctlv 0x16 (`GetConsumption`) and 0x1B (`DIGetTicketView`) returned success without writing anything. Now that the SDK builds these requests with its own buffers, stale data made `OSPlayTime` stop with `PANIC in OSPlayTime.c on line 737: Expired`. They now report no consumption records and a zeroed ticket view (no play-time limits).
 - Verified: with an empty NAND the game creates `wiiparty.bin` and `banner.bin`, reaches the title screen and, with A+B held (`WP_INPUT_BUTTONS=C00`), the main menu; with the save present it boots as before; the Wii Remote handshake (IR camera, report modes) completes. `ctest` 3/3. The title screen now appears about 2 s later on the first boot, because the NAND takes the time it takes on a console. The full scripted path to Board Game Island was not rerun (the user is testing a full game by hand).
 
+
+## Keyboard D-pad for the sideways Wii Remote (2026-09-24)
+
+- `src/input.cpp`: at the user's request, W, A, S and D now follow the Wii Remote held sideways, as most minigames use it: W is D-pad right, S is left, A is up and D is down. The arrow keys keep the upright mapping.
