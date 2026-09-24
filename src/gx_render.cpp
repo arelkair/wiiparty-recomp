@@ -114,6 +114,10 @@ cbuffer Constants : register(b0) {
     uint4 stage[16];
     uint4 header;
     uint4 swaps;
+    float4 texdims[8];
+    int4 indmtx[6];
+    uint4 indirect;
+    uint4 tevind[16];
 };
 
 Texture2D t0 : register(t0);
@@ -320,6 +324,20 @@ int3 combine(int3 a, int3 b, int3 c, int3 d, uint bias_code, bool subtract, uint
     return scale_code == 3 ? value >> 1 : value;
 }
 
+static const int kWraps[5] = {256 << 7, 128 << 7, 64 << 7, 32 << 7, 16 << 7};
+static const int kFormatShifts[4] = {0, 3, 4, 5};
+static const int kBumpShifts[4] = {0, 5, 4, 3};
+
+int2 fixpoint(PixelInput p, uint coord) {
+    return int2(select_uv(p, coord) * texdims[coord].zw * 128.0);
+}
+
+int4 sample_fixed(uint map, int2 coords, float2 dx, float2 dy, uint coord) {
+    float2 size = texdims[map].xy;
+    float2 ratio = texdims[coord].zw / size;
+    return quantized(sample_map(map, float2(coords) / (size * 128.0), dx * ratio, dy * ratio));
+}
+
 float4 pixel_main(PixelInput p) : SV_Target {
     float2 gradient_x[8] = {ddx(p.uv0), ddx(p.uv1), ddx(p.uv2), ddx(p.uv3), ddx(p.uv4), ddx(p.uv5), ddx(p.uv6), ddx(p.uv7)};
     float2 gradient_y[8] = {ddy(p.uv0), ddy(p.uv1), ddy(p.uv2), ddy(p.uv3), ddy(p.uv4), ddy(p.uv5), ddy(p.uv6), ddy(p.uv7)};
@@ -331,15 +349,73 @@ float4 pixel_main(PixelInput p) : SV_Target {
     if (count == 0) {
         r[0] = c0;
     }
+    uint indirect_stages = indirect.x & 7;
+    uint texgens = (indirect.x >> 8) & 15;
+    int3 indirect_texel[4] = {int3(0, 0, 0), int3(0, 0, 0), int3(0, 0, 0), int3(0, 0, 0)};
+    for (uint j = 0; j < indirect_stages && j < 4; j++) {
+        uint reference = indirect.y >> (6 * j);
+        uint map = reference & 7;
+        uint coord = (reference >> 3) & 7;
+        if (coord >= texgens) {
+            coord = 0;
+        }
+        uint scales = j < 2 ? indirect.z : indirect.w;
+        uint shift_s = (scales >> ((j & 1) * 8)) & 15;
+        uint shift_t = (scales >> ((j & 1) * 8 + 4)) & 15;
+        int2 base = fixpoint(p, coord);
+        indirect_texel[j] = sample_fixed(map, int2(base.x >> shift_s, base.y >> shift_t), gradient_x[coord], gradient_y[coord], coord).abg;
+    }
+    int2 tevcoord = int2(0, 0);
+    int alphabump = 0;
     for (uint i = 0; i < count; i++) {
         uint ce = stage[i].x;
         uint ae = stage[i].y;
         uint order = stage[i].z;
         uint ksel = stage[i].w;
+        uint coord = (order >> 3) & 7;
+        if (coord >= texgens) {
+            coord = 0;
+        }
+        uint ind = tevind[i].x;
+        uint bt = ind & 3;
+        uint format = (ind >> 2) & 3;
+        uint bias = (ind >> 4) & 7;
+        uint bump = (ind >> 7) & 3;
+        uint matrix_index = (ind >> 9) & 3;
+        uint matrix_id = (ind >> 11) & 3;
+        uint wrap_s = (ind >> 13) & 7;
+        uint wrap_t = (ind >> 16) & 7;
+        bool has_stage = bt < indirect_stages;
+        int2 base = fixpoint(p, coord);
+        int2 offset = int2(0, 0);
+        if (has_stage && bump != 0) {
+            alphabump = (indirect_texel[bt][bump - 1] << kBumpShifts[format]) & 248;
+        }
+        if (has_stage && matrix_index != 0) {
+            int3 crd = indirect_texel[bt] >> kFormatShifts[format];
+            int add = format == 0 ? -128 : 1;
+            if ((bias & 1) != 0) crd.x += add;
+            if ((bias & 2) != 0) crd.y += add;
+            if ((bias & 4) != 0) crd.z += add;
+            uint m = 2 * (matrix_index - 1);
+            if (matrix_id == 0) {
+                offset = int2(dot(indmtx[m].xyz, crd), dot(indmtx[m + 1].xyz, crd)) >> 3;
+            } else if (matrix_id == 1) {
+                offset = (base * crd.xx) >> 8;
+            } else if (matrix_id == 2) {
+                offset = (base * crd.yy) >> 8;
+            }
+            int shift = indmtx[m].w;
+            offset = shift >= 0 ? (offset >> shift) : (offset << (-shift));
+        }
+        int2 wrapped;
+        wrapped.x = wrap_s == 0 ? base.x : (wrap_s >= 6 ? 0 : (base.x & (kWraps[wrap_s - 1] - 1)));
+        wrapped.y = wrap_t == 0 ? base.y : (wrap_t >= 6 ? 0 : (base.y & (kWraps[wrap_t - 1] - 1)));
+        tevcoord = ((ind >> 20) & 1) != 0 ? tevcoord + wrapped + offset : wrapped + offset;
+        tevcoord = (tevcoord << 8) >> 8;
         int4 tex = int4(255, 255, 255, 255);
         if ((order & 0x40) != 0) {
-            uint coord = (order >> 3) & 7;
-            tex = apply_swap(quantized(sample_map(order & 7, select_uv(p, coord), gradient_x[coord], gradient_y[coord])), (ae >> 2) & 3);
+            tex = texgens == 0 ? int4(0, 0, 0, 0) : apply_swap(sample_fixed(order & 7, tevcoord, gradient_x[coord], gradient_y[coord], coord), (ae >> 2) & 3);
         }
         int4 ras = int4(0, 0, 0, 0);
         uint chan = (order >> 7) & 7;
@@ -347,6 +423,10 @@ float4 pixel_main(PixelInput p) : SV_Target {
             ras = c0;
         } else if (chan == 1) {
             ras = c1;
+        } else if (chan == 5) {
+            ras = int4(1, 1, 1, 1) * alphabump;
+        } else if (chan == 6) {
+            ras = int4(1, 1, 1, 1) * (alphabump | (alphabump >> 5));
         }
         ras = apply_swap(ras, ae & 3);
         int3 kc = konst_color(ksel & 31, k);
@@ -410,6 +490,10 @@ struct Constants {
     uint32_t stage[kMaxStages][4];
     uint32_t header[4];
     uint32_t swaps[4];
+    float texdims[8][4];
+    int32_t indmtx[6][4];
+    uint32_t indirect[4];
+    uint32_t tevind[kMaxStages][4];
 };
 
 template <typename T>
@@ -1098,7 +1182,39 @@ void fill_constants(Constants& constants) {
         constants.konst[i][2] = signed11(bg);
         constants.konst[i][1] = signed11(bg >> 12);
     }
+    for (uint32_t i = 0; i < 8; i++) {
+        uint32_t image0 = bp[i < 4 ? 0x88 + i : 0xA8 + (i - 4)];
+        constants.texdims[i][0] = static_cast<float>((image0 & 0x3FF) + 1);
+        constants.texdims[i][1] = static_cast<float>(((image0 >> 10) & 0x3FF) + 1);
+        constants.texdims[i][2] = static_cast<float>((bp[0x30 + 2 * i] & 0xFFFF) + 1);
+        constants.texdims[i][3] = static_cast<float>((bp[0x31 + 2 * i] & 0xFFFF) + 1);
+    }
+    for (uint32_t i = 0; i < 3; i++) {
+        uint32_t a = bp[0x06 + 3 * i];
+        uint32_t b = bp[0x07 + 3 * i];
+        uint32_t c = bp[0x08 + 3 * i];
+        auto field = [](uint32_t value) {
+            int32_t v = static_cast<int32_t>(value & 0x7FF);
+            return (v & 0x400) ? v - 0x800 : v;
+        };
+        int32_t scale = static_cast<int32_t>(((a >> 22) & 3) | (((b >> 22) & 3) << 2) | (((c >> 22) & 3) << 4));
+        constants.indmtx[2 * i][0] = field(a);
+        constants.indmtx[2 * i][1] = field(b);
+        constants.indmtx[2 * i][2] = field(c);
+        constants.indmtx[2 * i][3] = 17 - scale;
+        constants.indmtx[2 * i + 1][0] = field(a >> 11);
+        constants.indmtx[2 * i + 1][1] = field(b >> 11);
+        constants.indmtx[2 * i + 1][2] = field(c >> 11);
+        constants.indmtx[2 * i + 1][3] = 17 - scale;
+    }
+    constants.indirect[0] = ((bp[0x00] >> 16) & 7) | ((bp[0x00] & 15) << 8);
+    constants.indirect[1] = bp[0x27];
+    constants.indirect[2] = bp[0x25];
+    constants.indirect[3] = bp[0x26];
     uint32_t stages = ((bp[0x00] >> 10) & 15) + 1;
+    for (uint32_t i = 0; i < stages && i < kMaxStages; i++) {
+        constants.tevind[i][0] = bp[0x10 + i];
+    }
     constants.header[0] = stages;
     constants.header[1] = bp[0xF3];
     for (uint32_t table = 0; table < 4; table++) {
