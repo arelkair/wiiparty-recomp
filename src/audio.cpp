@@ -34,6 +34,10 @@ constexpr double kMaxLatency = 0.2;
 constexpr REFERENCE_TIME kBufferDuration = 400000;
 constexpr double kMaxRateCorrection = 0.005;
 constexpr double kFadeSeconds = 0.004;
+constexpr int kTaps = 16;
+constexpr int kPhases = 512;
+constexpr double kCutoff = 0.95;
+constexpr double kPi = 3.14159265358979323846;
 
 using Clock = std::chrono::steady_clock;
 
@@ -81,6 +85,33 @@ bool is_float(const WAVEFORMATEX* format) {
     return false;
 }
 
+struct Kernel {
+    float weights[kPhases + 1][kTaps];
+
+    Kernel() {
+        for (int phase = 0; phase <= kPhases; phase++) {
+            double fraction = static_cast<double>(phase) / kPhases;
+            double sum = 0.0;
+            for (int tap = 0; tap < kTaps; tap++) {
+                double x = tap - (kTaps / 2 - 1) - fraction;
+                double sinc = x == 0.0 ? kCutoff : std::sin(kPi * kCutoff * x) / (kPi * x);
+                double w = (x + kTaps / 2.0) / kTaps;
+                double window = 0.42 - 0.5 * std::cos(2.0 * kPi * w) + 0.08 * std::cos(4.0 * kPi * w);
+                weights[phase][tap] = static_cast<float>(sinc * window);
+                sum += sinc * window;
+            }
+            for (int tap = 0; tap < kTaps; tap++) {
+                weights[phase][tap] = static_cast<float>(weights[phase][tap] / sum);
+            }
+        }
+    }
+};
+
+const Kernel& kernel() {
+    static const Kernel instance;
+    return instance;
+}
+
 void output_thread() {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IMMDeviceEnumerator* enumerator = nullptr;
@@ -119,10 +150,18 @@ void output_thread() {
     size_t lowest = SIZE_MAX;
     size_t highest = 0;
     Clock::time_point report = Clock::now();
+    std::FILE* output_dump = nullptr;
+    uint32_t output_frames = 0;
+    if (const char* path = std::getenv("WP_DUMP_OUTPUT")) {
+        output_dump = std::fopen(path, "wb");
+        if (output_dump) {
+            write_wav_header(output_dump, 0, static_cast<uint32_t>(device_rate));
+        }
+    }
     bool primed = false;
     float gain = 0.0f;
-    Frame previous{0.0f, 0.0f};
-    Frame current{0.0f, 0.0f};
+    Frame history[kTaps] = {};
+    const Kernel& filter = kernel();
     while (true) {
         WaitForSingleObject(event, 100);
         UINT32 padding = 0;
@@ -161,9 +200,9 @@ void output_thread() {
                     position += step;
                     while (position >= 1.0) {
                         position -= 1.0;
-                        previous = current;
+                        std::copy(history + 1, history + kTaps, history);
                         if (!g_queue.empty()) {
-                            current = g_queue.front();
+                            history[kTaps - 1] = g_queue.front();
                             g_queue.pop_front();
                         } else {
                             missing++;
@@ -172,8 +211,13 @@ void output_thread() {
                     }
                 }
                 gain = primed ? std::min(1.0f, gain + fade) : std::max(0.0f, gain - fade);
-                float t = static_cast<float>(position);
-                mixed[i] = {(previous.left + (current.left - previous.left) * t) * gain, (previous.right + (current.right - previous.right) * t) * gain};
+                const float* weights = filter.weights[static_cast<int>(position * kPhases)];
+                Frame sample{0.0f, 0.0f};
+                for (int tap = 0; tap < kTaps; tap++) {
+                    sample.left += history[tap].left * weights[tap];
+                    sample.right += history[tap].right * weights[tap];
+                }
+                mixed[i] = {sample.left * gain, sample.right * gain};
             }
         }
         for (UINT32 i = 0; i < available; i++) {
@@ -189,6 +233,16 @@ void output_thread() {
             }
         }
         render->ReleaseBuffer(available, 0);
+        if (output_dump) {
+            std::vector<int16_t> samples(available * 2);
+            for (UINT32 i = 0; i < available; i++) {
+                samples[2 * i] = static_cast<int16_t>(std::lround(std::clamp(mixed[i].left, -1.0f, 1.0f) * 32767.0f));
+                samples[2 * i + 1] = static_cast<int16_t>(std::lround(std::clamp(mixed[i].right, -1.0f, 1.0f) * 32767.0f));
+            }
+            std::fwrite(samples.data(), 4, available, output_dump);
+            output_frames += available;
+            write_wav_header(output_dump, output_frames, static_cast<uint32_t>(device_rate));
+        }
         Clock::time_point now = Clock::now();
         if (now - report >= std::chrono::seconds(1)) {
             log::write("output", "device %.0f Hz, queue %.1f-%.1f ms, %u frames missing, %u trims", device_rate, lowest * 1000.0 / g_source_rate,
