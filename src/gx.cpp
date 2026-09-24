@@ -663,7 +663,10 @@ void execute_copy(uint32_t value) {
         render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format, (value & (1u << 15)) != 0);
     }
     if (value & kCopyClear) {
-        render::clear();
+        uint32_t source = g_bp[0x49];
+        uint32_t size = g_bp[0x4A];
+        render::clear(static_cast<int>(source & 0x3FF), static_cast<int>((source >> 10) & 0x3FF), static_cast<int>(size & 0x3FF) + 1,
+                      static_cast<int>((size >> 10) & 0x3FF) + 1);
     }
 }
 

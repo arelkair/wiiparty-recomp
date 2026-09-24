@@ -38,7 +38,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 ### Known problems
 
-- Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked.
+- Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked. The Mii faces that came out black or pale in House Party are fixed; other screens with Miis have not all been checked.
 - The gold, silver and bronze bonus dice above the Miis after a minigame show no pips.
 - The Miis that cheer at the sides when something good happens are drawn without heads.
 - Some minigames may still be drawn incorrectly; not all have been checked.

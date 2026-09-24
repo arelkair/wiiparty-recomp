@@ -48,6 +48,25 @@ float4 pixel_main(Output input) : SV_Target {
 }
 )HLSL";
 
+const char* kClearShaderSource = R"HLSL(
+cbuffer ClearConstants : register(b0) {
+    float4 color;
+    float4 depth;
+};
+
+struct Output {
+    float4 color : SV_Target;
+    float depth : SV_Depth;
+};
+
+Output pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) {
+    Output output;
+    output.color = color;
+    output.depth = depth.x;
+    return output;
+}
+)HLSL";
+
 const char* kCopyShaderSource = R"HLSL(
 Texture2D source : register(t0);
 SamplerState source_sampler : register(s0);
@@ -475,6 +494,10 @@ struct Device {
     ID3D11SamplerState* present_sampler = nullptr;
     ID3D11PixelShader* copy_pixel = nullptr;
     ID3D11Buffer* copy_constants = nullptr;
+    ID3D11PixelShader* clear_pixel = nullptr;
+    ID3D11Buffer* clear_constants = nullptr;
+    ID3D11BlendState* clear_blend[16] = {};
+    ID3D11DepthStencilState* clear_depth[2] = {};
     ID3D11RasterizerState* present_rasterizer = nullptr;
     ID3D11RasterizerState* rasterizer = nullptr;
     std::map<uint32_t, ID3D11BlendState*> blend_states;
@@ -1466,6 +1489,18 @@ bool create_present_pipeline() {
     } else {
         ok = false;
     }
+    ID3DBlob* clear_code = nullptr;
+    if (ok && compile(kClearShaderSource, "pixel_main", "ps_5_0", &clear_code)) {
+        ok = SUCCEEDED(g_device.device->CreatePixelShader(clear_code->GetBufferPointer(), clear_code->GetBufferSize(), nullptr, &g_device.clear_pixel));
+        release(clear_code);
+        D3D11_BUFFER_DESC constants{};
+        constants.ByteWidth = 32;
+        constants.Usage = D3D11_USAGE_DEFAULT;
+        constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        ok = ok && SUCCEEDED(g_device.device->CreateBuffer(&constants, nullptr, &g_device.clear_constants));
+    } else {
+        ok = false;
+    }
     if (!ok) {
         return false;
     }
@@ -1609,15 +1644,91 @@ bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height
     return ok;
 }
 
-void clear() {
-    if (!initialize()) {
+uint32_t expand(uint32_t value, int bits) {
+    return (value << (8 - bits)) | (value >> (2 * bits - 8));
+}
+
+uint32_t quantize(uint32_t value, int bits) {
+    return expand(value >> (8 - bits), bits);
+}
+
+void clear(int x, int y, int width, int height) {
+    if (!initialize() || !create_present_pipeline()) {
         return;
     }
     flush_pending();
     const uint32_t* bp = bp_registers();
-    float color[4] = {(bp[0x4F] & 0xFF) / 255.0f, ((bp[0x50] >> 8) & 0xFF) / 255.0f, (bp[0x50] & 0xFF) / 255.0f, ((bp[0x4F] >> 8) & 0xFF) / 255.0f};
-    g_device.context->ClearRenderTargetView(g_device.target_view, color);
-    g_device.context->ClearDepthStencilView(g_device.depth_view, D3D11_CLEAR_DEPTH, static_cast<float>(bp[0x51] & 0xFFFFFF) / 16777215.0f, 0);
+    uint32_t pixel_format = bp[0x43] & 7;
+    bool color_enable = (bp[0x41] & (1u << 3)) != 0;
+    bool has_alpha = pixel_format != 0 && pixel_format != 2 && pixel_format != 3;
+    bool alpha_enable = (bp[0x41] & (1u << 4)) != 0 && has_alpha;
+    bool depth_enable = (bp[0x40] & (1u << 4)) != 0;
+    if (!color_enable && !alpha_enable && !depth_enable) {
+        return;
+    }
+    uint32_t red = bp[0x4F] & 0xFF;
+    uint32_t alpha = (bp[0x4F] >> 8) & 0xFF;
+    uint32_t green = (bp[0x50] >> 8) & 0xFF;
+    uint32_t blue = bp[0x50] & 0xFF;
+    uint32_t depth = bp[0x51] & 0xFFFFFF;
+    if (pixel_format == 1) {
+        red = quantize(red, 6);
+        green = quantize(green, 6);
+        blue = quantize(blue, 6);
+        alpha = quantize(alpha, 6);
+    } else if (pixel_format == 2) {
+        red = quantize(red, 5);
+        green = quantize(green, 6);
+        blue = quantize(blue, 5);
+        depth = (depth & 0xFFFF00) | (depth >> 16);
+    }
+    if (!has_alpha) {
+        alpha_enable = true;
+        alpha = 0;
+    }
+    UINT mask = (color_enable ? (D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE) : 0) |
+                (alpha_enable ? D3D11_COLOR_WRITE_ENABLE_ALPHA : 0);
+    if (!g_device.clear_blend[mask]) {
+        D3D11_BLEND_DESC description{};
+        description.RenderTarget[0].BlendEnable = FALSE;
+        description.RenderTarget[0].RenderTargetWriteMask = static_cast<UINT8>(mask);
+        if (FAILED(g_device.device->CreateBlendState(&description, &g_device.clear_blend[mask]))) {
+            return;
+        }
+    }
+    if (!g_device.clear_depth[depth_enable]) {
+        D3D11_DEPTH_STENCIL_DESC description{};
+        description.DepthEnable = depth_enable;
+        description.DepthWriteMask = depth_enable ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+        description.DepthFunc = D3D11_COMPARISON_ALWAYS;
+        if (FAILED(g_device.device->CreateDepthStencilState(&description, &g_device.clear_depth[depth_enable]))) {
+            return;
+        }
+    }
+    x = std::max(0, x);
+    y = std::max(0, y);
+    width = std::min(width, kEfbWidth - x);
+    height = std::min(height, kEfbHeight - y);
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    float constants[8] = {red / 255.0f, green / 255.0f, blue / 255.0f, alpha / 255.0f, static_cast<float>(depth) / 16777215.0f, 0, 0, 0};
+    ID3D11DeviceContext* context = g_device.context;
+    context->UpdateSubresource(g_device.clear_constants, 0, nullptr, constants, 0, 0);
+    context->OMSetRenderTargets(1, &g_device.target_view, g_device.depth_view);
+    D3D11_VIEWPORT viewport{0, 0, static_cast<float>(scaled(kEfbWidth)), static_cast<float>(scaled(kEfbHeight)), 0.0f, 1.0f};
+    context->RSSetViewports(1, &viewport);
+    D3D11_RECT rectangle{scaled(x), scaled(y), scaled(x + width), scaled(y + height)};
+    context->RSSetScissorRects(1, &rectangle);
+    context->RSSetState(g_device.rasterizer);
+    context->OMSetBlendState(g_device.clear_blend[mask], nullptr, 0xFFFFFFFF);
+    context->OMSetDepthStencilState(g_device.clear_depth[depth_enable], 0);
+    context->IASetInputLayout(nullptr);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(g_device.present_vertex, nullptr, 0);
+    context->PSSetShader(g_device.clear_pixel, nullptr, 0);
+    context->PSSetConstantBuffers(0, 1, &g_device.clear_constants);
+    context->Draw(3, 0);
 }
 
 }

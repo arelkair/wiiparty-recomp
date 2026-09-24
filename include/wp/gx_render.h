@@ -32,6 +32,6 @@ bool present_frame(void* window, double aspect);
 bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height);
 void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity);
 void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes);
-void clear();
+void clear(int x, int y, int width, int height);
 
 }

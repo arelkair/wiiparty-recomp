@@ -37,6 +37,11 @@ Adapted third-party components are included (see below). This file records what 
 - Not copied: the motion simulation (`Dynamics.cpp`), extensions, MotionPlus, the speaker decoder and the encryption code. The mapping from the PC pointer to the two IR dots is this project's own: it was measured against the game's own KPAD so that KPAD reports the same position as the input.
 - Changes (2026-09-23, this project): reads a simple input sample (buttons and pointer) instead of Dolphin's input configuration; sends reports through a callback into `src/bluetooth.cpp`; no save states.
 
+### EFB clear rules from the Dolphin Emulator
+
+- Repository file: `src/gx_render.cpp` (`clear`), own code.
+- Behaviour studied in the Dolphin Emulator's `Source/Core/VideoCommon/BPFunctions.cpp` (`ClearScreen`), `FramebufferManager.cpp` (`FramebufferManager::ClearEFB`) and `Source/Core/Common/ColorUtil.h` (`RGBA8ToRGBA6ToRGBA8`, `RGBA8ToRGB565ToRGBA8`, `Z24ToZ16ToZ24`), current `master` read on 2026-09-24 ("Copyright 2009 Dolphin Emulator Project" and later years, GPL-2.0-or-later). No code was copied: the rules (clear only the copied rectangle and only the channels whose update is enabled; formats without alpha force an alpha clear to 0; RGBA6 and RGB565 color and Z16 depth rounding) are reimplemented, and the three one-line bit conversions are written as equivalent expressions.
+
 ### DSP core and free DSP ROMs from the Dolphin Emulator
 
 - Repository files: everything under `third_party/dolphin/`, kept in Dolphin's own directory layout so it stays separate from this project's code. `third_party/dolphin/COPYING` and `third_party/dolphin/LICENSES/GPL-2.0-or-later.txt` are copied from the same snapshot.
