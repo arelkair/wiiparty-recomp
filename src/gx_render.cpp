@@ -118,6 +118,9 @@ cbuffer Constants : register(b0) {
     int4 indmtx[6];
     uint4 indirect;
     uint4 tevind[16];
+    float4 fog;
+    int4 fog_integer;
+    float4 fog_range[3];
 };
 
 Texture2D t0 : register(t0);
@@ -471,6 +474,33 @@ float4 pixel_main(PixelInput p) : SV_Target {
         result = int4(r[last_color].rgb, r[last_alpha].a);
     }
     result &= 255;
+    uint fog_select = uint(fog_integer.x) & 15;
+    uint fog_type = fog_select >> 1;
+    if (fog_type != 0) {
+        int z = clamp(int(p.position.z * 16777216.0), 0, 0xFFFFFF);
+        float ze = (fog_select & 1) == 0 ? (fog.x * 16777216.0) / float(fog_integer.y - (z >> fog_integer.w)) : fog.x * float(z) / 16777216.0;
+        if ((fog_integer.x & 16) != 0) {
+            float offset = (2.0 * (p.position.x / fog.w)) - 1.0 - fog.z;
+            float index = clamp(9.0 - abs(offset) * 9.0, 0.0, 9.0);
+            uint lower = uint(index);
+            uint upper = min(lower + 1, 9u);
+            float k = lerp(fog_range[lower >> 2][lower & 3], fog_range[upper >> 2][upper & 3], frac(index));
+            ze *= sqrt(offset * offset + k * k) / k;
+        }
+        float amount = clamp(ze - fog.y, 0.0, 1.0);
+        if (fog_type == 4) {
+            amount = 1.0 - exp2(-8.0 * amount);
+        } else if (fog_type == 5) {
+            amount = 1.0 - exp2(-8.0 * amount * amount);
+        } else if (fog_type == 6) {
+            amount = exp2(-8.0 * (1.0 - amount));
+        } else if (fog_type == 7) {
+            amount = exp2(-8.0 * (1.0 - amount) * (1.0 - amount));
+        }
+        int weight = int(round(amount * 256.0));
+        int3 fog_color = int3((fog_integer.z >> 16) & 255, (fog_integer.z >> 8) & 255, fog_integer.z & 255);
+        result.rgb = (result.rgb * (256 - weight) + fog_color * weight) >> 8;
+    }
     uint compare = header.y;
     uint value = (uint)result.a;
     bool first = compare_alpha((compare >> 16) & 7, value, compare & 255);
@@ -494,6 +524,9 @@ struct Constants {
     int32_t indmtx[6][4];
     uint32_t indirect[4];
     uint32_t tevind[kMaxStages][4];
+    float fog[4];
+    int32_t fog_integer[4];
+    float fog_range[3][4];
 };
 
 template <typename T>
@@ -1217,6 +1250,39 @@ void fill_constants(Constants& constants) {
     }
     constants.header[0] = stages;
     constants.header[1] = bp[0xF3];
+    auto fog_float = [](uint32_t value) {
+        uint32_t bits = (((value >> 19) & 1) << 31) | (((value >> 11) & 0xFF) << 23) | ((value & 0x7FF) << 12);
+        float result;
+        std::memcpy(&result, &bits, sizeof result);
+        return result;
+    };
+    uint32_t fog_a = bp[0xEE];
+    uint32_t fog_c = bp[0xF1];
+    bool nan_case = ((fog_a >> 11) & 0xFF) == 255 && ((fog_c >> 11) & 0xFF) == 255;
+    constants.fog[0] = nan_case ? 0.0f : fog_float(fog_a);
+    constants.fog[1] = nan_case ? ((!((fog_a >> 19) & 1) && !((fog_c >> 19) & 1)) ? -INFINITY : INFINITY) : fog_float(fog_c);
+    constants.fog[2] = 0.0f;
+    constants.fog[3] = 1.0f;
+    constants.fog_integer[0] = static_cast<int32_t>((fog_c >> 20) & 15);
+    constants.fog_integer[1] = static_cast<int32_t>(bp[0xEF] & 0xFFFFFF);
+    constants.fog_integer[2] = static_cast<int32_t>(bp[0xF2] & 0xFFFFFF);
+    constants.fog_integer[3] = static_cast<int32_t>(bp[0xF0] & 0x1F);
+    if (bp[0xE8] & (1u << 10)) {
+        const uint32_t* xf = xf_registers();
+        float width = 0.0f;
+        std::memcpy(&width, &xf[0x101A], sizeof width);
+        int center = static_cast<int>(bp[0xE8] & 0x3FF) - 342;
+        constants.fog[2] = (center / (2.0f * width)) * 2.0f - 1.0f;
+        constants.fog[3] = 2.0f * width * g_scale;
+        for (uint32_t i = 0; i < 5; i++) {
+            uint32_t k = bp[0xE9 + i];
+            uint32_t low = 2 * i;
+            uint32_t high = 2 * i + 1;
+            constants.fog_range[low / 4][low % 4] = ((k >> 12) & 0xFFF) / 256.0f * 4.0f;
+            constants.fog_range[high / 4][high % 4] = (k & 0xFFF) / 256.0f * 4.0f;
+        }
+        constants.fog_integer[0] |= 16;
+    }
     for (uint32_t table = 0; table < 4; table++) {
         uint32_t low = bp[0xF6 + 2 * table];
         uint32_t high = bp[0xF7 + 2 * table];

@@ -48,7 +48,7 @@ The overall figure is the equal-weight average of the components below. They are
 ### Not implemented
 
 - Wii Remote motion (tilt, swing), generic gamepads and real Wii Remotes.
-- GX: lines and points, depth (Z) EFB copies, fog.
+- GX: lines and points, depth (Z) EFB copies, logic operations, constant destination alpha.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`; planned features are in `FEATURES_QOL.md`.
