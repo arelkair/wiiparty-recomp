@@ -508,9 +508,10 @@ void report(Clock::time_point now) {
     }
     g_load_percent = 100.0 * g_statistics.dsp_seconds / seconds;
     if (log::enabled()) {
-        log::write("audio", "buffers %.1f/s, late starts %u, worst start %.2f ms, DSP %.1f Mcycles/s using %.1f%% of the CPU thread",
+        log::write("audio", "buffers %.1f/s, late starts %u, worst start %.2f ms, DSP %.1f Mcycles/s using %.1f%% of the CPU thread, DMA %.2f ms behind",
                    g_statistics.buffers / seconds, g_statistics.late_starts, g_statistics.worst_start * 1000.0,
-                   g_statistics.dsp_cycles / seconds / 1e6, 100.0 * g_statistics.dsp_seconds / seconds);
+                   g_statistics.dsp_cycles / seconds / 1e6, 100.0 * g_statistics.dsp_seconds / seconds,
+                   std::chrono::duration<double>(now - g_audio_dma.clock).count() * 1000.0);
     }
     g_statistics = Statistics{};
     g_statistics.since = now;

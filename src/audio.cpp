@@ -4,6 +4,7 @@
 #include <audioclient.h>
 #include <mmdeviceapi.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -14,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "wp/log.h"
 #include "wp/memory.h"
 
 namespace wp::audio {
@@ -30,6 +32,8 @@ constexpr double kRate48k = 48000.0;
 constexpr double kTargetLatency = 0.06;
 constexpr double kMaxLatency = 0.2;
 constexpr REFERENCE_TIME kBufferDuration = 400000;
+constexpr double kMaxRateCorrection = 0.005;
+constexpr double kFadeSeconds = 0.004;
 
 using Clock = std::chrono::steady_clock;
 
@@ -110,6 +114,13 @@ void output_thread() {
     const uint32_t channels = format->nChannels;
     const double device_rate = format->nSamplesPerSec;
     double position = 0.0;
+    uint32_t missing = 0;
+    uint32_t trims = 0;
+    size_t lowest = SIZE_MAX;
+    size_t highest = 0;
+    Clock::time_point report = Clock::now();
+    bool primed = false;
+    float gain = 0.0f;
     Frame previous{0.0f, 0.0f};
     Frame current{0.0f, 0.0f};
     while (true) {
@@ -129,24 +140,40 @@ void output_thread() {
         std::vector<Frame> mixed(available);
         {
             std::lock_guard<std::mutex> lock(g_queue_mutex);
-            double step = g_source_rate / device_rate;
             size_t limit = static_cast<size_t>(kMaxLatency * g_source_rate);
             size_t target = static_cast<size_t>(kTargetLatency * g_source_rate);
+            lowest = std::min(lowest, g_queue.size());
+            highest = std::max(highest, g_queue.size());
             if (g_queue.size() > limit) {
                 g_queue.erase(g_queue.begin(), g_queue.begin() + static_cast<std::ptrdiff_t>(g_queue.size() - target));
+                gain = 0.0f;
+                trims++;
             }
+            if (!primed && g_queue.size() >= target) {
+                primed = true;
+            }
+            double error = (static_cast<double>(g_queue.size()) - static_cast<double>(target)) / static_cast<double>(target);
+            double correction = std::clamp(error * kMaxRateCorrection, -kMaxRateCorrection, kMaxRateCorrection);
+            double step = g_source_rate / device_rate * (1.0 + correction);
+            float fade = static_cast<float>(1.0 / (kFadeSeconds * device_rate));
             for (UINT32 i = 0; i < available; i++) {
-                position += step;
-                while (position >= 1.0) {
-                    position -= 1.0;
-                    previous = current;
-                    if (!g_queue.empty()) {
-                        current = g_queue.front();
-                        g_queue.pop_front();
+                if (primed) {
+                    position += step;
+                    while (position >= 1.0) {
+                        position -= 1.0;
+                        previous = current;
+                        if (!g_queue.empty()) {
+                            current = g_queue.front();
+                            g_queue.pop_front();
+                        } else {
+                            missing++;
+                            primed = false;
+                        }
                     }
                 }
+                gain = primed ? std::min(1.0f, gain + fade) : std::max(0.0f, gain - fade);
                 float t = static_cast<float>(position);
-                mixed[i] = {previous.left + (current.left - previous.left) * t, previous.right + (current.right - previous.right) * t};
+                mixed[i] = {(previous.left + (current.left - previous.left) * t) * gain, (previous.right + (current.right - previous.right) * t) * gain};
             }
         }
         for (UINT32 i = 0; i < available; i++) {
@@ -162,6 +189,16 @@ void output_thread() {
             }
         }
         render->ReleaseBuffer(available, 0);
+        Clock::time_point now = Clock::now();
+        if (now - report >= std::chrono::seconds(1)) {
+            log::write("output", "device %.0f Hz, queue %.1f-%.1f ms, %u frames missing, %u trims", device_rate, lowest * 1000.0 / g_source_rate,
+                       highest * 1000.0 / g_source_rate, missing, trims);
+            missing = 0;
+            trims = 0;
+            lowest = SIZE_MAX;
+            highest = 0;
+            report = now;
+        }
     }
 }
 
