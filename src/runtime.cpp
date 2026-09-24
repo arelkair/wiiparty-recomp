@@ -261,8 +261,8 @@ uint64_t time_base() {
     using clock = std::chrono::steady_clock;
     static const clock::time_point origin = clock::now();
     static const uint64_t start = wall_clock_ticks();
-    auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - origin).count();
-    return start + static_cast<uint64_t>(elapsed) * kTimeBaseHz / 1000000000ull;
+    uint64_t elapsed = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - origin).count());
+    return start + elapsed / 1000000000ull * kTimeBaseHz + elapsed % 1000000000ull * kTimeBaseHz / 1000000000ull;
 }
 
 }

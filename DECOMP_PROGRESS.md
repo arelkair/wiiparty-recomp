@@ -633,3 +633,10 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Verified with a scripted run and automatic captures: the multi-UV draws now get real coordinates and the normal and silver dice on the board show their pips.
 - The capture also lists the CP vertex array bases and strides of each draw, and `WP_CAPTURE_AT=seconds,seconds,...` takes captures automatically at those times since start (for scripted runs). Note: `WP_INPUT_SCRIPT` takes the script text itself, not a file path.
 
+## Time base overflow after five minutes: black screen after "Round 2" (2026-09-24)
+
+- User report: the game stayed on a black screen after "Round 2". Reproduced with a scripted board game: at about 305 s the rendering stopped and no IPC request (disc, Bluetooth) was sent any more; the main thread slept in the DVD library (`0x8015a7f0`) and another thread waited on a mutex.
+- A new IPC report in the watchdog dump (`ipc::report`: control, flags, queues, pending events and a trace of the last 64 register accesses, acknowledgements and replies) showed pending replies due about 227 s in the future and a trace whose older entries were later than the newer ones: the guest time base had jumped back.
+- Cause: `time_base()` in `src/runtime.cpp` multiplied the elapsed nanoseconds by 60,750,000 in 64 bits, which overflows after 2^64 / 60,750,000 ns = 303.6 s. From then on the time base went back by about 303 s, so every alarm, the decrementer and the IPC reply schedule broke. The elapsed time is now split into whole seconds and the remainder before scaling.
+- Verified: the same scripted game now runs past 450 s at 50 fps, through "Round 2" and "Round 3" and the Hammer Heads minigame with its results; the IPC report at the end shows nothing pending. The scripts used for long runs now tap A while not pointing (the board ignores A while the pointer is on screen) and sweep the pointer over a 5x4 grid so minigames that start by pointing at the player's Mii also begin.
+

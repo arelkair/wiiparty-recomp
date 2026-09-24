@@ -1,6 +1,7 @@
 #include "wp/ipc.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
@@ -75,6 +76,20 @@ std::deque<uint32_t> g_requests;
 std::deque<uint32_t> g_replies;
 uint64_t g_last_reply = 0;
 
+struct Trace {
+    uint64_t time;
+    char kind;
+    uint32_t a;
+    uint32_t b;
+};
+
+Trace g_trace[64] = {};
+uint32_t g_trace_next = 0;
+
+void trace(char kind, uint32_t a, uint32_t b) {
+    g_trace[g_trace_next++ % 64] = {time_base(), kind, a, b};
+}
+
 void schedule(uint64_t delay, EventKind kind, uint32_t address) {
     g_events.push_back({time_base() + delay, g_event_order++, kind, address});
 }
@@ -104,6 +119,7 @@ void update_ipc() {
     if (!g_requests.empty()) {
         uint32_t address = g_requests.front();
         g_requests.pop_front();
+        trace('A', address, rd32(address));
         g_control.x1 = false;
         g_control.y2 = true;
         schedule(kInterruptTicks, EventKind::Interrupt, 0);
@@ -113,6 +129,7 @@ void update_ipc() {
     if (!g_replies.empty()) {
         g_arm_message = g_replies.front();
         g_replies.pop_front();
+        trace('R', g_arm_message, rd32(g_arm_message + 4));
         g_control.y1 = true;
         schedule(kInterruptTicks, EventKind::Interrupt, 0);
     }
@@ -125,6 +142,7 @@ uint32_t& backing(uint32_t address) {
 }
 
 uint32_t read32(uint32_t address) {
+    trace('r', address & 0xFF, g_control.ppc());
     switch (address & 0xFF) {
     case kPpcControl:
         return g_control.ppc();
@@ -136,6 +154,7 @@ uint32_t read32(uint32_t address) {
 }
 
 void write32(uint32_t address, uint32_t value) {
+    trace('w', address & 0xFF, value);
     switch (address & 0xFF) {
     case kPpcMessage:
         g_ppc_message = value;
@@ -215,6 +234,25 @@ void update() {
 
 bool interrupt_pending() {
     return (g_interrupt_flags & g_interrupt_mask) != 0;
+}
+
+void report() {
+    std::fprintf(stderr, "IPC control=%02x flags=%08x mask=%08x ppc message=%08x arm message=%08x requests=%zu replies=%zu events=%zu", g_control.ppc(),
+                 g_interrupt_flags, g_interrupt_mask, g_ppc_message, g_arm_message, g_requests.size(), g_replies.size(), g_events.size());
+    std::fputc(10, stderr);
+    uint64_t now = time_base();
+    for (uint32_t i = 0; i < 64; i++) {
+        const Trace& t = g_trace[(g_trace_next + i) % 64];
+        if (t.kind) {
+            std::fprintf(stderr, "IPC trace %lld %c %08x %08x", static_cast<long long>(t.time) - static_cast<long long>(now), t.kind, t.a, t.b);
+            std::fputc(10, stderr);
+        }
+    }
+    for (const Event& event : g_events) {
+        std::fprintf(stderr, "IPC event kind=%d address=%08x due in %lld ticks", static_cast<int>(event.kind), event.address,
+                     static_cast<long long>(event.due) - static_cast<long long>(now));
+        std::fputc(10, stderr);
+    }
 }
 
 }

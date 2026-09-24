@@ -11,6 +11,7 @@
 #include "wp/disc.h"
 #include "wp/dol.h"
 #include "wp/nand.h"
+#include "wp/ipc.h"
 #include "wp/threads.h"
 #include "wp/video.h"
 #include "wp/watch.h"
@@ -77,6 +78,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "no progress after %d seconds\n", timeout_seconds);
             wp::print_call_stack();
             wp::print_thread_stacks();
+            wp::ipc::report();
             wp::print_profile();
             std::_Exit(3);
         }).detach();
