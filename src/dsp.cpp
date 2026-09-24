@@ -12,6 +12,7 @@
 #include <cstring>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "Common/ChunkFile.h"
@@ -95,6 +96,8 @@ struct AramDma {
 struct Statistics {
     uint32_t buffers = 0;
     uint32_t late_starts = 0;
+    uint32_t stale_blocks = 0;
+    uint32_t overwritten_blocks = 0;
     double worst_start = 0.0;
     double dsp_seconds = 0.0;
     double dsp_cycles = 0.0;
@@ -113,6 +116,30 @@ double g_owed = 0.0;
 Clock::time_point g_last_update = Clock::now();
 Statistics g_statistics;
 bool g_code_loaded = false;
+struct BlockHistory {
+    uint32_t writes = 0;
+    bool played = false;
+};
+
+std::unordered_map<uint32_t, BlockHistory> g_blocks;
+
+void note_dsp_write(uint32_t address, uint32_t size) {
+    for (uint32_t block = address & ~31u; block < address + size; block += 32) {
+        g_blocks[block].writes++;
+    }
+}
+
+void note_block_played(uint32_t address) {
+    BlockHistory& history = g_blocks[address & ~31u];
+    if (history.played && history.writes == 0) {
+        g_statistics.stale_blocks++;
+    }
+    if (history.writes >= 2) {
+        g_statistics.overwritten_blocks++;
+    }
+    history.writes = 0;
+    history.played = true;
+}
 double g_load_percent = 0.0;
 bool g_log = std::getenv("WP_LOG_DSP") != nullptr;
 bool g_force_interpreter = std::getenv("WP_DSP_INTERPRETER") != nullptr;
@@ -494,6 +521,7 @@ void pump_audio_dma(Clock::time_point wall) {
             }
             g_audio_dma.next_block += block;
             source = g_audio_dma.current;
+            note_block_played(source & kMem1Mask);
             g_audio_dma.remaining--;
             g_audio_dma.current += 32;
         }
@@ -508,8 +536,8 @@ void report(Clock::time_point now) {
     }
     g_load_percent = 100.0 * g_statistics.dsp_seconds / seconds;
     if (log::enabled()) {
-        log::write("audio", "buffers %.1f/s, late starts %u, worst start %.2f ms, DSP %.1f Mcycles/s using %.1f%% of the CPU thread, DMA %.2f ms behind",
-                   g_statistics.buffers / seconds, g_statistics.late_starts, g_statistics.worst_start * 1000.0,
+        log::write("audio", "buffers %.1f/s, late starts %u, %u stale and %u overwritten blocks, worst start %.2f ms, DSP %.1f Mcycles/s using %.1f%% of the CPU thread, DMA %.2f ms behind",
+                   g_statistics.buffers / seconds, g_statistics.late_starts, g_statistics.stale_blocks, g_statistics.overwritten_blocks, g_statistics.worst_start * 1000.0,
                    g_statistics.dsp_cycles / seconds / 1e6, 100.0 * g_statistics.dsp_seconds / seconds,
                    std::chrono::duration<double>(now - g_audio_dma.clock).count() * 1000.0);
     }
@@ -798,6 +826,9 @@ void DMAToDSP(u16* destination, u32 address, u32 size) {
 
 void DMAFromDSP(const u16* source, u32 address, u32 size) {
     u32 words = dsp_words(source, size);
+    if (!wp::dsp::g_self_testing) {
+        wp::dsp::note_dsp_write(dma_address(address), words * 2);
+    }
     if (wp::dsp::g_write_log) {
         for (u32 i = 0; i < words; i++) {
             wp::dsp::record_write(dma_address(address + 2 * i), static_cast<uint8_t>(source[i] >> 8));
