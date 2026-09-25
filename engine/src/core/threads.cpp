@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -80,6 +81,7 @@ std::map<uint32_t, SavedContext> g_saved;
 std::map<uint32_t, SavedJump> g_jumps;
 uint32_t g_jump_buffer = 0;
 uint32_t g_jump_value = 0;
+uint32_t g_start_value = 1;
 Cpu* g_cpu = nullptr;
 std::jmp_buf* g_resume_point = nullptr;
 uint32_t g_resume_context = 0;
@@ -199,13 +201,45 @@ VOID CALLBACK start_thread(PVOID parameter) {
     std::abort();
 }
 
+using Function = void (*)(Cpu&);
+
+Function find_resume(uint32_t address) {
+    if (address < 0x80000000u) {
+        return find_module_resume(address);
+    }
+    const FunctionEntry* end = g_resume_table + g_resume_count;
+    const FunctionEntry* it = std::lower_bound(g_resume_table, end, address,
+                                               [](const FunctionEntry& entry, uint32_t value) { return entry.address < value; });
+    return it != end && it->address == address ? it->function : nullptr;
+}
+
+void continue_at(Cpu& c, uint32_t address) {
+    while (address != 0) {
+        Function function = find_resume(address);
+        if (!function) {
+            std::fprintf(stderr, "cannot continue at return address %08x", address);
+            std::fputc(10, stderr);
+            describe_loaded_modules(address);
+            std::abort();
+        }
+        g_resume_address = address;
+        function(c);
+        address = c.lr;
+    }
+}
+
 VOID CALLBACK start_jump(PVOID parameter) {
     uint32_t buffer = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(parameter));
     Cpu& c = *g_cpu;
     restore_jump(c, buffer);
-    uint32_t entry = c.lr;
-    c.lr = 0;
-    call(c, entry);
+    uint32_t target = c.lr;
+    if (find_resume(target)) {
+        c.r[3] = g_start_value;
+        continue_at(c, target);
+    } else {
+        c.lr = 0;
+        call(c, target);
+    }
     std::fputs("jump function returned without exiting\n", stderr);
     std::abort();
 }
@@ -281,28 +315,10 @@ void long_jump(Cpu& c) {
     bool resumable = it != g_jumps.end() && it->second.link == rd32(buffer + kJumpLinkOffset) &&
                      it->second.stack == rd32(buffer + kJumpStackOffset);
     if (!resumable) {
-        uint32_t link = rd32(buffer + kJumpLinkOffset);
-        uint32_t stack = rd32(buffer + kJumpStackOffset);
-        if (link < 0x80000000u) {
-            std::fprintf(stderr, "longjmp to %08x (link %08x, stack %08x) has no live setjmp: %s", buffer, link, stack,
-                         it == g_jumps.end() ? "never saved at this address" : "saved here with different contents");
-            if (it != g_jumps.end()) {
-                std::fprintf(stderr, " (saved link %08x, stack %08x, fiber %s)", it->second.link, it->second.stack,
-                             it->second.fiber == GetCurrentFiber() ? "current" : "other");
-            }
-            std::fputc(10, stderr);
-            for (const auto& [other, saved] : g_jumps) {
-                if (saved.link == link && saved.stack == stack) {
-                    std::fprintf(stderr, "  same contents saved at %08x (fiber %s)", other, saved.fiber == GetCurrentFiber() ? "current" : "other");
-                    std::fputc(10, stderr);
-                }
-            }
-            std::fprintf(stderr, "  %zu saved jumps", g_jumps.size());
-            std::fputc(10, stderr);
-        }
         if (it != g_jumps.end()) {
             g_jumps.erase(it);
         }
+        g_start_value = value;
         void* fiber = CreateFiber(kFiberStackSize, start_jump, reinterpret_cast<void*>(static_cast<uintptr_t>(buffer)));
 #ifdef WP_TRACE
         register_trace(fiber);
@@ -324,6 +340,15 @@ void long_jump(Cpu& c) {
     if (g_resume_point) {
         resume_pending();
     }
+}
+
+uint32_t g_resume_address = 0;
+uint32_t g_taken_resume_address = 0;
+
+void bad_resume(Cpu&) {
+    std::fprintf(stderr, "no resume point at %08x in the function found for it", g_taken_resume_address);
+    std::fputc(10, stderr);
+    std::abort();
 }
 
 void print_guest_registers() {

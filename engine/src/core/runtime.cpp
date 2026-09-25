@@ -1,4 +1,5 @@
 #include "wp/cpu.h"
+#include "wp/profile.h"
 
 #include <algorithm>
 #include <atomic>
@@ -80,6 +81,31 @@ void print_call_stack() {
 namespace {
 std::map<uint32_t, uint32_t> g_profile;
 std::atomic<bool> g_sampling{false};
+std::atomic<uint32_t> g_idle_samples{0};
+std::atomic<uint32_t> g_samples{0};
+std::atomic<bool> g_idle_sampler{false};
+constexpr uint32_t kOSSelectThread = 0x8013fad0;
+}
+
+double idle_share() {
+    if (!g_idle_sampler.exchange(true)) {
+        std::thread([] {
+            while (true) {
+                size_t depth = g_call_depth;
+                if (depth > 0 && depth <= kCallStackSize) {
+                    g_samples++;
+                    if (g_call_stack[depth - 1] == kOSSelectThread) {
+                        g_idle_samples++;
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }).detach();
+        return -1.0;
+    }
+    uint32_t samples = g_samples.exchange(0);
+    uint32_t idle = g_idle_samples.exchange(0);
+    return samples ? static_cast<double>(idle) / samples : -1.0;
 }
 
 void start_profiler() {
@@ -135,6 +161,9 @@ void print_profile() {
 #else
 void print_call_stack() {}
 void start_profiler() {}
+double idle_share() {
+    return -1.0;
+}
 void start_watch(uint32_t) {}
 void print_profile() {}
 #endif

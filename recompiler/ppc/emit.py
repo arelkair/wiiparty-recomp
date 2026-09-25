@@ -21,6 +21,10 @@ def label(address):
     return f"L_{address:08x}"
 
 
+def resume_label(address):
+    return f"R_{address:08x}"
+
+
 def function_name(address):
     return f"f_{address:08x}"
 
@@ -151,6 +155,7 @@ class Emitter:
         self.set_jump = set_jump
         self.save_sites = 0
         self.unsupported = []
+        self.resume_points = []
 
     def inside(self, target):
         return isinstance(target, int) and self.start <= target < self.end
@@ -657,7 +662,20 @@ class Emitter:
             "}",
         ]
 
+    def resume_after(self, address):
+        if address not in self.resume_points:
+            self.resume_points.append(address)
+
+    def resume_prologue(self):
+        if not self.resume_points:
+            return []
+        lines = ["    if (wp::g_resume_address != 0) [[unlikely]] {", "        switch (wp::take_resume_address()) {"]
+        lines += [f"        case {u32(a)}: goto {resume_label(a)};" for a in self.resume_points]
+        lines += ["        default: wp::bad_resume(c);", "        }", "    }"]
+        return lines
+
     def call_lines(self, target, return_address):
+        self.resume_after(return_address)
         if target == self.save_context:
             return self.save_context_lines(return_address)
         if target == self.set_jump:
@@ -698,6 +716,7 @@ class Emitter:
     def op_bclr(self, i):
         prelude, test = self.condition(i)
         if i.lk:
+            self.resume_after(i.addr + 4)
             lines = ["ea = c.lr;", f"c.lr = {u32(i.addr + 4)};", "wp::call(c, ea);"]
             if test:
                 return prelude + [f"if ({test}) {{"] + lines + ["}"]
@@ -709,6 +728,7 @@ class Emitter:
     def op_bcctr(self, i):
         prelude, test = self.condition(i)
         if i.lk:
+            self.resume_after(i.addr + 4)
             lines = [f"c.lr = {u32(i.addr + 4)};", "wp::call(c, c.ctr);"]
             if test:
                 return prelude + [f"if ({test}) {{"] + lines + ["}"]

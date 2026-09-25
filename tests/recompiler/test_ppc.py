@@ -144,6 +144,17 @@ class EmitterTests(unittest.TestCase):
             ["c.lr = 0x80004004u;", "wp::call(c, 0x80004100u);"],
         )
 
+    def test_calls_record_resume_points(self):
+        emitter = Emitter(0x80004000, 0x80005000, {0x80004100}, {})
+        emitter.emit(Instr(0x80004000, 0x48000001 | 0x100))
+        emitter.emit(Instr(0x80004004, 0x4E800421))
+        emitter.emit(Instr(0x80004008, 0x48000008))
+        self.assertEqual(emitter.resume_points, [0x80004004, 0x80004008])
+        prologue = emitter.resume_prologue()
+        self.assertIn("        case 0x80004004u: goto R_80004004;", prologue)
+        self.assertIn("        case 0x80004008u: goto R_80004008;", prologue)
+        self.assertEqual(Emitter(0x80004000, 0x80005000, set(), {}).resume_prologue(), [])
+
     def test_branch_inside_and_outside_function(self):
         self.assertEqual(lift(0x48000008), ["goto L_80004008;"])
         self.assertEqual(lift(0x48002000, entries=[0x80006000]), ["f_80006000(c);", "return;"])

@@ -8,7 +8,7 @@ from pathlib import Path
 import game
 import rel
 from ppc.decoder import Instr
-from ppc.emit import u32
+from ppc.emit import resume_label, u32
 from ppc.module_emit import ModuleEmitter, split, synthetic
 
 GAME = game.load()
@@ -210,6 +210,8 @@ def render_function(name, module, start, instrs, entries, relocations_by_site, d
     for instr in instrs:
         if instr.addr in labels:
             body.append(f"L_{instr.addr:08x}:")
+        if instr.addr in emitter.resume_points:
+            body.append(f"{resume_label(instr.addr)}:")
         if instr.word == 0:
             continue
         if instr.mn is None:
@@ -223,10 +225,16 @@ def render_function(name, module, start, instrs, entries, relocations_by_site, d
     ]
     if emitter.save_sites:
         lines.append(f"    std::jmp_buf wp_jump[{emitter.save_sites}];")
+    lines += emitter.resume_prologue()
     lines += body
+    if end in emitter.resume_points:
+        lines.append(f"{resume_label(end)}:")
     if falls_through(instrs[-1]) and end in bodies:
         lines.append(f"    f_{name}_{end:08x}(c);")
+    elif end in emitter.resume_points:
+        lines.append(f"    wp::unresolved_jump(c, {u32(end)});")
     lines.append("}")
+    stats["resumes"].extend((address, start) for address in emitter.resume_points)
     stats["functions"] += 1
     stats["instructions"] += len(instrs)
     stats["unsupported"].update(emitter.unsupported)
@@ -234,7 +242,7 @@ def render_function(name, module, start, instrs, entries, relocations_by_site, d
     return lines
 
 
-def write_module(name, module, bodies, chunks):
+def write_module(name, module, bodies, chunks, resumes):
     folder = OUTPUT / name
     folder.mkdir(parents=True, exist_ok=True)
     written = set()
@@ -264,11 +272,17 @@ def write_module(name, module, bodies, chunks):
     for address in sorted(bodies):
         section, offset = split(address)
         table.append(f"    {{{section}, {offset:#x}, f_{name}_{address:08x}}},")
+    table += ["};", "", f"const ModuleFunction g_{name}_resumes[] = {{"]
+    for address, function in sorted(resumes):
+        section, offset = split(address)
+        table.append(f"    {{{section}, {offset:#x}, f_{name}_{function:08x}}},")
+    if not resumes:
+        table.append("    {0, 0, nullptr},")
     table += [
         "};",
         "",
         f"extern const ModuleDescriptor g_descriptor_{name};",
-        f'const ModuleDescriptor g_descriptor_{name} = {{"{name}", {module.module_id}, {signature(module):#x}u, {section_count}, g_{name}_bases, g_{name}_functions, {len(bodies)}}};',
+        f'const ModuleDescriptor g_descriptor_{name} = {{"{name}", {module.module_id}, {signature(module):#x}u, {section_count}, g_{name}_bases, g_{name}_functions, {len(bodies)}, g_{name}_resumes, {len(resumes)}}};',
         "",
         "}",
     ]
@@ -302,7 +316,7 @@ def generate(name, dol_entries):
     relocations = module.relocations()
     by_site = relocation_map(relocations)
     entries, bodies = discover(module, relocations, by_site)
-    stats = {"functions": 0, "instructions": 0, "illegal": 0, "unresolved_jumps": 0, "unsupported": collections.Counter()}
+    stats = {"functions": 0, "instructions": 0, "illegal": 0, "unresolved_jumps": 0, "unsupported": collections.Counter(), "resumes": []}
     dol_targets = set()
     chunks = []
     current = []
@@ -314,7 +328,7 @@ def generate(name, dol_entries):
             current = []
     if current:
         chunks.append(current)
-    write_module(name, module, bodies, chunks)
+    write_module(name, module, bodies, chunks, stats["resumes"])
     merge_dol_targets({t for t in dol_targets if t not in dol_entries})
     print(
         f"{name}: functions {stats['functions']}, instructions {stats['instructions']}, illegal {stats['illegal']}, "

@@ -95,6 +95,34 @@ bool call_module_function(Cpu& c, uint32_t address) {
     return false;
 }
 
+void (*find_module_resume(uint32_t address))(Cpu&) {
+    uint32_t section = address >> 24;
+    uint32_t offset = address & 0xFFFFFF;
+    void (*found)(Cpu&) = nullptr;
+    int matches = 0;
+    uint32_t info = rd32(kModuleListHead);
+    for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
+        const ModuleDescriptor* descriptor = find_descriptor(signature_of(info));
+        if (!descriptor) {
+            continue;
+        }
+        update_bases(*descriptor, info);
+        for (size_t i = 0; i < descriptor->resume_count; i++) {
+            if (descriptor->resumes[i].section == section && descriptor->resumes[i].offset == offset) {
+                found = descriptor->resumes[i].function;
+                matches++;
+                break;
+            }
+        }
+    }
+    if (matches > 1) {
+        std::fprintf(stderr, "resume address %08x matches %d loaded modules", address, matches);
+        std::fputc(10, stderr);
+        return nullptr;
+    }
+    return found;
+}
+
 uint32_t external_address(uint32_t module_identifier, uint32_t section, uint32_t offset) {
     uint32_t info = rd32(kModuleListHead);
     for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {

@@ -9,7 +9,7 @@ import dol as dol_module
 import game
 from ppc import cfg
 from ppc.decoder import Instr
-from ppc.emit import Emitter, function_name, label, u32
+from ppc.emit import Emitter, function_name, label, resume_label, u32
 
 ROOT = Path(__file__).resolve().parent.parent
 LINES_PER_FILE = 40000
@@ -143,15 +143,22 @@ def render_function(start, instrs, entries, dol, stats, replacements, save_conte
     for instr in instrs:
         if instr.addr in labels:
             body.append(f"{label(instr.addr)}:")
+        if instr.addr in emitter.resume_points:
+            body.append(f"{resume_label(instr.addr)}:")
         if instr.word == 0:
             continue
         if instr.mn is None:
             stats["illegal"] += 1
         body.extend("    " + line for line in emitter.emit(instr))
+    if end in emitter.resume_points:
+        body.append(f"{resume_label(end)}:")
     if end in entries and falls_through(instrs[-1]):
         body.append(f"    {function_name(end)}(c);")
+    elif end in emitter.resume_points:
+        body.append(f"    wp::unresolved_jump(c, {u32(end)});")
     if emitter.save_sites:
         lines.append(f"    std::jmp_buf wp_jump[{emitter.save_sites}];")
+    lines.extend(emitter.resume_prologue())
     lines.extend(body)
     lines.append("}")
     stats["functions"] += 1
@@ -159,10 +166,11 @@ def render_function(start, instrs, entries, dol, stats, replacements, save_conte
     stats["jump_tables"] += len(tables)
     stats["unresolved_jumps"] += unresolved
     stats["unsupported"].update(emitter.unsupported)
+    stats["resumes"].extend((address, start) for address in emitter.resume_points)
     return lines
 
 
-def write_sources(output, chunks, entries, names):
+def write_sources(output, chunks, entries, names, resumes):
     output.mkdir(parents=True, exist_ok=True)
     written = set()
 
@@ -180,7 +188,9 @@ def write_sources(output, chunks, entries, names):
     emit("functions.h", "\n".join(declarations) + "\n")
     table = ['#include "wp/function_table.h"', '#include "functions.h"', "", "namespace wp {", "", "const FunctionEntry g_function_table[] = {"]
     table += [f"    {{{u32(a)}, {function_name(a)}}}," for a in entries]
-    table += ["};", "", f"const size_t g_function_count = {len(entries)};", "", "}"]
+    table += ["};", "", f"const size_t g_function_count = {len(entries)};", "", "const FunctionEntry g_resume_table[] = {"]
+    table += [f"    {{{u32(a)}, {function_name(f)}}}," for a, f in sorted(resumes)]
+    table += ["};", "", f"const size_t g_resume_count = {len(resumes)};", "", "}"]
     emit("function_table.cpp", "\n".join(table) + "\n")
     listing = ['#include "wp/function_table.h"', "", "namespace wp {", "", "const NameEntry g_name_table[] = {"]
     listing += [f'    {{{u32(a)}, "{n}"}},' for a, n in sorted(names.items())]
@@ -212,7 +222,7 @@ def main():
     bodies = build_bodies(dol, entries)
     entries = sorted(bodies)
     entry_set = set(entries)
-    stats = {"functions": 0, "instructions": 0, "illegal": 0, "jump_tables": 0, "unresolved_jumps": 0, "replaced": 0, "unsupported": collections.Counter()}
+    stats = {"functions": 0, "instructions": 0, "illegal": 0, "jump_tables": 0, "unresolved_jumps": 0, "replaced": 0, "unsupported": collections.Counter(), "resumes": []}
 
     chunks = []
     current = []
@@ -225,7 +235,7 @@ def main():
     if current:
         chunks.append(current)
 
-    write_sources(Path(args.output), chunks, entries, names)
+    write_sources(Path(args.output), chunks, entries, names, stats["resumes"])
     print(f"functions {stats['functions']}, instructions {stats['instructions']}, files {len(chunks)}")
     print(f"illegal words {stats['illegal']}, jump tables {stats['jump_tables']}, unresolved indirect jumps {stats['unresolved_jumps']}")
     print(f"replaced by runtime handlers {stats['replaced']}")

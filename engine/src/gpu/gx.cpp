@@ -17,6 +17,7 @@
 #include "wp/gx_lighting.h"
 #include "wp/gx_render.h"
 #include "wp/log.h"
+#include "wp/profile.h"
 #include "wp/memory.h"
 #include "wp/video.h"
 
@@ -555,6 +556,16 @@ void emit_triangle(std::vector<ScreenVertex>& out, const Prepared& a, const Prep
 uint32_t g_indirect_draws = 0;
 uint32_t g_coordinate_draws = 0;
 std::atomic<uint32_t> g_skipped_presents{0};
+std::atomic<HANDLE> g_cpu_thread{nullptr};
+
+double thread_seconds(HANDLE thread) {
+    FILETIME created, exited, kernel, user;
+    if (!thread || !GetThreadTimes(thread, &created, &exited, &kernel, &user)) {
+        return 0.0;
+    }
+    auto ticks = [](const FILETIME& time) { return (static_cast<uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
+    return static_cast<double>(ticks(kernel) + ticks(user)) * 1e-7;
+}
 
 void count_indirect() {
     uint32_t stages = ((g_bp[0x00] >> 10) & 15) + 1;
@@ -880,6 +891,13 @@ void execute_copy(uint32_t value) {
                 }
                 log::write("fps", "%.1f fps, %u draw batches, %u vertices, %.0f ms drawing, %u draws with indirect texturing, %u with wrapped coordinates, %u presents skipped", g_frames / seconds, batches,
                            vertices, batch_seconds * 1000.0, g_indirect_draws, g_coordinate_draws, g_skipped_presents.exchange(0));
+                static double previous_cpu = 0.0;
+                static double previous_gpu = 0.0;
+                double cpu = thread_seconds(g_cpu_thread.load());
+                double gpu = thread_seconds(GetCurrentThread());
+                log::write("threads", "CPU thread busy %.0f%% (guest idle %.0f%%), GPU thread busy %.0f%%", (cpu - previous_cpu) * 100.0 / seconds, idle_share() * 100.0, (gpu - previous_gpu) * 100.0 / seconds);
+                previous_cpu = cpu;
+                previous_gpu = gpu;
                 g_indirect_draws = 0;
                 g_coordinate_draws = 0;
                 video::update_statistics(g_frames / seconds);
@@ -1187,6 +1205,11 @@ void enqueue(GpuItem item) {
 }
 
 void process() {
+    if (!g_cpu_thread.load()) {
+        HANDLE thread = nullptr;
+        DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread, THREAD_QUERY_LIMITED_INFORMATION, FALSE, 0);
+        g_cpu_thread = thread;
+    }
     if (g_fifo.empty()) {
         return;
     }
