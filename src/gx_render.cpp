@@ -1475,6 +1475,7 @@ void flush_pending() {
         std::memcpy(mapped.pData, &pending.constants, sizeof pending.constants);
         context->Unmap(g_device.constants, 0);
     }
+    context->OMSetRenderTargets(1, &g_device.target_view, g_device.depth_view);
     context->PSSetShaderResources(0, kTextureMaps, pending.views);
     context->PSSetSamplers(0, kTextureMaps, pending.samplers);
     D3D11_VIEWPORT viewport{0, 0, static_cast<float>(scaled(kEfbWidth)), static_cast<float>(scaled(kEfbHeight)), 0.0f, 1.0f};
@@ -1494,7 +1495,6 @@ void flush_pending() {
     scissor.bottom *= g_scale;
     context->RSSetScissorRects(1, &scissor);
     context->RSSetState(g_device.rasterizer);
-    context->OMSetRenderTargets(1, &g_device.target_view, g_device.depth_view);
     float blend_factor[4] = {1, 1, 1, 1};
     context->OMSetBlendState(blend_for(pending.blend), blend_factor, 0xFFFFFFFF);
     context->OMSetDepthStencilState(depth_for(pending.depth), 0);

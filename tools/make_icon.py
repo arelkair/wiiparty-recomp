@@ -75,13 +75,39 @@ def die(image, scale=1.0, pips=((150, 150), (410, 150), (280, 270), (150, 390), 
     return image
 
 
+def svg():
+    top = "#%02x%02x%02x" % (255, 92, 168)
+    bottom = "#%02x%02x%02x" % (214, 24, 120)
+    face = (
+        '<rect x="20" y="20" width="520" height="520" rx="120" fill="#ffffff"/>'
+        '<rect x="20" y="470" width="520" height="70" rx="60" fill="#e4e4ec"/>'
+        '<rect x="20" y="20" width="520" height="480" rx="120" fill="#ffffff"/>'
+    )
+    pips = "".join(f'<circle cx="{x}" cy="{y}" r="70" fill="#222230"/>' for x, y in ((140, 140), (280, 280), (420, 420)))
+    placement = "translate(512 522) rotate(14) scale(1.2) translate(-280 -280)"
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{SIZE}" height="{SIZE}" viewBox="0 0 {SIZE} {SIZE}">
+<defs>
+<linearGradient id="background" x1="0" y1="0" x2="0" y2="{SIZE - 1}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>
+<clipPath id="tile"><rect x="32" y="32" width="{SIZE - 64}" height="{SIZE - 64}" rx="220"/></clipPath>
+<filter id="blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="12"/></filter>
+</defs>
+<g clip-path="url(#tile)">
+<rect width="{SIZE}" height="{SIZE}" fill="url(#background)"/>
+<ellipse cx="512" cy="-50" rx="712" ry="470" fill="#ffffff" fill-opacity="0.18"/>
+</g>
+<g transform="translate(18 30)" filter="url(#blur)"><g transform="{placement}"><rect x="20" y="20" width="520" height="520" rx="120" fill="#5a0028" fill-opacity="0.43"/></g></g>
+<g transform="{placement}">{face}{pips}</g>
+</svg>
+"""
+
+
 def main():
     image = die(confetti(background()))
     small = die(background(), 1.2, ((140, 140), (280, 280), (420, 420)), 70, 12)
     target = ROOT / "res" / "wiiparty.ico"
     frames = [(small if s <= 32 else image).resize((s, s), Image.LANCZOS) for s in SIZES]
     frames[-1].save(target, append_images=frames[:-1], sizes=[(s, s) for s in SIZES])
-    image.resize((256, 256), Image.LANCZOS).save(ROOT / "docs" / "icon.png")
+    (ROOT / "res" / "wiiparty.svg").write_text(svg(), encoding="utf-8")
     print(target)
 
 
