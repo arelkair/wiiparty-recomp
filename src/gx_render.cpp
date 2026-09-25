@@ -1043,6 +1043,24 @@ uint64_t sample_hash(const uint8_t* data, size_t size) {
     return hash;
 }
 
+std::string g_copy_dump_prefix;
+int g_copy_dump_index = 0;
+FILE* g_texture_notes = nullptr;
+std::map<uint64_t, bool> g_noted_textures;
+
+void note_texture(uint32_t map, uint32_t address, uint32_t width, uint32_t height, uint32_t format, const char* source) {
+    if (!g_texture_notes) {
+        return;
+    }
+    uint64_t key = (static_cast<uint64_t>(address) << 24) ^ (static_cast<uint64_t>(width) << 12) ^ height ^ (static_cast<uint64_t>(format) << 56) ^
+                   (static_cast<uint64_t>(map) << 60);
+    if (g_noted_textures[key]) {
+        return;
+    }
+    g_noted_textures[key] = true;
+    std::fprintf(g_texture_notes, "map %u address %08x %ux%u format %u: %s\n", map, address, width, height, format, source);
+}
+
 ID3D11ShaderResourceView* texture_for(uint32_t map) {
     const uint32_t* bp = bp_registers();
     uint32_t image0_reg = map < 4 ? 0x88 + map : 0xA8 + (map - 4);
@@ -1093,7 +1111,16 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     auto copied = g_device.copies.find(address);
     if (copied != g_device.copies.end() && copied->second.logical_width == width && copied->second.logical_height == height &&
         format <= 6 && copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
+        note_texture(map, address, width, height, format, "EFB copy");
         return copied->second.view;
+    }
+    if (copied != g_device.copies.end()) {
+        char reason[160];
+        std::snprintf(reason, sizeof reason, "EFB copy rejected (copy %ux%u, hash %s), read from RAM", copied->second.logical_width, copied->second.logical_height,
+                      copied->second.guest_hash == sample_hash(source, copied->second.bytes) ? "same" : "changed");
+        note_texture(map, address, width, height, format, reason);
+    } else {
+        note_texture(map, address, width, height, format, "RAM");
     }
     uint64_t key = (static_cast<uint64_t>(address) << 20) ^ (static_cast<uint64_t>(width) << 8) ^ (static_cast<uint64_t>(height) << 32) ^ format ^
                    (static_cast<uint64_t>(levels) << 4);
@@ -1972,9 +1999,6 @@ bool read_texture(ID3D11Texture2D* texture, std::vector<uint32_t>& pixels, uint3
     return ok;
 }
 
-std::string g_copy_dump_prefix;
-int g_copy_dump_index = 0;
-
 void dump_texture(ID3D11Texture2D* texture, const char* suffix) {
     std::vector<uint32_t> pixels;
     uint32_t width = 0;
@@ -1997,6 +2021,14 @@ void dump_copy(const CopiedTexture& entry) {
 void dump_copies(const char* prefix) {
     g_copy_dump_prefix = prefix ? prefix : "";
     g_copy_dump_index = 0;
+    if (g_texture_notes) {
+        std::fclose(g_texture_notes);
+        g_texture_notes = nullptr;
+    }
+    g_noted_textures.clear();
+    if (prefix) {
+        g_texture_notes = std::fopen((g_copy_dump_prefix + "_textures.txt").c_str(), "w");
+    }
 }
 
 bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height) {

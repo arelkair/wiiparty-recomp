@@ -22,10 +22,10 @@ Contributions are licensed under GPL-3.0-or-later, like the rest of the project.
 
 ## Code
 
-- No comments in code files (`.c`, `.cpp`, `.h`, scripts). Documentation goes in `DECOMP_PROGRESS.md`.
+- No comments in code files (`.c`, `.cpp`, `.h`, scripts). Documentation goes in `docs/DECOMP_PROGRESS.md`.
 - Build outside the source tree, in `build/`.
 - Do not commit generated code (`build/`), logs or temporary files.
-- Do not replace real behavior with a stub without recording the reason in `DECOMP_PROGRESS.md`.
+- Do not replace real behavior with a stub without recording the reason in `docs/DECOMP_PROGRESS.md`.
 - Separate recompiled code from PC-only changes.
 
 ## Build and test
@@ -50,4 +50,4 @@ Include the commit, the operating system, the command line and the console outpu
 
 ## Documentation
 
-Update `DECOMP_PROGRESS.md` after each change that affects behavior. State what was verified and how. Do not claim something works if it was not tested.
+Update `docs/DECOMP_PROGRESS.md` after each change that affects behavior. State what was verified and how. Do not claim something works if it was not tested.

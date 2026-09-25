@@ -799,9 +799,10 @@ void capture_frame_boundary() {
     if (!g_capture_requested.exchange(false) && !due) {
         return;
     }
+    CreateDirectoryA("captures", nullptr);
     char path[80];
     while (true) {
-        std::snprintf(g_capture_name, sizeof g_capture_name, "gx_capture_%03d", ++g_capture_index);
+        std::snprintf(g_capture_name, sizeof g_capture_name, "captures/gx_capture_%03d", ++g_capture_index);
         std::snprintf(path, sizeof path, "%s.txt", g_capture_name);
         FILE* existing = std::fopen(path, "rb");
         if (!existing) {
