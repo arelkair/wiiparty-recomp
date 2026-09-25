@@ -57,6 +57,7 @@ Adapted third-party components are included (see below). This file records what 
 
 - Repository file: the `kCopyShaderSource` shader and `run_copy` in `src/gx_render.cpp`, and `copy_filter` in `src/gx.cpp`.
 - Adapted from `Source/Core/VideoCommon/TextureConverterShaderGen.cpp` ("Copyright 2017 Dolphin Emulator Project", `SPDX-License-Identifier: GPL-2.0-or-later`), 2606 snapshot: the conversion of each copy format (R4, R8, RA4, RA8, RGB565, RGB5A3, A8, G8, B8, RG8, GB8), the intensity (YUV) constants, the three-row copy filter with its overflow rule, gamma, the alpha of EFB formats without alpha, and the split of the 24-bit depth into three bytes. The grouping of the seven filter weights, the gamma table and the clamp rows follow `TextureCacheBase.cpp` (`GetRAMCopyFilterCoefficients`, `CopyFilterCanOverflow`, `CopyEFBToCacheEntry`) and `BPStructs.cpp` of the same snapshot. Rewritten in HLSL for this project's Direct3D 11 renderer, reading the EFB colour and depth textures directly; GPL-2.0-or-later is compatible with GPL-3.0-or-later.
+- Also from `Source/Core/VideoCommon/PixelShaderGen.cpp` ("Copyright 2008 Dolphin Emulator Project", GPL-2.0-or-later), same snapshot: the 2x2 Bayer dithering expression and the 6-bit output of the RGBA6 pixel format, in the pixel shader of `src/gx_render.cpp`.
 
 ### DSP core and free DSP ROMs from the Dolphin Emulator
 

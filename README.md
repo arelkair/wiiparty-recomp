@@ -69,7 +69,7 @@ Gamepads: the first gamepad adds to the keyboard and mouse as Wii Remote 1, and 
 ### Not implemented
 
 - Real Wii Remotes. Gamepad support (through SDL3) has not yet been tested with a physical gamepad.
-- GX: logic operations, dithering, texture offsets of lines and points.
+- GX: logic operations (not used by any screen checked so far), texture offsets of lines and points.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 
 Progress notes and the list of goals are in `DECOMP_PROGRESS.md`; planned features are in `FEATURES_QOL.md`.

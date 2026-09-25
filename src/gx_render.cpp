@@ -522,6 +522,10 @@ PixelOutput pixel_main(PixelInput p) {
         result = int4(r[last_color].rgb, r[last_alpha].a);
     }
     result &= 255;
+    if ((header.w & 2) != 0) {
+        int2 dither = int2(p.position.xy) & 1;
+        result.rgb = (result.rgb - (result.rgb >> 6)) + (dither.x ^ dither.y) * 2 + dither.y;
+    }
     uint fog_select = uint(fog_integer.x) & 15;
     uint fog_type = fog_select >> 1;
     if (fog_type != 0) {
@@ -563,6 +567,10 @@ PixelOutput pixel_main(PixelInput p) {
     output.color = output.blend;
     if ((header.z & 0x100) != 0) {
         output.color.a = float(header.z & 255) / 255.0;
+    }
+    if ((header.w & 1) != 0) {
+        output.color.rgb = float3(result.rgb >> 2) / 63.0;
+        output.color.a = float(((header.z & 0x100) != 0 ? int(header.z & 255) : result.a) >> 2) / 63.0;
     }
     return output;
 }
@@ -1370,6 +1378,8 @@ void fill_constants(Constants& constants) {
     constants.header[0] = stages;
     constants.header[1] = bp[0xF3];
     constants.header[2] = bp[0x42];
+    bool rgba6 = (bp[0x43] & 7) == 1;
+    constants.header[3] = (rgba6 ? 1u : 0u) | ((rgba6 && (bp[0x41] & 4) != 0) ? 2u : 0u);
     auto fog_float = [](uint32_t value) {
         uint32_t bits = (((value >> 19) & 1) << 31) | (((value >> 11) & 0xFF) << 23) | ((value & 0x7FF) << 12);
         float result;
