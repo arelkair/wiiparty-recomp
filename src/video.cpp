@@ -63,49 +63,6 @@ void put_chunk(std::vector<uint8_t>& out, const char* type, const std::vector<ui
     put32(out, ~crc32(tagged.data(), tagged.size()));
 }
 
-void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
-    std::vector<uint8_t> raw;
-    for (uint32_t y = 0; y < height; y++) {
-        raw.push_back(0);
-        for (uint32_t x = 0; x < width; x++) {
-            uint32_t p = pixels[static_cast<size_t>(y) * width + x];
-            raw.push_back(static_cast<uint8_t>(p >> 16));
-            raw.push_back(static_cast<uint8_t>(p >> 8));
-            raw.push_back(static_cast<uint8_t>(p));
-        }
-    }
-    std::vector<uint8_t> deflated = {0x78, 0x01};
-    size_t position = 0;
-    while (position < raw.size()) {
-        size_t length = std::min<size_t>(65535, raw.size() - position);
-        deflated.push_back(position + length >= raw.size() ? 1 : 0);
-        deflated.push_back(static_cast<uint8_t>(length));
-        deflated.push_back(static_cast<uint8_t>(length >> 8));
-        deflated.push_back(static_cast<uint8_t>(~length));
-        deflated.push_back(static_cast<uint8_t>((~length) >> 8));
-        deflated.insert(deflated.end(), raw.begin() + static_cast<std::ptrdiff_t>(position), raw.begin() + static_cast<std::ptrdiff_t>(position + length));
-        position += length;
-    }
-    uint32_t a = 1, b = 0;
-    for (uint8_t byte : raw) {
-        a = (a + byte) % 65521;
-        b = (b + a) % 65521;
-    }
-    put32(deflated, (b << 16) | a);
-    std::vector<uint8_t> file = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
-    std::vector<uint8_t> header;
-    put32(header, width);
-    put32(header, height);
-    header.insert(header.end(), {8, 2, 0, 0, 0});
-    put_chunk(file, "IHDR", header);
-    put_chunk(file, "IDAT", deflated);
-    put_chunk(file, "IEND", {});
-    std::FILE* handle = std::fopen(path, "wb");
-    if (handle) {
-        std::fwrite(file.data(), 1, file.size(), handle);
-        std::fclose(handle);
-    }
-}
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
@@ -280,6 +237,50 @@ void present_on_gpu(HWND window, double aspect) {
             std::snprintf(path, sizeof path, save, frames / 100);
             save_png(path, pixels, width, height);
         }
+    }
+}
+
+void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
+    std::vector<uint8_t> raw;
+    for (uint32_t y = 0; y < height; y++) {
+        raw.push_back(0);
+        for (uint32_t x = 0; x < width; x++) {
+            uint32_t p = pixels[static_cast<size_t>(y) * width + x];
+            raw.push_back(static_cast<uint8_t>(p >> 16));
+            raw.push_back(static_cast<uint8_t>(p >> 8));
+            raw.push_back(static_cast<uint8_t>(p));
+        }
+    }
+    std::vector<uint8_t> deflated = {0x78, 0x01};
+    size_t position = 0;
+    while (position < raw.size()) {
+        size_t length = std::min<size_t>(65535, raw.size() - position);
+        deflated.push_back(position + length >= raw.size() ? 1 : 0);
+        deflated.push_back(static_cast<uint8_t>(length));
+        deflated.push_back(static_cast<uint8_t>(length >> 8));
+        deflated.push_back(static_cast<uint8_t>(~length));
+        deflated.push_back(static_cast<uint8_t>((~length) >> 8));
+        deflated.insert(deflated.end(), raw.begin() + static_cast<std::ptrdiff_t>(position), raw.begin() + static_cast<std::ptrdiff_t>(position + length));
+        position += length;
+    }
+    uint32_t a = 1, b = 0;
+    for (uint8_t byte : raw) {
+        a = (a + byte) % 65521;
+        b = (b + a) % 65521;
+    }
+    put32(deflated, (b << 16) | a);
+    std::vector<uint8_t> file = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    std::vector<uint8_t> header;
+    put32(header, width);
+    put32(header, height);
+    header.insert(header.end(), {8, 2, 0, 0, 0});
+    put_chunk(file, "IHDR", header);
+    put_chunk(file, "IDAT", deflated);
+    put_chunk(file, "IEND", {});
+    std::FILE* handle = std::fopen(path, "wb");
+    if (handle) {
+        std::fwrite(file.data(), 1, file.size(), handle);
+        std::fclose(handle);
     }
 }
 

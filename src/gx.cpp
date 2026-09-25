@@ -44,6 +44,8 @@ constexpr uint32_t kFifoPhysicalMask = 0x03FFFFFF;
 constexpr uint32_t kCopyToFramebuffer = 1u << 14;
 constexpr uint32_t kBpDrawDone = 0x45;
 constexpr uint32_t kCopyClear = 1u << 11;
+constexpr uint32_t kPixelFormatRgba6Z24 = 1;
+constexpr uint32_t kPixelFormatZ24 = 3;
 constexpr uint32_t kXfSize = 0x1100;
 constexpr uint32_t kArrayCount = 16;
 constexpr uint32_t kRamBase = 0x80000000;
@@ -774,6 +776,7 @@ void capture_frame_boundary() {
         std::fprintf(g_capture, "end of frame, %d draws\n", g_capture_draws);
         std::fclose(g_capture);
         g_capture = nullptr;
+        render::dump_copies(nullptr);
         char image[80];
         std::snprintf(image, sizeof image, "%s.png", g_capture_name);
         video::save_next_frame(image);
@@ -807,6 +810,7 @@ void capture_frame_boundary() {
         std::fclose(existing);
     }
     g_capture = std::fopen(path, "w");
+    render::dump_copies(g_capture_name);
     g_capture_draws = 0;
     g_capture_first = true;
 }
@@ -818,7 +822,7 @@ void execute_copy(uint32_t value) {
         return;
     }
     if (g_capture && !(value & kCopyToFramebuffer)) {
-        std::fprintf(g_capture, "copy to texture at %06x, source %06x size %06x, control %06x\n", g_bp[0x4B] << 5, g_bp[0x49], g_bp[0x4A], value);
+        std::fprintf(g_capture, "copy to texture at %06x, source %06x size %06x, control %06x, pixel format %06x\n", g_bp[0x4B] << 5, g_bp[0x49], g_bp[0x4A], value, g_bp[0x43]);
     }
     if (value & kCopyToFramebuffer) {
         capture_frame_boundary();
@@ -867,7 +871,8 @@ void execute_copy(uint32_t value) {
         uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
         uint32_t coded = (value >> 3) & 15;
         uint32_t format = coded / 2 + (coded & 1) * 8;
-        render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format, (value & (1u << 15)) != 0);
+        render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format, (value & (1u << 15)) != 0, (g_bp[0x43] & 7) == kPixelFormatZ24,
+                                (g_bp[0x43] & 7) == kPixelFormatRgba6Z24);
     }
     if (value & kCopyClear) {
         uint32_t source = g_bp[0x49];

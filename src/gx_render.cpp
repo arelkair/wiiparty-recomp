@@ -11,9 +11,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <string>
 #include <vector>
 
 #include "wp/memory.h"
+#include "wp/video.h"
 
 namespace wp::gx::render {
 
@@ -69,14 +71,18 @@ Output pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) {
 
 const char* kCopyShaderSource = R"HLSL(
 Texture2D source : register(t0);
+Texture2D<float> depth_source : register(t1);
 SamplerState source_sampler : register(s0);
 
 cbuffer CopyConstants : register(b0) {
     uint4 params;
+    int4 region;
 };
 
-float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
-    uint4 raw = uint4(round(saturate(source.Sample(source_sampler, uv)) * 255.0));
+float4 convert(uint4 raw) {
+    if (params.z == 0) {
+        raw.a = 255;
+    }
     if (params.y != 0) {
         const float4 y_const = float4(66, 129, 25, 16);
         const float4 u_const = float4(-38, -74, 112, 128);
@@ -97,6 +103,12 @@ float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Tar
         return red_alpha.rrrg;
     }
     case 3: return value.rrra;
+    case 4: {
+        float2 red_blue = float2(raw.rb & 0xF8u) / 248.0;
+        float green = float(raw.g & 0xFCu) / 252.0;
+        return float4(red_blue.r, green, red_blue.g, 1.0);
+    }
+    case 5: return float4(float3(raw.rgb & 0xF8u) / 248.0, float(raw.a & 0xE0u) / 224.0);
     case 7: return value.aaaa;
     case 9: return value.gggg;
     case 10: return value.bbbb;
@@ -104,6 +116,16 @@ float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Tar
     case 12: return value.gggb;
     default: return value;
     }
+}
+
+float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    return convert(uint4(round(saturate(source.Sample(source_sampler, uv)) * 255.0)));
+}
+
+float4 depth_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    int2 texel = region.xy + min(int2(uv * float2(region.zw)), region.zw - 1);
+    uint depth = min(uint(saturate(depth_source.Load(int3(texel, 0))) * 16777216.0), 0xFFFFFFu);
+    return convert(uint4((depth >> 16) & 255u, (depth >> 8) & 255u, depth & 255u, 255u));
 }
 )HLSL";
 
@@ -589,6 +611,8 @@ struct Device {
     ID3D11RenderTargetView* target_view = nullptr;
     ID3D11Texture2D* depth = nullptr;
     ID3D11DepthStencilView* depth_view = nullptr;
+    ID3D11ShaderResourceView* depth_resource = nullptr;
+    ID3D11PixelShader* depth_copy_pixel = nullptr;
     ID3D11Texture2D* frame = nullptr;
     ID3D11ShaderResourceView* frame_view = nullptr;
     uint32_t frame_width = 0;
@@ -678,10 +702,18 @@ bool create_target() {
         FAILED(g_device.device->CreateRenderTargetView(g_device.target, nullptr, &g_device.target_view))) {
         return false;
     }
-    description.Format = DXGI_FORMAT_D32_FLOAT;
-    description.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    description.Format = DXGI_FORMAT_R32_TYPELESS;
+    description.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    D3D11_DEPTH_STENCIL_VIEW_DESC depth_view{};
+    depth_view.Format = DXGI_FORMAT_D32_FLOAT;
+    depth_view.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    D3D11_SHADER_RESOURCE_VIEW_DESC depth_resource{};
+    depth_resource.Format = DXGI_FORMAT_R32_FLOAT;
+    depth_resource.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    depth_resource.Texture2D.MipLevels = 1;
     if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &g_device.depth)) ||
-        FAILED(g_device.device->CreateDepthStencilView(g_device.depth, nullptr, &g_device.depth_view))) {
+        FAILED(g_device.device->CreateDepthStencilView(g_device.depth, &depth_view, &g_device.depth_view)) ||
+        FAILED(g_device.device->CreateShaderResourceView(g_device.depth, &depth_resource, &g_device.depth_resource))) {
         return false;
     }
     return true;
@@ -1561,6 +1593,8 @@ void release_copy(CopiedTexture& entry) {
     entry.view = nullptr;
 }
 
+void dump_copy(const CopiedTexture& entry);
+
 uint32_t copy_bits(uint32_t format) {
     switch (format) {
     case 0:
@@ -1579,7 +1613,7 @@ uint32_t copy_bits(uint32_t format) {
     }
 }
 
-bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity) {
+bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity, bool alpha, const int* depth_region) {
     if (!create_present_pipeline()) {
         return false;
     }
@@ -1607,7 +1641,12 @@ bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity) {
         entry.converted_height = target_height;
     }
     ID3D11DeviceContext* context = g_device.context;
-    uint32_t params[4] = {format, intensity ? 1u : 0u, 0, 0};
+    uint32_t params[8] = {format, intensity ? 1u : 0u, alpha ? 1u : 0u, 0, 0, 0, 0, 0};
+    if (depth_region) {
+        for (int i = 0; i < 4; i++) {
+            params[4 + i] = static_cast<uint32_t>(depth_region[i]);
+        }
+    }
     context->UpdateSubresource(g_device.copy_constants, 0, nullptr, params, 0, 0);
     context->OMSetRenderTargets(1, &entry.converted_target, nullptr);
     D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target_width), static_cast<float>(target_height), 0.0f, 1.0f};
@@ -1618,17 +1657,21 @@ bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity) {
     context->IASetInputLayout(nullptr);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context->VSSetShader(g_device.present_vertex, nullptr, 0);
-    context->PSSetShader(g_device.copy_pixel, nullptr, 0);
+    context->PSSetShader(depth_region ? g_device.depth_copy_pixel : g_device.copy_pixel, nullptr, 0);
     context->PSSetConstantBuffers(0, 1, &g_device.copy_constants);
-    context->PSSetShaderResources(0, 1, &entry.raw_view);
+    if (depth_region) {
+        context->PSSetShaderResources(1, 1, &g_device.depth_resource);
+    } else {
+        context->PSSetShaderResources(0, 1, &entry.raw_view);
+    }
     context->PSSetSamplers(0, 1, &g_device.present_sampler);
     context->Draw(3, 0);
-    ID3D11ShaderResourceView* none = nullptr;
-    context->PSSetShaderResources(0, 1, &none);
+    ID3D11ShaderResourceView* none[2] = {};
+    context->PSSetShaderResources(0, 2, none);
     return true;
 }
 
-void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity) {
+void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha) {
     if (!initialize()) {
         return;
     }
@@ -1655,6 +1698,25 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     CopiedTexture& entry = g_device.copies[address];
     uint32_t w = static_cast<uint32_t>(width);
     uint32_t h = static_cast<uint32_t>(height);
+    if (depth) {
+        release(entry.raw_view);
+        release(entry.texture);
+        entry.width = 0;
+        entry.height = 0;
+        entry.logical_width = half ? std::max(1u, w / 2) : w;
+        entry.logical_height = half ? std::max(1u, h / 2) : h;
+        const int region[4] = {scaled(x), scaled(y), scaled(x + width) - scaled(x), scaled(y + height) - scaled(y)};
+        if (!convert_copy(entry, format, intensity, true, region)) {
+            release_copy(entry);
+            g_device.copies.erase(address);
+            return;
+        }
+        entry.view = entry.converted_view;
+        entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
+        entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
+        dump_copy(entry);
+        return;
+    }
     uint32_t physical_width = w * g_scale;
     uint32_t physical_height = h * g_scale;
     if (!entry.texture || entry.width != physical_width || entry.height != physical_height) {
@@ -1682,17 +1744,15 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     g_device.context->CopySubresourceRegion(entry.texture, 0, 0, 0, 0, g_device.target, 0, &box);
     entry.logical_width = half ? std::max(1u, w / 2) : w;
     entry.logical_height = half ? std::max(1u, h / 2) : h;
-    entry.view = entry.raw_view;
-    if (format != 4 && format != 5 && format != 6) {
-        if (!convert_copy(entry, format, intensity)) {
-            release_copy(entry);
-            g_device.copies.erase(address);
-            return;
-        }
-        entry.view = entry.converted_view;
+    if (!convert_copy(entry, format, intensity, alpha, nullptr)) {
+        release_copy(entry);
+        g_device.copies.erase(address);
+        return;
     }
+    entry.view = entry.converted_view;
     entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
     entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
+    dump_copy(entry);
 }
 
 void copy_to_framebuffer(int x, int y, int width, int height) {
@@ -1753,8 +1813,12 @@ bool create_present_pipeline() {
     if (ok && compile(kCopyShaderSource, "pixel_main", "ps_5_0", &copy_code)) {
         ok = SUCCEEDED(g_device.device->CreatePixelShader(copy_code->GetBufferPointer(), copy_code->GetBufferSize(), nullptr, &g_device.copy_pixel));
         release(copy_code);
+        ID3DBlob* depth_code = nullptr;
+        ok = ok && compile(kCopyShaderSource, "depth_main", "ps_5_0", &depth_code) &&
+             SUCCEEDED(g_device.device->CreatePixelShader(depth_code->GetBufferPointer(), depth_code->GetBufferSize(), nullptr, &g_device.depth_copy_pixel));
+        release(depth_code);
         D3D11_BUFFER_DESC constants{};
-        constants.ByteWidth = 16;
+        constants.ByteWidth = 32;
         constants.Usage = D3D11_USAGE_DEFAULT;
         constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         ok = ok && SUCCEEDED(g_device.device->CreateBuffer(&constants, nullptr, &g_device.copy_constants));
@@ -1882,13 +1946,9 @@ bool present_frame(void* window_handle, double aspect) {
     return true;
 }
 
-bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height) {
-    if (!g_device.ready || !g_device.frame) {
-        return false;
-    }
-    flush_pending();
+bool read_texture(ID3D11Texture2D* texture, std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height) {
     D3D11_TEXTURE2D_DESC description{};
-    g_device.frame->GetDesc(&description);
+    texture->GetDesc(&description);
     description.BindFlags = 0;
     description.Usage = D3D11_USAGE_STAGING;
     description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -1896,7 +1956,7 @@ bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height
     if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &staging))) {
         return false;
     }
-    g_device.context->CopyResource(staging, g_device.frame);
+    g_device.context->CopyResource(staging, texture);
     D3D11_MAPPED_SUBRESOURCE mapped;
     bool ok = SUCCEEDED(g_device.context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped));
     if (ok) {
@@ -1914,6 +1974,41 @@ bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height
     }
     release(staging);
     return ok;
+}
+
+std::string g_copy_dump_prefix;
+int g_copy_dump_index = 0;
+
+void dump_texture(ID3D11Texture2D* texture, const char* suffix) {
+    std::vector<uint32_t> pixels;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (texture && read_texture(texture, pixels, width, height)) {
+        std::string path = g_copy_dump_prefix + "_copy" + std::to_string(g_copy_dump_index) + suffix + ".png";
+        video::save_png(path.c_str(), pixels, width, height);
+    }
+}
+
+void dump_copy(const CopiedTexture& entry) {
+    if (g_copy_dump_prefix.empty()) {
+        return;
+    }
+    g_copy_dump_index++;
+    dump_texture(g_device.target, "_efb");
+    dump_texture(entry.view == entry.converted_view ? entry.converted : entry.texture, "");
+}
+
+void dump_copies(const char* prefix) {
+    g_copy_dump_prefix = prefix ? prefix : "";
+    g_copy_dump_index = 0;
+}
+
+bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height) {
+    if (!g_device.ready || !g_device.frame) {
+        return false;
+    }
+    flush_pending();
+    return read_texture(g_device.frame, pixels, width, height);
 }
 
 uint32_t expand(uint32_t value, int bits) {

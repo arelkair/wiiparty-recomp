@@ -31,7 +31,8 @@ void draw(const ScreenVertex* vertices, uint32_t count);
 void copy_to_framebuffer(int x, int y, int width, int height);
 bool present_frame(void* window, double aspect);
 bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height);
-void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity);
+void dump_copies(const char* prefix);
+void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha);
 void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes);
 void clear(int x, int y, int width, int height);
 
