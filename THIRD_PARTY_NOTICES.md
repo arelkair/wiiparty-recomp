@@ -105,7 +105,7 @@ Nothing from these has been copied. License information was read from the files 
 
 ## Tools used but not distributed
 
-Ghidra, Dolphin, nodtool, dtk, CMake, Ninja, GCC (MinGW-w64), Python and its packages listed in `tools/requirements.txt` are used to build or analyse the project. None is included in the repository. Their licenses apply to their own use.
+Ghidra, Dolphin, nodtool, dtk, CMake, Ninja, GCC (MinGW-w64), Python and its packages listed in `tools/requirements.txt` (including resvg-py, which renders the icon at build-tool time) are used to build or analyse the project. None is included in the repository. Their licenses apply to their own use.
 
 ## Items in this repository pending review
 
