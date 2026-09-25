@@ -13,6 +13,7 @@
 #include <cstring>
 #include <numeric>
 
+#include "wp/gamepad.h"
 #include "wp/input.h"
 
 namespace wp::wiimote {
@@ -89,6 +90,7 @@ struct State {
     uint8_t mode = kInputCore;
     bool continuous = false;
     uint8_t leds = 0;
+    bool rumble = false;
     bool ir = false;
     bool speaker = false;
     bool speaker_mute = false;
@@ -431,6 +433,7 @@ void reset(uint32_t index) {
     State& state = g_state[index];
     state = State{};
     fill_eeprom(state);
+    gamepad::set_outputs(index, false, 0);
 }
 
 void output_report(uint32_t index, const uint8_t* data, uint32_t size, const Sender& send) {
@@ -449,11 +452,18 @@ void output_report(uint32_t index, const uint8_t* data, uint32_t size, const Sen
         std::fprintf(stderr, "\n");
     }
     bool ack = (body[0] & 0x02) != 0;
+    bool rumble = (body[0] & 0x01) != 0;
+    if (id == kReportLeds) {
+        state.leds = body[0] >> 4;
+    }
+    if (rumble != state.rumble || id == kReportLeds) {
+        state.rumble = rumble;
+        gamepad::set_outputs(index, state.rumble, state.leds);
+    }
     switch (id) {
     case kReportRumble:
         break;
     case kReportLeds:
-        state.leds = body[0] >> 4;
         if (ack) {
             send_ack(state, send, id, kErrorSuccess);
         }

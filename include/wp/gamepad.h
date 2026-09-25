@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace wp::gamepad {
+
+constexpr size_t kSlots = 4;
 
 struct State {
     bool connected = false;
@@ -14,6 +17,8 @@ struct State {
     float accel[3] = {0.0f, 0.0f, 1.0f};
 };
 
-State poll(bool sideways);
+bool connected(uint32_t slot);
+State poll(uint32_t slot, bool sideways);
+void set_outputs(uint32_t slot, bool rumble, uint8_t leds);
 
 }

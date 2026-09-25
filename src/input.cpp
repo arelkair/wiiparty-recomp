@@ -138,6 +138,40 @@ void note_wheel(int delta) {
     }
 }
 
+namespace {
+
+bool sideways_grip(bool read_toggle) {
+    static bool flipped = false;
+    static bool toggle_held = false;
+    if (read_toggle) {
+        bool toggle = pressed(VK_TAB);
+        if (toggle && !toggle_held) {
+            flipped = !flipped;
+        }
+        toggle_held = toggle;
+    }
+    return sideways_minigame() != flipped;
+}
+
+Sample gamepad_sample(uint32_t channel, bool sideways) {
+    Sample result;
+    if (sideways) {
+        result.buttons |= kMotionSideways;
+    }
+    gamepad::State pad = gamepad::poll(channel, sideways);
+    result.buttons |= pad.buttons;
+    result.pointer_valid = pad.pointer_valid;
+    result.pointer_x = pad.pointer_x;
+    result.pointer_y = pad.pointer_y;
+    result.motion_valid = pad.motion_valid;
+    for (int i = 0; i < 3; i++) {
+        result.accel[i] = pad.accel[i];
+    }
+    return result;
+}
+
+}
+
 bool wakes_remote(uint32_t channel) {
     Sample current = sample(channel);
     if ((current.buttons & ~kMotionSideways) != 0) {
@@ -160,7 +194,7 @@ bool wakes_remote(uint32_t channel) {
 }
 
 bool connected(uint32_t channel) {
-    return channel == 0;
+    return channel == 0 || gamepad::connected(channel);
 }
 
 Sample sample(uint32_t channel) {
@@ -178,7 +212,10 @@ Sample sample(uint32_t channel) {
         }();
         static const auto origin = std::chrono::steady_clock::now();
         int elapsed = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - origin).count());
-        return channel == 0 ? scripted(script, elapsed) : Sample{};
+        if (channel != 0) {
+            return gamepad_sample(channel, sideways_grip(false));
+        }
+        return scripted(script, elapsed);
     }
     Sample result;
     if (const char* forced = std::getenv("WP_INPUT_BUTTONS")) {
@@ -200,7 +237,13 @@ Sample sample(uint32_t channel) {
                      static_cast<void*>(GetForegroundWindow()));
         std::fputc(10, stderr);
     }
-    if (channel != 0 || window == nullptr || GetForegroundWindow() != window) {
+    if (window != nullptr && GetForegroundWindow() != window) {
+        return result;
+    }
+    if (channel != 0) {
+        return gamepad_sample(channel, sideways_grip(false));
+    }
+    if (window == nullptr) {
         return result;
     }
     for (const Binding& binding : kBindings) {
@@ -208,18 +251,11 @@ Sample sample(uint32_t channel) {
             result.buttons |= binding.button;
         }
     }
-    static bool flipped = false;
-    static bool toggle_held = false;
-    bool toggle = pressed(VK_TAB);
-    if (toggle && !toggle_held) {
-        flipped = !flipped;
-    }
-    toggle_held = toggle;
-    bool sideways = sideways_minigame() != flipped;
+    bool sideways = sideways_grip(true);
     if (sideways) {
         result.buttons |= kMotionSideways;
     }
-    gamepad::State pad = gamepad::poll(sideways);
+    gamepad::State pad = gamepad::poll(channel, sideways);
     result.buttons |= pad.buttons;
     if (pad.motion_valid) {
         result.motion_valid = true;

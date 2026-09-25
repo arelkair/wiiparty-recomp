@@ -36,6 +36,7 @@ constexpr uint8_t kEndpointAclOut = 0x02;
 constexpr uint8_t kEventConnectionComplete = 0x03;
 constexpr uint8_t kEventConnectionRequest = 0x04;
 constexpr uint8_t kEventDisconnectionComplete = 0x05;
+constexpr uint8_t kReasonRemoteTerminated = 0x13;
 constexpr uint8_t kEventAuthenticationComplete = 0x06;
 constexpr uint8_t kEventRemoteNameComplete = 0x07;
 constexpr uint8_t kEventRemoteFeaturesComplete = 0x0B;
@@ -98,7 +99,6 @@ constexpr uint8_t kHidDataOutput = 0xA2;
 constexpr uint8_t kHidHandshakeSuccess = 0x00;
 
 constexpr uint32_t kWiimoteCount = 4;
-constexpr uint32_t kConnectedWiimotes = 1;
 constexpr uint8_t kControllerAddress[6] = {0xff, 0x00, 0x79, 0x19, 0x02, 0x11};
 constexpr uint8_t kWiimoteClass[3] = {0x00, 0x04, 0x48};
 constexpr uint8_t kWiimoteFeatures[8] = {0xBC, 0x02, 0x04, 0x38, 0x08, 0x00, 0x00, 0x00};
@@ -523,7 +523,7 @@ void execute_command(uint32_t data) {
     case kCommandCreateConnection: {
         command_status(opcode);
         int index = wiimote_from_address(parameters);
-        bool ok = index >= 0 && static_cast<uint32_t>(index) < kConnectedWiimotes && (g_scan_enable & kPageScanEnable);
+        bool ok = index >= 0 && input::connected(static_cast<uint32_t>(index)) && (g_scan_enable & kPageScanEnable);
         if (ok) {
             g_wiimotes[index].baseband = Baseband::Complete;
         }
@@ -541,7 +541,7 @@ void execute_command(uint32_t data) {
         command_status(opcode);
         int index = wiimote_from_address(parameters);
         uint8_t role = rd8(parameters + 6);
-        bool ok = index >= 0 && (g_scan_enable & kPageScanEnable);
+        bool ok = index >= 0 && input::connected(static_cast<uint32_t>(index)) && (g_scan_enable & kPageScanEnable);
         if (ok) {
             g_wiimotes[index].baseband = Baseband::Complete;
             g_wiimotes[index].linking = true;
@@ -654,7 +654,18 @@ void execute_command(uint32_t data) {
 
 void update_wiimote(uint32_t index) {
     Wiimote& wiimote = g_wiimotes[index];
-    if (wiimote.baseband == Baseband::Inactive && index < kConnectedWiimotes && input::wakes_remote(index)) {
+    if (wiimote.baseband != Baseband::Inactive && !input::connected(index)) {
+        if (wiimote.baseband == Baseband::Complete) {
+            std::vector<uint8_t> body = {0x00};
+            put16(body, connection_handle(index));
+            body.push_back(kReasonRemoteTerminated);
+            event(kEventDisconnectionComplete, body);
+        }
+        wiimote = Wiimote{};
+        wiimote::reset(index);
+        return;
+    }
+    if (wiimote.baseband == Baseband::Inactive && input::connected(index) && input::wakes_remote(index)) {
         wiimote.baseband = Baseband::RequestConnection;
     }
     if (wiimote.baseband == Baseband::RequestConnection && (g_scan_enable & kPageScanEnable)) {
@@ -713,7 +724,7 @@ void start() {
     g_started = true;
     for (uint32_t i = 0; i < kWiimoteCount; i++) {
         wiimote::reset(i);
-        if (i < kConnectedWiimotes) {
+        if (input::connected(i)) {
             g_wiimotes[i].baseband = Baseband::RequestConnection;
         }
     }
