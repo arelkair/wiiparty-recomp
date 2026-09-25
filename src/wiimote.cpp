@@ -309,7 +309,8 @@ double approach(double current, double target, double step) {
     return std::max(current - step, target);
 }
 
-void update_motion(State& state, uint32_t held) {
+void update_motion(State& state, const input::Sample& sample) {
+    uint32_t held = sample.buttons;
     uint32_t pressed = held & ~state.motion_held;
     state.motion_held = held;
     double side = 0.0;
@@ -332,6 +333,11 @@ void update_motion(State& state, uint32_t held) {
     state.roll = approach(state.roll, roll_target, kTiltSpeed * kReportSeconds);
     state.pitch = approach(state.pitch, pitch_target, kTiltSpeed * kReportSeconds);
     double accel[3] = {std::sin(state.roll) * std::cos(state.pitch), std::sin(state.pitch), std::cos(state.roll) * std::cos(state.pitch)};
+    if (sample.motion_valid) {
+        for (int i = 0; i < 3; i++) {
+            accel[i] = sample.accel[i];
+        }
+    }
     if (pressed & (input::kMotionSwingUp | input::kMotionSwingDown)) {
         state.swing_time = 0.0;
         state.swing_direction = (pressed & input::kMotionSwingUp) ? 1.0 : -1.0;
@@ -556,7 +562,7 @@ void update(uint32_t index, const Sender& send) {
     state.next_report = now + kReportInterval;
     input::Sample sample = input::sample(index);
     state.buttons = static_cast<uint16_t>(sample.buttons & 0x9F1F);
-    update_motion(state, sample.buttons);
+    update_motion(state, sample);
     if (process_read(state, send)) {
         return;
     }

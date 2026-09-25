@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "wp/gamepad.h"
 #include "wp/modules.h"
 #include "wp/video.h"
 
@@ -214,8 +215,17 @@ Sample sample(uint32_t channel) {
         flipped = !flipped;
     }
     toggle_held = toggle;
-    if (sideways_minigame() != flipped) {
+    bool sideways = sideways_minigame() != flipped;
+    if (sideways) {
         result.buttons |= kMotionSideways;
+    }
+    gamepad::State pad = gamepad::poll(sideways);
+    result.buttons |= pad.buttons;
+    if (pad.motion_valid) {
+        result.motion_valid = true;
+        for (int i = 0; i < 3; i++) {
+            result.accel[i] = pad.accel[i];
+        }
     }
     int64_t now = now_ms();
     if (now - g_wheel_up.load() < kWheelSwing.count()) {
@@ -232,9 +242,22 @@ Sample sample(uint32_t channel) {
     }
     POINT cursor;
     RECT client;
-    if (GetCursorPos(&cursor) && ScreenToClient(window, &cursor) && GetClientRect(window, &client) &&
+    static POINT last_cursor{};
+    static int64_t last_mouse_move = -1000000;
+    if (GetCursorPos(&cursor)) {
+        if (cursor.x != last_cursor.x || cursor.y != last_cursor.y) {
+            last_cursor = cursor;
+            last_mouse_move = now;
+        }
+    }
+    bool mouse_recent = now - last_mouse_move < 1000;
+    if ((mouse_recent || !pad.pointer_valid) && ScreenToClient(window, &cursor) && GetClientRect(window, &client) &&
         video::image_point(cursor.x, cursor.y, client.right, client.bottom, result.pointer_x, result.pointer_y)) {
         result.pointer_valid = true;
+    } else if (pad.pointer_valid) {
+        result.pointer_valid = true;
+        result.pointer_x = pad.pointer_x;
+        result.pointer_y = pad.pointer_y;
     }
     return result;
 }

@@ -66,6 +66,14 @@ Adapted third-party components are included (see below). This file records what 
 - `tools/dsp/tables.py` (own code) reads the opcode templates and interpreter handler tables from `third_party/dolphin/Source/Core/Core/DSP/DSPTables.cpp` and `Interpreter/DSPIntTables.cpp`, and the idle-skip signatures from `DSPAnalyzer.cpp`, at build time; nothing from those files is copied into the tool. The C++ generated from the microcode uses the helpers below, calls the Dolphin interpreter for the few opcodes that are not inline, and is not committed (it is derived from the game's microcode).
 - `include/wp/dsp_inline.h` and `tools/dsp/inline_ops.py` (Dolphin copyright lines and SPDX identifier, GPL-2.0-or-later): inline versions of the DSP interpreter, adapted from Dolphin's `Source/Core/Core/DSP/Interpreter/DSPInterpreter.cpp` (register access, address register arithmetic, accumulator and product helpers, status register updates and condition codes), `DSPIntCCUtil.h`, `DSPIntUtil.h`, `DSPIntArithmetic.cpp`, `DSPIntMultiplier.cpp`, `DSPIntLoadStore.cpp`, `DSPIntMisc.cpp`, `DSPIntBranch.cpp` (branches and `HandleLoop`) and `DSPIntExtOps.cpp` ("Copyright 2008 Dolphin Emulator Project, Copyright 2004 Duddie & Tratax" in `DSPInterpreter.cpp`, "Copyright 2005 Duddie" in `DSPIntUtil.h`, "Copyright 2009 Dolphin Emulator Project" in the others; all four lines are kept in both files). The header holds the helpers as `always_inline` functions over the public `SDSP` state; the Python module emits, for each supported opcode, the statements of the matching interpreter handler with the operand fields already decoded. Written for this project: the status register updates are computed without branches and, where the next instructions overwrite them before anything reads them, only when the translated code is left (same result, checked by `WP_DSP_VERIFY`).
 
+## Libraries linked but not included in the repository
+
+### SDL3
+
+- Used by `src/gamepad.cpp` (own code) for gamepads: buttons, sticks, gyroscope and accelerometer. The build links it only when it is found; `src/no_gamepad.cpp` is used otherwise.
+- Version 3.4.16, the official MinGW development package `SDL3-devel-3.4.16-mingw.tar.gz` from https://github.com/libsdl-org/SDL/releases, downloaded by `tools/fetch_sdl.py` into `build/deps/` (ignored by Git) and checked by SHA-256. `SDL3.dll` is copied next to the executable and must be shipped with it.
+- Copyright: "Copyright (C) 1997-2026 Sam Lantinga", as stated in `LICENSE.txt` of the package. License: zlib, which is compatible with GPL-3.0-or-later. A binary distribution should carry that `LICENSE.txt` (an acknowledgment is appreciated but not required). No SDL source is copied or changed.
+
 ## Rules for adding third-party code
 
 Before any external file is added it must have, in this file:

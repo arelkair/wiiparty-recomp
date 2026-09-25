@@ -39,23 +39,22 @@ The overall figure is the equal-weight average of the components below. They are
 
 ### Controls
 
-| Wii Remote | Keyboard and mouse |
-| --- | --- |
-| Pointer | Mouse over the window |
-| A | Enter, Space or left click |
-| B | Backspace or right click |
-| 1 / 2 | 1 / 2 |
-| + / - | + / - |
-| HOME | H |
-| D-pad, remote upright | Arrow keys |
-| D-pad, remote sideways | W, A, S, D as seen on screen |
-| Tilt left / right | Q / E |
-| Tilt forward / back | R / F |
-| Swing up / down | Mouse wheel, or T / G |
-| Shake | Middle click or left Shift |
-| Swap upright and sideways | Tab |
+| Wii Remote | Keyboard and mouse | Gamepad, remote upright | Gamepad, remote sideways |
+| --- | --- | --- | --- |
+| Pointer | Mouse over the window | Gyroscope or right stick; R3 recenters | Same |
+| A | Enter, Space or left click | Bottom face button or R1 | Top face button or R1 |
+| B | Backspace or right click | Right face button or R2 | R2 |
+| 1 | 1 | Left face button | Left or right face button |
+| 2 | 2 | Top face button | Bottom face button |
+| + / - | + / - | Start / Back (Options / Share, Menu / View) | Same |
+| HOME | H | Guide (PS, Xbox, Home) | Same |
+| D-pad | Arrow keys; sideways, W, A, S, D as seen on screen | D-pad or left stick, as seen on screen | Same |
+| Tilt | Q / E, R / F | Tilt the gamepad | Same |
+| Swing up / down | Mouse wheel, or T / G | Move the gamepad sharply | Same |
+| Shake | Middle click or left Shift | Shake the gamepad | Same |
+| Swap upright and sideways | Tab | Tab | Tab |
 
-The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
+The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys and the gamepad buttons always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
 
 ### Known problems
 
@@ -67,7 +66,7 @@ The emulated remote is held upright, or sideways in the 37 minigames whose instr
 
 ### Not implemented
 
-- Motion with gyroscope gamepads (DualSense, DualShock 4, Switch Pro), generic gamepads and real Wii Remotes; the keyboard motion keys are a stopgap.
+- Real Wii Remotes. Gamepad support (through SDL3) has not yet been tested with a physical gamepad.
 - GX: depth (Z) EFB copies, logic operations, dithering, texture offsets of lines and points.
 - Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
 
@@ -105,6 +104,7 @@ Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (f
 5. Generate the C++ from the DOL, build it and run the tests:
 
    ```
+   python tools/fetch_sdl.py
    python tools/recomp.py
    python tools/dsp/recomp_dsp.py
    cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -112,7 +112,7 @@ Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (f
    ctest --test-dir build/out
    ```
 
-   `tools/recomp.py` reads `analysis/dol_functions.csv` and writes the generated sources to `build/recomp/`. `tools/dsp/recomp_dsp.py` extracts the audio DSP microcode listed in `analysis/dsp_ucode.csv` from the DOL and translates it to C++ in `build/dsp_recomp/`; without it the DSP runs on the interpreter. Game modules are translated separately with `python tools/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/rel_code/`; run `tools/recomp.py` again afterwards so the DOL provides every function the modules call.
+   `tools/fetch_sdl.py` downloads the SDL3 3.4.16 development files (checked by SHA-256) into `build/deps/` for gamepad support; without them the build still works, with keyboard and mouse only, and with them `SDL3.dll` is copied next to the executable. `tools/recomp.py` reads `analysis/dol_functions.csv` and writes the generated sources to `build/recomp/`. `tools/dsp/recomp_dsp.py` extracts the audio DSP microcode listed in `analysis/dsp_ucode.csv` from the DOL and translates it to C++ in `build/dsp_recomp/`; without it the DSP runs on the interpreter. Game modules are translated separately with `python tools/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/rel_code/`; run `tools/recomp.py` again afterwards so the DOL provides every function the modules call.
 
    Run the result with `build/out/wiiparty extracted [seconds] [nand directory]`. It opens a window that shows the console framebuffer; `seconds` is an optional watchdog that stops the process after that long (0 or omitted means no limit) and `WP_HEADLESS=1` runs without a window. The virtual NAND (settings and saves) lives in `game/nand`.
 
