@@ -53,6 +53,11 @@ Adapted third-party components are included (see below). This file records what 
 - Repository files: `update_motion` in `src/wiimote.cpp` and the motion bindings in `src/input.cpp`, own code.
 - Behaviour studied in the Dolphin Emulator's `Source/Core/Core/HW/WiimoteEmu/Dynamics.cpp`, `WiimoteEmu.cpp` and `Source/Core/InputCommon/ControllerEmu/ControlGroup/Force.cpp` and `Tilt.cpp` ("Copyright 2019 Dolphin Emulator Project" and related years, GPL-2.0-or-later), current `master` read on 2026-09-24. No code was copied: the conventions (accelerometer at rest reads +1 g on Z, tilting right moves gravity to +X, 10-bit values from the calibration's zero and one-g points, clamped to 0-1023) and the defaults (shake on the middle mouse button, 10 cm of travel at 6 shakes per second on all three axes) are reimplemented with a simpler model.
 
+### EFB copy conversion from the Dolphin Emulator
+
+- Repository file: the `kCopyShaderSource` shader and `run_copy` in `src/gx_render.cpp`, and `copy_filter` in `src/gx.cpp`.
+- Adapted from `Source/Core/VideoCommon/TextureConverterShaderGen.cpp` ("Copyright 2017 Dolphin Emulator Project", `SPDX-License-Identifier: GPL-2.0-or-later`), 2606 snapshot: the conversion of each copy format (R4, R8, RA4, RA8, RGB565, RGB5A3, A8, G8, B8, RG8, GB8), the intensity (YUV) constants, the three-row copy filter with its overflow rule, gamma, the alpha of EFB formats without alpha, and the split of the 24-bit depth into three bytes. The grouping of the seven filter weights, the gamma table and the clamp rows follow `TextureCacheBase.cpp` (`GetRAMCopyFilterCoefficients`, `CopyFilterCanOverflow`, `CopyEFBToCacheEntry`) and `BPStructs.cpp` of the same snapshot. Rewritten in HLSL for this project's Direct3D 11 renderer, reading the EFB colour and depth textures directly; GPL-2.0-or-later is compatible with GPL-3.0-or-later.
+
 ### DSP core and free DSP ROMs from the Dolphin Emulator
 
 - Repository files: everything under `third_party/dolphin/`, kept in Dolphin's own directory layout so it stays separate from this project's code. `third_party/dolphin/COPYING` and `third_party/dolphin/LICENSES/GPL-2.0-or-later.txt` are copied from the same snapshot.

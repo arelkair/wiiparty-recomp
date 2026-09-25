@@ -70,13 +70,16 @@ Output pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) {
 )HLSL";
 
 const char* kCopyShaderSource = R"HLSL(
-Texture2D source : register(t0);
+Texture2D color_source : register(t0);
 Texture2D<float> depth_source : register(t1);
 SamplerState source_sampler : register(s0);
 
 cbuffer CopyConstants : register(b0) {
     uint4 params;
-    int4 region;
+    float4 region;
+    uint4 filter;
+    float4 rows;
+    float4 extent;
 };
 
 float4 convert(uint4 raw) {
@@ -114,18 +117,36 @@ float4 convert(uint4 raw) {
     case 10: return value.bbbb;
     case 11: return value.rrrg;
     case 12: return value.gggb;
+    case 13: return float4(value.rgb, 1.0);
     default: return value;
     }
 }
 
-float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
-    return convert(uint4(round(saturate(source.Sample(source_sampler, uv)) * 255.0)));
+uint4 sample_efb(float2 position, float offset) {
+    float y = clamp(position.y + offset, rows.y, rows.z);
+    if (params.w != 0) {
+        uint depth = min(uint(saturate(depth_source.Load(int3(int(position.x), int(y), 0))) * 16777216.0), 0xFFFFFFu);
+        return uint4((depth >> 16) & 255u, (depth >> 8) & 255u, depth & 255u, 255u);
+    }
+    return uint4(round(saturate(color_source.SampleLevel(source_sampler, float2(position.x, y) / extent.xy, 0)) * 255.0));
 }
 
-float4 depth_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
-    int2 texel = region.xy + min(int2(uv * float2(region.zw)), region.zw - 1);
-    uint depth = min(uint(saturate(depth_source.Load(int3(texel, 0))) * 16777216.0), 0xFFFFFFu);
-    return convert(uint4((depth >> 16) & 255u, (depth >> 8) & 255u, depth & 255u, 255u));
+float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    float2 source = region.xy + uv * region.zw;
+    uint4 current = sample_efb(source, 0.0);
+    uint3 combined = current.rgb * filter.y;
+    if (filter.x != 0 || filter.z != 0) {
+        combined += sample_efb(source, -1.0).rgb * filter.x + sample_efb(source, 1.0).rgb * filter.z;
+    }
+    uint4 raw = uint4(combined >> 6, current.a);
+    if (filter.w != 0) {
+        raw &= 0x1FFu;
+    }
+    raw = min(raw, uint4(255, 255, 255, 255));
+    if (rows.x != 1.0) {
+        raw.rgb = uint3(round(pow(float3(raw.rgb) / 255.0, rows.x) * 255.0));
+    }
+    return convert(raw);
 }
 )HLSL";
 
@@ -582,16 +603,12 @@ struct CachedTexture {
 };
 
 struct CopiedTexture {
-    ID3D11Texture2D* texture = nullptr;
-    ID3D11ShaderResourceView* raw_view = nullptr;
     ID3D11Texture2D* converted = nullptr;
     ID3D11ShaderResourceView* converted_view = nullptr;
     ID3D11RenderTargetView* converted_target = nullptr;
     uint32_t converted_width = 0;
     uint32_t converted_height = 0;
     ID3D11ShaderResourceView* view = nullptr;
-    uint32_t width = 0;
-    uint32_t height = 0;
     uint32_t logical_width = 0;
     uint32_t logical_height = 0;
     uint32_t bytes = 0;
@@ -612,7 +629,8 @@ struct Device {
     ID3D11Texture2D* depth = nullptr;
     ID3D11DepthStencilView* depth_view = nullptr;
     ID3D11ShaderResourceView* depth_resource = nullptr;
-    ID3D11PixelShader* depth_copy_pixel = nullptr;
+    ID3D11ShaderResourceView* target_resource = nullptr;
+    ID3D11RenderTargetView* frame_target = nullptr;
     ID3D11Texture2D* frame = nullptr;
     ID3D11ShaderResourceView* frame_view = nullptr;
     uint32_t frame_width = 0;
@@ -697,9 +715,10 @@ bool create_target() {
     description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     description.SampleDesc.Count = 1;
     description.Usage = D3D11_USAGE_DEFAULT;
-    description.BindFlags = D3D11_BIND_RENDER_TARGET;
+    description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
     if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &g_device.target)) ||
-        FAILED(g_device.device->CreateRenderTargetView(g_device.target, nullptr, &g_device.target_view))) {
+        FAILED(g_device.device->CreateRenderTargetView(g_device.target, nullptr, &g_device.target_view)) ||
+        FAILED(g_device.device->CreateShaderResourceView(g_device.target, nullptr, &g_device.target_resource))) {
         return false;
     }
     description.Format = DXGI_FORMAT_R32_TYPELESS;
@@ -1585,8 +1604,6 @@ void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes) {
 bool create_present_pipeline();
 
 void release_copy(CopiedTexture& entry) {
-    release(entry.raw_view);
-    release(entry.texture);
     release(entry.converted_target);
     release(entry.converted_view);
     release(entry.converted);
@@ -1594,6 +1611,8 @@ void release_copy(CopiedTexture& entry) {
 }
 
 void dump_copy(const CopiedTexture& entry);
+
+constexpr uint32_t kXfbFormat = 13;
 
 uint32_t copy_bits(uint32_t format) {
     switch (format) {
@@ -1613,42 +1632,42 @@ uint32_t copy_bits(uint32_t format) {
     }
 }
 
-bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity, bool alpha, const int* depth_region) {
+bool run_copy(ID3D11RenderTargetView* target, uint32_t target_width, uint32_t target_height, int x, int y, int width, int height, uint32_t format,
+              bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
     if (!create_present_pipeline()) {
         return false;
     }
-    uint32_t target_width = std::max(1u, entry.logical_width * g_scale);
-    uint32_t target_height = std::max(1u, entry.logical_height * g_scale);
-    if (!entry.converted || entry.converted_width != target_width || entry.converted_height != target_height) {
-        release(entry.converted_target);
-        release(entry.converted_view);
-        release(entry.converted);
-        D3D11_TEXTURE2D_DESC description{};
-        description.Width = target_width;
-        description.Height = target_height;
-        description.MipLevels = 1;
-        description.ArraySize = 1;
-        description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        description.SampleDesc.Count = 1;
-        description.Usage = D3D11_USAGE_DEFAULT;
-        description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &entry.converted)) ||
-            FAILED(g_device.device->CreateShaderResourceView(entry.converted, nullptr, &entry.converted_view)) ||
-            FAILED(g_device.device->CreateRenderTargetView(entry.converted, nullptr, &entry.converted_target))) {
-            return false;
-        }
-        entry.converted_width = target_width;
-        entry.converted_height = target_height;
-    }
+    struct Constants {
+        uint32_t params[4];
+        float region[4];
+        uint32_t filter[4];
+        float rows[4];
+        float extent[4];
+    } constants{};
+    uint32_t sum = filter.coefficients[0] + filter.coefficients[1] + filter.coefficients[2];
+    int efb_height = scaled(kEfbHeight);
+    int top = filter.clamp_top ? scaled(y) : 0;
+    int bottom = (filter.clamp_bottom ? scaled(y + height) : efb_height) - 1;
+    constants.params[0] = format;
+    constants.params[1] = intensity ? 1u : 0u;
+    constants.params[2] = alpha ? 1u : 0u;
+    constants.params[3] = depth ? 1u : 0u;
+    constants.region[0] = static_cast<float>(scaled(x));
+    constants.region[1] = static_cast<float>(scaled(y));
+    constants.region[2] = static_cast<float>(scaled(x + width) - scaled(x));
+    constants.region[3] = static_cast<float>(scaled(y + height) - scaled(y));
+    constants.filter[0] = filter.coefficients[0];
+    constants.filter[1] = filter.coefficients[1];
+    constants.filter[2] = filter.coefficients[2];
+    constants.filter[3] = sum >= 128 ? 1u : 0u;
+    constants.rows[0] = 1.0f / filter.gamma;
+    constants.rows[1] = static_cast<float>(top) + 0.5f;
+    constants.rows[2] = static_cast<float>(bottom) + 0.5f;
+    constants.extent[0] = static_cast<float>(scaled(kEfbWidth));
+    constants.extent[1] = static_cast<float>(efb_height);
     ID3D11DeviceContext* context = g_device.context;
-    uint32_t params[8] = {format, intensity ? 1u : 0u, alpha ? 1u : 0u, 0, 0, 0, 0, 0};
-    if (depth_region) {
-        for (int i = 0; i < 4; i++) {
-            params[4 + i] = static_cast<uint32_t>(depth_region[i]);
-        }
-    }
-    context->UpdateSubresource(g_device.copy_constants, 0, nullptr, params, 0, 0);
-    context->OMSetRenderTargets(1, &entry.converted_target, nullptr);
+    context->UpdateSubresource(g_device.copy_constants, 0, nullptr, &constants, 0, 0);
+    context->OMSetRenderTargets(1, &target, nullptr);
     D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target_width), static_cast<float>(target_height), 0.0f, 1.0f};
     context->RSSetViewports(1, &viewport);
     context->RSSetState(g_device.present_rasterizer);
@@ -1657,13 +1676,10 @@ bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity, bool al
     context->IASetInputLayout(nullptr);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context->VSSetShader(g_device.present_vertex, nullptr, 0);
-    context->PSSetShader(depth_region ? g_device.depth_copy_pixel : g_device.copy_pixel, nullptr, 0);
+    context->PSSetShader(g_device.copy_pixel, nullptr, 0);
     context->PSSetConstantBuffers(0, 1, &g_device.copy_constants);
-    if (depth_region) {
-        context->PSSetShaderResources(1, 1, &g_device.depth_resource);
-    } else {
-        context->PSSetShaderResources(0, 1, &entry.raw_view);
-    }
+    ID3D11ShaderResourceView* sources[2] = {g_device.target_resource, g_device.depth_resource};
+    context->PSSetShaderResources(0, 2, sources);
     context->PSSetSamplers(0, 1, &g_device.present_sampler);
     context->Draw(3, 0);
     ID3D11ShaderResourceView* none[2] = {};
@@ -1671,7 +1687,23 @@ bool convert_copy(CopiedTexture& entry, uint32_t format, bool intensity, bool al
     return true;
 }
 
-void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha) {
+bool create_copy_texture(ID3D11Texture2D*& texture, ID3D11ShaderResourceView*& view, ID3D11RenderTargetView*& target, uint32_t width, uint32_t height) {
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = width;
+    description.Height = height;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    return SUCCEEDED(g_device.device->CreateTexture2D(&description, nullptr, &texture)) &&
+           SUCCEEDED(g_device.device->CreateShaderResourceView(texture, nullptr, &view)) &&
+           SUCCEEDED(g_device.device->CreateRenderTargetView(texture, nullptr, &target));
+}
+
+void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha,
+                     const CopyFilter& filter) {
     if (!initialize()) {
         return;
     }
@@ -1698,53 +1730,21 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     CopiedTexture& entry = g_device.copies[address];
     uint32_t w = static_cast<uint32_t>(width);
     uint32_t h = static_cast<uint32_t>(height);
-    if (depth) {
-        release(entry.raw_view);
-        release(entry.texture);
-        entry.width = 0;
-        entry.height = 0;
-        entry.logical_width = half ? std::max(1u, w / 2) : w;
-        entry.logical_height = half ? std::max(1u, h / 2) : h;
-        const int region[4] = {scaled(x), scaled(y), scaled(x + width) - scaled(x), scaled(y + height) - scaled(y)};
-        if (!convert_copy(entry, format, intensity, true, region)) {
-            release_copy(entry);
-            g_device.copies.erase(address);
-            return;
-        }
-        entry.view = entry.converted_view;
-        entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
-        entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
-        dump_copy(entry);
-        return;
-    }
-    uint32_t physical_width = w * g_scale;
-    uint32_t physical_height = h * g_scale;
-    if (!entry.texture || entry.width != physical_width || entry.height != physical_height) {
-        release(entry.raw_view);
-        release(entry.texture);
-        D3D11_TEXTURE2D_DESC description{};
-        description.Width = physical_width;
-        description.Height = physical_height;
-        description.MipLevels = 1;
-        description.ArraySize = 1;
-        description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        description.SampleDesc.Count = 1;
-        description.Usage = D3D11_USAGE_DEFAULT;
-        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &entry.texture)) ||
-            FAILED(g_device.device->CreateShaderResourceView(entry.texture, nullptr, &entry.raw_view))) {
-            release_copy(entry);
-            g_device.copies.erase(address);
-            return;
-        }
-        entry.width = physical_width;
-        entry.height = physical_height;
-    }
-    D3D11_BOX box{static_cast<UINT>(scaled(x)), static_cast<UINT>(scaled(y)), 0, static_cast<UINT>(scaled(x + width)), static_cast<UINT>(scaled(y + height)), 1};
-    g_device.context->CopySubresourceRegion(entry.texture, 0, 0, 0, 0, g_device.target, 0, &box);
     entry.logical_width = half ? std::max(1u, w / 2) : w;
     entry.logical_height = half ? std::max(1u, h / 2) : h;
-    if (!convert_copy(entry, format, intensity, alpha, nullptr)) {
+    uint32_t target_width = std::max(1u, entry.logical_width * g_scale);
+    uint32_t target_height = std::max(1u, entry.logical_height * g_scale);
+    if (!entry.converted || entry.converted_width != target_width || entry.converted_height != target_height) {
+        release_copy(entry);
+        if (!create_copy_texture(entry.converted, entry.converted_view, entry.converted_target, target_width, target_height)) {
+            release_copy(entry);
+            g_device.copies.erase(address);
+            return;
+        }
+        entry.converted_width = target_width;
+        entry.converted_height = target_height;
+    }
+    if (!run_copy(entry.converted_target, target_width, target_height, x, y, width, height, format, intensity, alpha || depth, depth, filter)) {
         release_copy(entry);
         g_device.copies.erase(address);
         return;
@@ -1755,7 +1755,7 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
     dump_copy(entry);
 }
 
-void copy_to_framebuffer(int x, int y, int width, int height) {
+void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const CopyFilter& filter) {
     if (!initialize()) {
         return;
     }
@@ -1771,19 +1771,11 @@ void copy_to_framebuffer(int x, int y, int width, int height) {
     uint32_t physical_width = static_cast<uint32_t>(scaled(width));
     uint32_t physical_height = static_cast<uint32_t>(scaled(height));
     if (!g_device.frame || g_device.frame_width != physical_width || g_device.frame_height != physical_height) {
+        release(g_device.frame_target);
         release(g_device.frame_view);
         release(g_device.frame);
-        D3D11_TEXTURE2D_DESC description{};
-        description.Width = physical_width;
-        description.Height = physical_height;
-        description.MipLevels = 1;
-        description.ArraySize = 1;
-        description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        description.SampleDesc.Count = 1;
-        description.Usage = D3D11_USAGE_DEFAULT;
-        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &g_device.frame)) ||
-            FAILED(g_device.device->CreateShaderResourceView(g_device.frame, nullptr, &g_device.frame_view))) {
+        if (!create_copy_texture(g_device.frame, g_device.frame_view, g_device.frame_target, physical_width, physical_height)) {
+            release(g_device.frame_target);
             release(g_device.frame_view);
             release(g_device.frame);
             return;
@@ -1791,9 +1783,7 @@ void copy_to_framebuffer(int x, int y, int width, int height) {
         g_device.frame_width = physical_width;
         g_device.frame_height = physical_height;
     }
-    D3D11_BOX box{static_cast<UINT>(scaled(x)), static_cast<UINT>(scaled(y)), 0, static_cast<UINT>(scaled(x + width)),
-                  static_cast<UINT>(scaled(y + height)), 1};
-    g_device.context->CopySubresourceRegion(g_device.frame, 0, 0, 0, 0, g_device.target, 0, &box);
+    run_copy(g_device.frame_target, physical_width, physical_height, x, y, width, height, kXfbFormat, false, false, depth, filter);
 }
 
 bool create_present_pipeline() {
@@ -1813,12 +1803,8 @@ bool create_present_pipeline() {
     if (ok && compile(kCopyShaderSource, "pixel_main", "ps_5_0", &copy_code)) {
         ok = SUCCEEDED(g_device.device->CreatePixelShader(copy_code->GetBufferPointer(), copy_code->GetBufferSize(), nullptr, &g_device.copy_pixel));
         release(copy_code);
-        ID3DBlob* depth_code = nullptr;
-        ok = ok && compile(kCopyShaderSource, "depth_main", "ps_5_0", &depth_code) &&
-             SUCCEEDED(g_device.device->CreatePixelShader(depth_code->GetBufferPointer(), depth_code->GetBufferSize(), nullptr, &g_device.depth_copy_pixel));
-        release(depth_code);
         D3D11_BUFFER_DESC constants{};
-        constants.ByteWidth = 32;
+        constants.ByteWidth = 80;
         constants.Usage = D3D11_USAGE_DEFAULT;
         constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         ok = ok && SUCCEEDED(g_device.device->CreateBuffer(&constants, nullptr, &g_device.copy_constants));
@@ -1995,7 +1981,7 @@ void dump_copy(const CopiedTexture& entry) {
     }
     g_copy_dump_index++;
     dump_texture(g_device.target, "_efb");
-    dump_texture(entry.view == entry.converted_view ? entry.converted : entry.texture, "");
+    dump_texture(entry.converted, "");
 }
 
 void dump_copies(const char* prefix) {

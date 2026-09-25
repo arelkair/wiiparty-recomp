@@ -815,6 +815,32 @@ void capture_frame_boundary() {
     g_capture_first = true;
 }
 
+render::CopyFilter copy_filter(uint32_t control) {
+    static constexpr float kGamma[4] = {1.0f, 1.7f, 2.2f, 2.2f};
+    uint64_t bits = g_bp[0x53] | (static_cast<uint64_t>(g_bp[0x54]) << 24);
+    uint32_t weights[7];
+    for (int i = 0; i < 7; i++) {
+        weights[i] = static_cast<uint32_t>((bits >> (6 * i)) & 0x3F);
+    }
+    render::CopyFilter filter;
+    filter.coefficients[0] = weights[0] + weights[1];
+    filter.coefficients[1] = weights[2] + weights[3] + weights[4];
+    filter.coefficients[2] = weights[5] + weights[6];
+    static const bool filter_enabled = [] {
+        const char* setting = std::getenv("WP_COPY_FILTER");
+        return !setting || std::atoi(setting) != 0;
+    }();
+    if (!filter_enabled) {
+        filter.coefficients[1] += filter.coefficients[0] + filter.coefficients[2];
+        filter.coefficients[0] = 0;
+        filter.coefficients[2] = 0;
+    }
+    filter.gamma = kGamma[(control >> 7) & 3];
+    filter.clamp_top = (control & 1) != 0;
+    filter.clamp_bottom = (control & 2) != 0;
+    return filter;
+}
+
 void execute_copy(uint32_t value) {
     g_copy_total++;
     report_copy();
@@ -860,7 +886,7 @@ void execute_copy(uint32_t value) {
                 g_fps_start = now;
             }
         }
-        render::copy_to_framebuffer(x, y, width, height);
+        render::copy_to_framebuffer(x, y, width, height, (g_bp[0x43] & 7) == kPixelFormatZ24, copy_filter(value));
     } else {
         uint32_t source = g_bp[0x49];
         uint32_t size = g_bp[0x4A];
@@ -872,7 +898,7 @@ void execute_copy(uint32_t value) {
         uint32_t coded = (value >> 3) & 15;
         uint32_t format = coded / 2 + (coded & 1) * 8;
         render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format, (value & (1u << 15)) != 0, (g_bp[0x43] & 7) == kPixelFormatZ24,
-                                (g_bp[0x43] & 7) == kPixelFormatRgba6Z24);
+                                (g_bp[0x43] & 7) == kPixelFormatRgba6Z24, copy_filter(value));
     }
     if (value & kCopyClear) {
         uint32_t source = g_bp[0x49];
