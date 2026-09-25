@@ -3,6 +3,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "recompiler"))
+
+import game
+
+GAME = game.load()
 LABEL = "Progress"
 HEIGHT = 20
 CHAR_WIDTH = 6.6
@@ -12,7 +17,7 @@ VALUE_COLOR = "#1f6fbf"
 
 
 def read_percentages():
-    with open(ROOT / "analysis" / "progress.csv", newline="", encoding="utf-8") as handle:
+    with open(GAME.analysis / "progress.csv", newline="", encoding="utf-8") as handle:
         return [int(row["percent"]) for row in csv.DictReader(handle)]
 
 

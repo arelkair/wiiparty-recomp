@@ -5,7 +5,7 @@ I appreciate your support!
 ## Before anything else
 
 - Never upload Nintendo's data: `main.dol`, `.rel` files, ISO images, textures, models, sounds, fonts, videos or memory dumps of the game. This applies to commits, issues and pull requests.
-- `game/`, `extracted/` and `reference/` are ignored by Git. Keep them that way.
+- `games/wiiparty/disc/`, `games/wiiparty/extracted/` and `reference/` are ignored by Git. Keep them that way.
 - Use your own legally obtained copy of Wii Party.
 
 ## License
@@ -31,7 +31,7 @@ Contributions are licensed under GPL-3.0-or-later, like the rest of the project.
 ## Build and test
 
 ```
-python tools/recomp.py
+python recompiler/recomp.py
 cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/out
 ctest --test-dir build/out

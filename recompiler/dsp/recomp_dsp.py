@@ -1,15 +1,19 @@
 import argparse
 import csv
 import re
+import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import game
 import inline_ops
 from tables import Tables, load_idle_signatures
 
-ROOT = Path(__file__).resolve().parents[2]
-UCODE_LIST = ROOT / "analysis" / "dsp_ucode.csv"
-DOL = ROOT / "extracted" / "sys" / "main.dol"
-OUTPUT = ROOT / "build" / "dsp_recomp"
+GAME = game.load()
+UCODE_LIST = GAME.analysis / "dsp_ucode.csv"
+DOL = GAME.dol
+OUTPUT = GAME.dsp_code
 IRAM_WORDS = 0x1000
 EXCEPTION_VECTORS = [2 * i for i in range(1, 8)]
 SR_ACCESS = re.compile(r"(read|write)_reg\(s, 0x13[,)]")

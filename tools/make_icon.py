@@ -1,12 +1,17 @@
 import io
+import sys
 from pathlib import Path
 
 import resvg_py
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "res" / "wiiparty.svg"
-TARGET = ROOT / "res" / "wiiparty.ico"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recompiler"))
+
+import game
+
+GAME = game.load()
+SOURCE = GAME.resources / "wiiparty.svg"
+TARGET = GAME.resources / "wiiparty.ico"
 SIZES = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256]
 
 

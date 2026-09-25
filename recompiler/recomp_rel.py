@@ -5,19 +5,20 @@ import struct
 import sys
 from pathlib import Path
 
+import game
 import rel
 from ppc.decoder import Instr
 from ppc.emit import u32
 from ppc.module_emit import ModuleEmitter, split, synthetic
 
-ROOT = Path(__file__).resolve().parent.parent
-MODULES = ROOT / "build" / "rel"
-OUTPUT = ROOT / "build" / "rel_code"
-DOL_HEADER = ROOT / "build" / "recomp" / "functions.h"
-DOL_TARGETS = ROOT / "build" / "rel_dol_targets.csv"
+GAME = game.load()
+MODULES = GAME.modules
+OUTPUT = GAME.module_code
+DOL_HEADER = GAME.dol_code / "functions.h"
+DOL_TARGETS = GAME.module_targets
 LINES_PER_FILE = 40000
-OSSAVECONTEXT = 0x80138290
-SETJMP = 0x801c8a1c
+OSSAVECONTEXT = GAME.sdk["os_save_context"]
+SETJMP = GAME.sdk["setjmp"]
 MFLR_R0 = 0x7C0802A6
 FNV_PRIME = 16777619
 FNV_OFFSET = 2166136261
@@ -234,11 +235,12 @@ def render_function(name, module, start, instrs, entries, relocations_by_site, d
 
 
 def write_module(name, module, bodies, chunks):
-    OUTPUT.mkdir(parents=True, exist_ok=True)
+    folder = OUTPUT / name
+    folder.mkdir(parents=True, exist_ok=True)
     written = set()
 
     def emit(file_name, text):
-        path = OUTPUT / file_name
+        path = folder / file_name
         written.add(file_name)
         if not path.exists() or path.read_text() != text:
             path.write_text(text)
@@ -271,13 +273,13 @@ def write_module(name, module, bodies, chunks):
         "}",
     ]
     emit(f"{name}_module.cpp", "\n".join(table) + "\n")
-    for old in list(OUTPUT.glob(f"{name}_*")) + list(OUTPUT.glob(f"{name}.h")):
+    for old in folder.iterdir():
         if old.name not in written:
             old.unlink()
 
 
 def write_table():
-    names = sorted(path.name[: -len("_module.cpp")] for path in OUTPUT.glob("*_module.cpp"))
+    names = sorted(path.name[: -len("_module.cpp")] for path in OUTPUT.glob("*/*_module.cpp"))
     lines = ['#include "wp/modules.h"', "", "namespace wp {", ""]
     lines += [f"extern const ModuleDescriptor g_descriptor_{n};" for n in names]
     lines += ["", "const ModuleDescriptor* const g_module_table[] = {"]
@@ -291,6 +293,7 @@ def merge_dol_targets(targets):
     if DOL_TARGETS.exists():
         known = {int(line, 16) for line in DOL_TARGETS.read_text().split() if line != "address"}
     known |= targets
+    DOL_TARGETS.parent.mkdir(parents=True, exist_ok=True)
     DOL_TARGETS.write_text("address\n" + "\n".join(f"0x{a:08x}" for a in sorted(known)) + "\n")
 
 

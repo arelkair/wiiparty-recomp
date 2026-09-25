@@ -1,13 +1,14 @@
 import argparse
 import subprocess
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-DTK = ROOT / "reference" / "dtk" / "dtk-windows-x86_64.exe"
-DOL = ROOT / "extracted" / "sys" / "main.dol"
-MODULES = ROOT / "build" / "rel"
-OUTPUT = ROOT / "build" / "elf"
+import game
+
+GAME = game.load()
+DTK = game.ROOT / "reference" / "dtk" / "dtk-windows-x86_64.exe"
+DOL = GAME.dol
+MODULES = GAME.modules
+OUTPUT = GAME.elf
 
 
 def merge(name):

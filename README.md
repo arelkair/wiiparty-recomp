@@ -16,7 +16,7 @@ The game runs natively on Windows at a steady 50 fps (PAL), using about one and 
 
 ### Progress
 
-The overall figure is the equal-weight average of the components below. They are estimates, not measurements. The values live in `analysis/progress.csv` and `python tools/progress.py` regenerates the image.
+The overall figure is the equal-weight average of the components below. They are estimates, not measurements. The values live in `games/wiiparty/analysis/progress.csv` and `python tools/progress.py` regenerates the image.
 
 | Component | Progress | Basis |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ The overall figure is the equal-weight average of the components below. They are
 - **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace, decrementer and GPU draw-done (PE finish) interrupts, OS alarms, module loading and linking, disc reads from the extracted files, the IPC hardware between the CPU and IOS with IOS's measured file system timing, and a virtual NAND (a first boot creates the save as on a console). Real Mii databases (`RFL_DB.dat`) load.
 - **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, depth, scissor, EFB copies to textures, texture coordinates generated from normals with per-vertex texture matrices and the dual texture transform, and per-vertex color-channel lighting (adapted from Dolphin's software renderer, see `THIRD_PARTY_NOTICES.md`).
 - **GPU thread:** as on the Wii, where the GPU is a separate chip, graphics commands are processed and drawn on their own thread while the CPU thread keeps running the game and answering interrupts (`WP_GPU_THREAD=0` processes them on the CPU thread, for debugging).
-- **Window:** 16:9 when the virtual Wii is set to widescreen (the default, as in Dolphin), 4:3 otherwise; native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain. The title bar shows the game, graphics API, region, frames per second and whether the DSP microcode runs recompiled (`NATIVE`) or on the interpreter (`INTERP`) with its share of the CPU thread; its texts are in `src/ui_text.cpp`, ready for other languages.
+- **Window:** 16:9 when the virtual Wii is set to widescreen (the default, as in Dolphin), 4:3 otherwise; native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain. The title bar shows the game, graphics API, region, frames per second and whether the DSP microcode runs recompiled (`NATIVE`) or on the interpreter (`INTERP`) with its share of the CPU thread; its texts are in `engine/src/platform/ui_text.cpp`, ready for other languages.
 - **Diagnostics:** `WP_DSP_VERIFY` (replays every recompiled DSP run on Dolphin's interpreter and compares, with a coverage count), `WP_DSP_SELFTEST=N` (runs every instruction of the recompiled microcode from N random states against the interpreter and exits), `WP_DUMP_AUDIO` / `WP_DUMP_OUTPUT` (WAV of the emulated audio / of what goes to the speakers), `WP_LOG_FILE` (timestamped log of fps, slow frames, audio, disc reads, modules and IOS opens), `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_RECONNECT_ON_POINTER` (0 stops mouse movement from waking a disconnected Wii Remote), `WP_VIRTUAL_GAMEPADS=N` (N virtual SDL gamepads that press the bottom button every 3 s, logging rumble and player lights) and `WP_VIRTUAL_GAMEPADS_UNTIL=ms` (unplugs them at that time), `WP_COPY_FILTER=0` (turns off the vertical anti-flicker filter the game programs for its copies, for a sharper picture; on by default, as on a Wii), `WP_POLL_INTERVAL` (loop back-edges between interrupt and audio checks, 1024 by default), `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, F12 in the game window (saves every GPU draw of the next frame, with the registers it changes and its first vertices, to `captures/gx_capture_NNN.txt` plus the frame as `gx_capture_NNN.png`, every EFB copy to a texture as `gx_capture_NNN_copyK.png` with the EFB just before it as `gx_capture_NNN_copyK_efb.png`, and where each texture of the frame came from (an EFB copy or RAM) in `gx_capture_NNN_textures.txt`; `WP_CAPTURE_AT=seconds,...` does the same at those times), a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
 
 ### Controls
@@ -74,6 +74,25 @@ Gamepads: the first gamepad adds to the keyboard and mouse as Wii Remote 1, and 
 
 Progress notes and the list of goals are in `docs/DECOMP_PROGRESS.md`; planned features are in `docs/FEATURES_QOL.md`.
 
+## Repository layout
+
+The project is split into a reusable Wii engine and one folder per game, so other Wii games can be recompiled with the same tools.
+
+| Folder | Contents |
+| --- | --- |
+| `engine/` | The Wii engine in C++, shared by every game: `src/core` (CPU runtime, threads, interrupts, modules, boot), `src/gpu` (GX), `src/audio` (DSP and audio output), `src/ios` (IPC, IOS, NAND, disc), `src/input` (Bluetooth, Wii Remote, keyboard, gamepads), `src/platform` (window and text), `src/app` (the program entry point), `include/wp` (headers) and `res` (Dolphin's free DSP ROMs). |
+| `recompiler/` | The PowerPC and DSP recompilers in Python, shared by every game: `ppc` (decoder and C++ emitter), `dsp` (DSP microcode), the DOL and REL readers, and `game.py`, which reads a game's `game.toml` and gives every tool its paths. |
+| `games/wiiparty/` | Everything specific to Wii Party: `game.toml` (name, ID, SDK addresses), `game.cpp` (window title, default folders, minigames played sideways), `analysis/` (function lists, symbols, replaced functions, DSP microcode list, progress), `res/` (icon) and `CMakeLists.txt` (the executable). Local, ignored by Git: `disc/` (your dump), `extracted/` (the extracted disc) and `nand/` (settings and saves). |
+| `tools/` | Development utilities: SDL3 download, icon, progress badge, Ghidra import and decompilation, Dolphin GDB client. |
+| `tests/` | `engine/` (runtime tests), `recompiler/` (PowerPC decoder and emitter tests), `wiiparty/` (tests on the recompiled game code). |
+| `third_party/` | Code from other projects, kept apart with its licences (see `THIRD_PARTY_NOTICES.md`). |
+| `ghidra/scripts/` | Ghidra scripts. |
+| `docs/` | Progress notes (`DECOMP_PROGRESS.md`), planned features (`FEATURES_QOL.md`) and the progress badge. |
+| `build/` | Generated, ignored by Git: `deps/` (SDL3), `out/` (compiled program and tests) and `<game>/` (unpacked modules, symbols and the generated C++ in `generated/dol`, `generated/modules/<module>` and `generated/dsp`). |
+| `captures/` | F12 captures, ignored by Git. |
+
+To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `analysis/`, `res/` and `CMakeLists.txt`, then run the tools with `WP_GAME=<name>` and configure CMake with `-DWP_GAME=<name>`.
+
 ## Setup
 
 Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (for `nodtool`), Python 3, JDK 21+, [Ghidra](https://github.com/NationalSecurityAgency/ghidra/releases) 12.x unpacked into `ghidra/install/` and the Ghidra GameCube Loader extension (Apache-2.0, provides the `Gekko_Broadway` processor with paired singles) installed in Ghidra.
@@ -84,39 +103,39 @@ Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (f
    cargo install nodtool
    ```
 
-2. Put your own dump of Wii Party in `game/` (ISO, WBFS, RVZ or CISO; e.g. `game/wiiparty.rvz`).
+2. Put your own dump of Wii Party in `games/wiiparty/disc/` (ISO, WBFS, RVZ or CISO; e.g. `games/wiiparty/disc/wiiparty.rvz`).
 3. Extract it:
 
    ```
-   nodtool extract game/wiiparty.rvz extracted
+   nodtool extract games/wiiparty/disc/wiiparty.rvz games/wiiparty/extracted
    ```
 
-   The recompiler inputs are `extracted/sys/main.dol` and the LZ11-compressed modules in `extracted/files/rel/*.rel.lz`; assets live in the rest of `extracted/files/`.
+   The recompiler inputs are `games/wiiparty/extracted/sys/main.dol` and the LZ11-compressed modules in `games/wiiparty/extracted/files/rel/*.rel.lz`; assets live in the rest of `games/wiiparty/extracted/files/`.
 
 4. Unpack the REL modules and import the DOL into Ghidra. Optionally, name the functions first: in Dolphin, run the game, use Symbols > Generate Symbols From > Signature Database, then save the symbol map as `reference/symbols/SUPP01.map`.
 
    ```
-   python tools/unpack_rels.py
-   python tools/import_map.py
+   python recompiler/unpack_rels.py
+   python recompiler/import_map.py
    python tools/ghidra_import.py
    ```
 
-   Unpacked modules go to `build/rel/`, the converted symbol names to `build/dolphin_symbols.csv` and the Ghidra project to `ghidra/projects/`. The symbol map stays local and is never committed.
+   Unpacked modules go to `build/wiiparty/rel/`, the converted symbol names to `build/wiiparty/symbols/dolphin_symbols.csv` and the Ghidra project to `ghidra/projects/`. The symbol map stays local and is never committed.
 
 5. Generate the C++ from the DOL, build it and run the tests:
 
    ```
    python tools/fetch_sdl.py
-   python tools/recomp.py
-   python tools/dsp/recomp_dsp.py
+   python recompiler/recomp.py
+   python recompiler/dsp/recomp_dsp.py
    cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
    cmake --build build/out
    ctest --test-dir build/out
    ```
 
-   `tools/fetch_sdl.py` downloads the SDL3 3.4.16 development files (checked by SHA-256) into `build/deps/` for gamepad support; without them the build still works, with keyboard and mouse only, and with them `SDL3.dll` is copied next to the executable. `tools/recomp.py` reads `analysis/dol_functions.csv` and writes the generated sources to `build/recomp/`. `tools/dsp/recomp_dsp.py` extracts the audio DSP microcode listed in `analysis/dsp_ucode.csv` from the DOL and translates it to C++ in `build/dsp_recomp/`; without it the DSP runs on the interpreter. Game modules are translated separately with `python tools/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/rel_code/`; run `tools/recomp.py` again afterwards so the DOL provides every function the modules call.
+   `tools/fetch_sdl.py` downloads the SDL3 3.4.16 development files (checked by SHA-256) into `build/deps/` for gamepad support; without them the build still works, with keyboard and mouse only, and with them `SDL3.dll` is copied next to the executable. `recompiler/recomp.py` reads `games/wiiparty/analysis/dol_functions.csv` and writes the generated sources to `build/wiiparty/generated/dol/`. `recompiler/dsp/recomp_dsp.py` extracts the audio DSP microcode listed in `games/wiiparty/analysis/dsp_ucode.csv` from the DOL and translates it to C++ in `build/wiiparty/generated/dsp/`; without it the DSP runs on the interpreter. Game modules are translated separately with `python recompiler/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/wiiparty/generated/modules/`; run `recompiler/recomp.py` again afterwards so the DOL provides every function the modules call.
 
-   Run the result with `build/out/wiiparty extracted [seconds] [nand directory]`. It opens a window that shows the console framebuffer; `seconds` is an optional watchdog that stops the process after that long (0 or omitted means no limit) and `WP_HEADLESS=1` runs without a window. The virtual NAND (settings and saves) lives in `game/nand`.
+   Run the result with `build/out/wiiparty` from the repository folder; optional arguments are `[extracted disc folder] [seconds] [nand folder]`, by default `games/wiiparty/extracted`, no limit and `games/wiiparty/nand`. It opens a window that shows the console framebuffer; `seconds` is an optional watchdog that stops the process after that long (0 or omitted means no limit) and `WP_HEADLESS=1` runs without a window. The virtual NAND (settings and saves) lives in `games/wiiparty/nand`.
 
 6. Optional, to drive Ghidra from an MCP client: create the virtual environment and install the bridge.
 
@@ -133,9 +152,9 @@ Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (f
    python tools/dolphin_gdb.py --launch "break 80069ee0" "continue 40" "regs pc lr r1 r3" "mem 80000000 32"
    ```
 
-   Commands are `regs`, `mem`, `u32`, `write`, `break`, `unbreak`, `watch`, `rwatch`, `awatch`, `step`, `continue`, `halt`, `raw` and `sleep`. Dolphin accepts one client per boot, so each call starts a fresh emulator (`--launch`; `--keep` leaves it running). It expects `reference/dolphin/Dolphin.exe` and `game/wiiparty.rvz` unless `--dolphin` and `--game` are given.
+   Commands are `regs`, `mem`, `u32`, `write`, `break`, `unbreak`, `watch`, `rwatch`, `awatch`, `step`, `continue`, `halt`, `raw` and `sleep`. Dolphin accepts one client per boot, so each call starts a fresh emulator (`--launch`; `--keep` leaves it running). It expects `reference/dolphin/Dolphin.exe` and `games/wiiparty/disc/wiiparty.rvz` unless `--dolphin` and `--game` are given.
 
-`game/`, `extracted/` and `reference/` (optional local material such as an emulator and RAM dumps of your own copy) are ignored by Git and must never be committed.
+`games/wiiparty/disc/`, `games/wiiparty/extracted/`, `games/wiiparty/nand/` and `reference/` (optional local material such as an emulator and RAM dumps of your own copy) are ignored by Git and must never be committed.
 
 ## Legal notice
 

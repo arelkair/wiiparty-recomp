@@ -35,7 +35,7 @@ Requirements:
 Goal: allow custom higher-resolution textures.
 
 Requirements:
-- Create a resource replacement path inside `extracted/`.
+- Create a resource replacement path inside `games/wiiparty/extracted/`.
 - Look for a custom version of the resource on the PC file system first.
 - Use the HD texture instead of the original `.brtex` resource when it exists.
 - Fall back to the original resource.

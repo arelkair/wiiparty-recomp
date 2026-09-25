@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "wp/game.h"
 #include "wp/gamepad.h"
 #include "wp/modules.h"
 #include "wp/video.h"
@@ -32,12 +33,6 @@ constexpr Binding kBindings[] = {
     {VK_ADD, kButtonPlus},    {VK_OEM_MINUS, kButtonMinus}, {VK_SUBTRACT, kButtonMinus}, {'H', kButtonHome},
     {VK_MBUTTON, kMotionShake}, {VK_LSHIFT, kMotionShake}, {'T', kMotionSwingUp},        {'G', kMotionSwingDown},
     {'Q', kMotionTiltLeft},   {'E', kMotionTiltRight},  {'R', kMotionTiltUp},          {'F', kMotionTiltDown},
-};
-
-constexpr const char* kSidewaysMinigames[] = {
-    "mg102", "mg104", "mg108", "mg109", "mg202", "mg210", "mg212", "mg213", "mg218", "mg221", "mg222", "mg223", "mg224",
-    "mg302", "mg404", "mg407", "mg412", "mg415", "mg422", "mg428", "mg430", "mg431", "mg432", "mg433", "mg436", "mg437",
-    "mg438", "mg440", "mg441", "mg445", "mg446", "mg503", "mg504", "mg505", "mg507", "mg508", "mg509",
 };
 
 constexpr auto kWheelSwing = std::chrono::milliseconds(120);
@@ -62,8 +57,9 @@ bool sideways_minigame() {
     if (now >= next) {
         next = now + 100;
         cached = false;
-        for (const char* name : kSidewaysMinigames) {
-            if (module_loaded(name)) {
+        const game::Description& game = game::description();
+        for (size_t i = 0; i < game.sideways_module_count; i++) {
+            if (module_loaded(game.sideways_modules[i])) {
                 cached = true;
                 break;
             }

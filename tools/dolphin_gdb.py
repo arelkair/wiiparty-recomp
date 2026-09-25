@@ -7,8 +7,13 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "recompiler"))
+
+import game
+
+GAME = game.load()
 DEFAULT_DOLPHIN = ROOT / "reference" / "dolphin" / "Dolphin.exe"
-DEFAULT_GAME = ROOT / "game" / "wiiparty.rvz"
+DEFAULT_GAME = GAME.disc
 SPECIAL_REGISTERS = {"pc": 0x40, "msr": 0x41, "cr": 0x42, "lr": 0x43, "ctr": 0x44, "xer": 0x45}
 FIRST_FPR = 0x20
 

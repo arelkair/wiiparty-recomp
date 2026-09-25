@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "wp/dsp.h"
+#include "wp/game.h"
 #include "wp/gx.h"
 #include "wp/gx_render.h"
 #include "wp/input.h"
@@ -31,7 +32,7 @@ constexpr uint32_t kGameCodeLength = 6;
 constexpr int kWindowWidth = 1280;
 constexpr double kStandardAspect = 4.0 / 3.0;
 constexpr double kWideAspect = 16.0 / 9.0;
-constexpr const char* kWindowClass = "WiiPartyRecomp";
+constexpr const char* kWindowClass = "WiiRecompWindow";
 constexpr UINT kTitleMessage = WM_APP + 1;
 
 std::atomic<HWND> g_window{nullptr};
@@ -122,7 +123,7 @@ std::string window_title(double fps) {
     } else {
         std::snprintf(statistics, sizeof statistics, "%s: %.0f | %s: %s", text.fps, fps, text.dsp, text.dsp_stopped);
     }
-    return std::string("Wii Party (") + game_code() + ") | " + gx::render::api_name() + " | " + (pal ? "PAL" : "NTSC") + " | " +
+    return std::string(game::description().title) + " (" + game_code() + ") | " + gx::render::api_name() + " | " + (pal ? "PAL" : "NTSC") + " | " +
            statistics;
 }
 

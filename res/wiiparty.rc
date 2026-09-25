@@ -1,3 +1,0 @@
-1 ICON "wiiparty.ico"
-2 RCDATA "../third_party/dolphin/Data/Sys/GC/dsp_rom.bin"
-3 RCDATA "../third_party/dolphin/Data/Sys/GC/dsp_coef.bin"

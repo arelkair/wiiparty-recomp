@@ -1,5 +1,6 @@
-/game/
-/extracted/
+/games/*/disc/
+/games/*/extracted/
+/games/*/nand/
 /reference/
 *.iso
 *.wbfs

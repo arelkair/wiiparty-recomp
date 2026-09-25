@@ -1,0 +1,5 @@
+add_executable(runtime_tests engine/runtime_tests.cpp engine/test_game.cpp)
+target_link_libraries(runtime_tests PRIVATE wp_engine)
+target_compile_options(runtime_tests PRIVATE -Wall -Wextra)
+add_test(NAME runtime_tests COMMAND runtime_tests)
+add_test(NAME ppc_tests COMMAND python -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/recompiler")

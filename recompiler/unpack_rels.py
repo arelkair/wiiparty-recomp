@@ -1,11 +1,12 @@
 import sys
 from pathlib import Path
 
+import game
 import lz11
 
-ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "extracted" / "files" / "rel"
-TARGET = ROOT / "build" / "rel"
+GAME = game.load()
+SOURCE = GAME.compressed_modules
+TARGET = GAME.modules
 
 
 def main():

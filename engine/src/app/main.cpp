@@ -10,6 +10,7 @@
 #include "wp/cpu.h"
 #include "wp/disc.h"
 #include "wp/dol.h"
+#include "wp/game.h"
 #include "wp/nand.h"
 #include "wp/ipc.h"
 #include "wp/threads.h"
@@ -38,7 +39,7 @@ LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
 
 int main(int argc, char** argv) {
     SetUnhandledExceptionFilter(report_crash);
-    std::string extracted = argc > 1 ? argv[1] : "extracted";
+    std::string extracted = argc > 1 ? argv[1] : wp::game::description().data_directory;
     int timeout_seconds = argc > 2 ? std::atoi(argv[2]) : 0;
 
     wp::g_memory = static_cast<uint8_t*>(std::calloc(wp::kMemorySize, 1));
@@ -56,7 +57,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::string nand_root = argc > 3 ? argv[3] : "game/nand";
+    std::string nand_root = argc > 3 ? argv[3] : wp::game::description().nand_directory;
     if (!wp::nand::mount(nand_root)) {
         std::fprintf(stderr, "cannot prepare the virtual NAND in %s\n", nand_root.c_str());
         return 1;

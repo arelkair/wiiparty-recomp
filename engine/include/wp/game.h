@@ -1,0 +1,17 @@
+#pragma once
+
+#include <cstddef>
+
+namespace wp::game {
+
+struct Description {
+    const char* title;
+    const char* data_directory;
+    const char* nand_directory;
+    const char* const* sideways_modules;
+    size_t sideways_module_count;
+};
+
+const Description& description();
+
+}

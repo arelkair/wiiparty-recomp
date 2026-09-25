@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import dol as dol_module
+import game
 from ppc import cfg
 from ppc.decoder import Instr
 from ppc.emit import Emitter, function_name, label, u32
@@ -192,13 +193,14 @@ def write_sources(output, chunks, entries, names):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dol", default=str(ROOT / "extracted" / "sys" / "main.dol"))
-    parser.add_argument("--functions", default=str(ROOT / "analysis" / "dol_functions.csv"))
-    parser.add_argument("--symbols", default=str(ROOT / "analysis" / "symbols.csv"))
-    parser.add_argument("--dolphin-symbols", default=str(ROOT / "build" / "dolphin_symbols.csv"))
-    parser.add_argument("--module-targets", default=str(ROOT / "build" / "rel_dol_targets.csv"))
-    parser.add_argument("--replacements", default=str(ROOT / "analysis" / "hle_functions.csv"))
-    parser.add_argument("--output", default=str(ROOT / "build" / "recomp"))
+    current = game.load()
+    parser.add_argument("--dol", default=str(current.dol))
+    parser.add_argument("--functions", default=str(current.analysis / "dol_functions.csv"))
+    parser.add_argument("--symbols", default=str(current.analysis / "symbols.csv"))
+    parser.add_argument("--dolphin-symbols", default=str(current.dolphin_symbols))
+    parser.add_argument("--module-targets", default=str(current.module_targets))
+    parser.add_argument("--replacements", default=str(current.analysis / "hle_functions.csv"))
+    parser.add_argument("--output", default=str(current.dol_code))
     args = parser.parse_args()
 
     dol = dol_module.load(args.dol)
