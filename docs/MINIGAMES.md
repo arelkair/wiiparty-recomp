@@ -41,9 +41,46 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Bebés llorones | Input | After switching windows at the end, clicks were no longer detected |
 | Como pez en el agua | OK | |
 | Mii a la carta | OK | |
-| Pirotecnia al azar | Pending | |
+| Pirotecnia al azar | OK | |
+| Ataque sobre raíles | OK | |
+| Domina las dominadas | OK | |
+| La distancia justa | OK | |
+| Rodeo al volante | OK | |
+| El vagón del destino | Pending | |
+
+## 1 vs 3
+
+| Minigame | Result | Notes |
+| --- | --- | --- |
+| Tensión en la piscina | OK | |
+| Pequeño saltamontes | OK | |
+| Frutas voladoras | OK | |
+| Clase de aeróbic | OK | |
+| El escondite | OK | |
+
+## 1 vs 1
+
+| Minigame | Result | Notes |
+| --- | --- | --- |
+| Viajeros al tren | OK | |
+| Sintonízate | OK | |
+| ¡A por la bandera! | OK | |
+| ¡Árbol va! | OK | |
+| Bote a bote | Graphics | The Miis had a different facial expression during play |
+| Laberinto inclinable | OK | |
+| Pizza a domicilio | OK | |
+| Tiradores de élite | OK | |
+| Memoria frutal | OK | |
+| De vuelta al redil | OK | |
+| Ases del aire | OK | |
+
+## Pair games
+
+Pending.
 
 ## Other observations
+
+- Moving the game window feels laggy.
 
 - Some menu sounds may not match the original: in the Free Play 4-player minigame list, the + and - buttons seem to play the same click as many other buttons (such as Start). Not yet compared with Dolphin.
 - Mii faces: some female guest Miis look masculine. Abby, described by Mii wikis as blonde with blue eyes and slim eyebrows, showed brown hair and marked eyebrows in the Mii selection. Not yet compared with Dolphin.
