@@ -3,9 +3,13 @@
 #include <QTimer>
 #include <QFile>
 #include <QIcon>
+#include <QDir>
 #include <QMessageBox>
+#include <QSettings>
+#include <QStandardPaths>
 
 #include "main_window.h"
+#include "payload.h"
 #include "options.h"
 #include "project.h"
 #include "settings_file.h"
@@ -23,8 +27,15 @@ int main(int argc, char** argv) {
     }
     Project project = Project::locate("wiiparty");
     if (!project.valid()) {
-        QMessageBox::critical(nullptr, "Wii Party Recomp", texts().project_missing);
-        return 1;
+        if (!payload_available()) {
+            QMessageBox::critical(nullptr, "Wii Party Recomp", texts().project_missing);
+            return 1;
+        }
+        QString root = QSettings().value("root").toString();
+        if (root.isEmpty()) {
+            root = QDir(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)).filePath(kInstallFolderName);
+        }
+        project = Project::at(root, "wiiparty");
     }
     QCommandLineParser parser;
     QCommandLineOption screenshot("screenshot", "Save a picture of each page and quit.", "prefix");

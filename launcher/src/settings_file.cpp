@@ -1,6 +1,8 @@
 #include "settings_file.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSaveFile>
 #include <QTextStream>
 
@@ -42,6 +44,7 @@ void SettingsFile::load() {
 }
 
 void SettingsFile::save() const {
+    QDir().mkpath(QFileInfo(path_).absolutePath());
     QSaveFile file(path_);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return;

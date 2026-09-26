@@ -48,6 +48,25 @@ Project Project::locate(const QString& game) {
     return project;
 }
 
+Project Project::at(const QString& root, const QString& game) {
+    Project project;
+    project.game_ = game;
+    project.root_ = QDir(root).absolutePath();
+    project.packaged_ = true;
+    project.title_ = read_title(project.game_folder() + "/game.toml");
+    if (project.title_.isEmpty()) {
+        project.title_ = read_title(":/source/games/" + game + "/game.toml");
+    }
+    if (project.title_.isEmpty()) {
+        project.title_ = game;
+    }
+    return project;
+}
+
+bool Project::packaged() const {
+    return packaged_;
+}
+
 bool Project::valid() const {
     return !root_.isEmpty();
 }

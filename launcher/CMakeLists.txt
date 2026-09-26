@@ -32,9 +32,13 @@ if(WIN32)
     list(APPEND LAUNCHER_SOURCES res/launcher.rc)
 endif()
 
+include(cmake/payload.cmake)
+list(APPEND LAUNCHER_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/payload.qrc" src/payload.cpp src/licenses.cpp)
+
 qt_add_executable(launcher WIN32 ${LAUNCHER_SOURCES})
 set_target_properties(launcher PROPERTIES OUTPUT_NAME wiipartyrecomp-launcher)
 target_include_directories(launcher PRIVATE ../engine/include)
+target_compile_definitions(launcher PRIVATE WP_SOURCE_REVISION="${WP_SOURCE_REVISION}")
 target_compile_options(launcher PRIVATE -Wall -Wextra)
 target_link_libraries(launcher PRIVATE Qt6::Widgets)
 

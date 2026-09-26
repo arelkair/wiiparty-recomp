@@ -5,8 +5,10 @@
 class Project {
 public:
     static Project locate(const QString& game);
+    static Project at(const QString& root, const QString& game);
 
     bool valid() const;
+    bool packaged() const;
     QString root() const;
     QString game() const;
     QString title() const;
@@ -23,4 +25,5 @@ private:
     QString root_;
     QString game_;
     QString title_;
+    bool packaged_ = false;
 };

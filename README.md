@@ -121,6 +121,8 @@ Run `build/launcher/wiipartyrecomp-launcher`. `--install` installs without inter
 
 For a single executable with no DLLs (as in the releases), configure with the MSYS2 `mingw-w64-x86_64-qt6-static` package: `cmake -S launcher -B build/launcher-static -G Ninja -DCMAKE_BUILD_TYPE=Release -DWP_STATIC_QT=ON -DCMAKE_PREFIX_PATH=C:/msys64/mingw64/qt6-static`. It links Qt, FreeType, HarfBuzz and their dependencies statically and keeps only the `.ico` image plugin.
 
+Every launcher build embeds the files a game build needs (the Git-tracked `CMakeLists.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `engine/`, `recompiler/`, `games/wiiparty/`, `third_party/`, `tests/` and `tools/fetch_sdl.py`, listed by `launcher/cmake/payload.cmake`) and the licenses of the libraries it links. Started outside a checkout, the launcher uses an install folder the player chooses (`%LOCALAPPDATA%\WiiPartyRecomp` by default), writes those files there on Install (again only when the launcher's revision changes) and builds there. The Licenses page shows every license. So a release is the single `wiipartyrecomp-launcher.exe`.
+
 ## Settings
 
 Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, created with the defaults on the first start (ignored by Git). The recompiled game code does not read it; only the engine's PC layer does, so a launcher can edit the file. An environment variable, where listed, overrides the file. The options menu (F10) edits the same file while the game runs.

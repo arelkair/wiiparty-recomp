@@ -38,6 +38,7 @@ private:
     QWidget* make_controls_page();
     void refresh();
     void choose_disc();
+    void choose_folder();
     void install();
     void set_step_state(int index, const QString& state);
     void append_log(const QString& text);
@@ -59,6 +60,8 @@ private:
     QPushButton* install_button_ = nullptr;
     QPushButton* cancel_button_ = nullptr;
     QString disc_;
+    QWidget* folder_widget_ = nullptr;
+    QPushButton* folder_button_ = nullptr;
     QVBoxLayout* backup_rows_ = nullptr;
     QLabel* saves_result_ = nullptr;
     QList<QPair<Option, KeyCaptureButton*>> bindings_;

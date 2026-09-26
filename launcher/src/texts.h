@@ -114,6 +114,16 @@ struct Texts {
     QString step_install;
     QString step_finish;
     QString hash_mismatch;
+    QString licenses;
+    QString licenses_heading;
+    QString licenses_intro;
+    QString license_project;
+    QString license_notices;
+    QString install_folder;
+    QString change_folder;
+    QString step_prepare;
+    QString extract_failed;
+    QString extracted_files;
     QString project_missing;
     QString start_failed;
     QString controls;

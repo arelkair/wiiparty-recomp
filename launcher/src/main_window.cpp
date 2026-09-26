@@ -35,6 +35,8 @@
 #include "wp/save_backup.h"
 
 #include "build_runner.h"
+#include "licenses.h"
+#include "payload.h"
 #include "key_capture.h"
 #include "options.h"
 #include "texts.h"
@@ -114,6 +116,7 @@ MainWindow::MainWindow(Project project, QWidget* parent)
     pages_->addWidget(make_settings_page());
     pages_->addWidget(make_saves_page());
     pages_->addWidget(make_controls_page());
+    pages_->addWidget(make_licenses_page(this));
     layout->addWidget(make_sidebar());
     layout->addWidget(pages_, 1);
     setCentralWidget(central);
@@ -127,6 +130,7 @@ MainWindow::MainWindow(Project project, QWidget* parent)
         result_->setText(success ? texts().build_finished : cancelled ? texts().build_cancelled : texts().build_failed);
         install_button_->setEnabled(true);
         choose_button_->setEnabled(true);
+        folder_button_->setEnabled(true);
         cancel_button_->setEnabled(false);
         refresh();
     });
@@ -148,8 +152,8 @@ QWidget* MainWindow::make_sidebar() {
     layout->addWidget(label("Recomp", "detail", sidebar));
     layout->addSpacing(24);
     auto* group = new QButtonGroup(sidebar);
-    const QString names[] = {texts().game, texts().settings, texts().saves, texts().controls};
-    for (int i = 0; i < 4; i++) {
+    const QString names[] = {texts().game, texts().settings, texts().saves, texts().controls, texts().licenses};
+    for (int i = 0; i < 5; i++) {
         auto* button = new QPushButton(names[i], sidebar);
         button->setObjectName("nav");
         button->setCheckable(true);
@@ -207,6 +211,20 @@ QWidget* MainWindow::make_install_panel() {
     layout->setSpacing(10);
     layout->addWidget(label(t.install_intro, "detail", panel));
     layout->addSpacing(6);
+    folder_widget_ = new QWidget(panel);
+    auto* folder_row = new QHBoxLayout(folder_widget_);
+    folder_row->setContentsMargins(0, 0, 0, 0);
+    auto* folder_text = new QVBoxLayout;
+    folder_text->setSpacing(2);
+    folder_text->addWidget(label(t.install_folder, "section", folder_widget_));
+    folder_text->addWidget(label(QDir::toNativeSeparators(project_.root()), "value", folder_widget_));
+    folder_row->addLayout(folder_text, 1);
+    folder_button_ = new QPushButton(t.change_folder, folder_widget_);
+    folder_button_->setCursor(Qt::PointingHandCursor);
+    connect(folder_button_, &QPushButton::clicked, this, &MainWindow::choose_folder);
+    folder_row->addWidget(folder_button_, 0, Qt::AlignBottom);
+    folder_widget_->setVisible(project_.packaged());
+    layout->addWidget(folder_widget_);
     auto* disc_row = new QHBoxLayout;
     auto* disc_text = new QVBoxLayout;
     disc_text->setSpacing(2);
@@ -541,7 +559,13 @@ void MainWindow::install() {
     QString python = toolchain_.python();
     Project project = project_;
     QString extracted = QDir(project_.root()).relativeFilePath(project_.extracted_folder());
-    QList<BuildStep> steps = toolchain_.preparation(tools);
+    QDir().mkpath(project_.root());
+    QList<BuildStep> steps;
+    if (project_.packaged()) {
+        QString root = project_.root();
+        steps << BuildStep{t.step_prepare, {}, {}, {}, [root](QString& message) { return extract_payload(root, message); }};
+    }
+    steps += toolchain_.preparation(tools);
     steps += QList<BuildStep>{
         {t.step_extract, "nodtool", {"extract", disc_, extracted}, [project] { return project.extracted(); }, {}},
         {t.step_sdl, python, {"tools/fetch_sdl.py"}, {}, {}},
@@ -561,6 +585,7 @@ void MainWindow::install() {
     }
     install_button_->setEnabled(false);
     choose_button_->setEnabled(false);
+    folder_button_->setEnabled(false);
     cancel_button_->setEnabled(true);
     runner_->start(steps, toolchain_.environment());
 }
@@ -598,6 +623,20 @@ void MainWindow::save_pages(const QString& prefix) {
     grab().save(prefix + "controls.png");
     pages_->setCurrentIndex(0);
     refresh();
+}
+
+void MainWindow::choose_folder() {
+    QString start = QFileInfo(project_.root()).absolutePath();
+    QString folder = QFileDialog::getExistingDirectory(this, texts().change_folder, start);
+    if (folder.isEmpty()) {
+        return;
+    }
+    if (QFileInfo(folder).fileName() != kInstallFolderName) {
+        folder = QDir(folder).filePath(kInstallFolderName);
+    }
+    QSettings().setValue("root", folder);
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {});
+    QCoreApplication::quit();
 }
 
 void MainWindow::play() {
