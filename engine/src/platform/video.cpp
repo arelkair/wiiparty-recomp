@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -21,6 +22,7 @@
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
+#include "wp/screenshot.h"
 #include "wp/settings.h"
 #include "wp/ui_text.h"
 
@@ -38,6 +40,7 @@ constexpr const char* kWindowClass = "WiiRecompWindow";
 constexpr UINT kTitleMessage = WM_APP + 1;
 
 std::atomic<HWND> g_window{nullptr};
+std::atomic<bool> g_screenshot_requested{false};
 double g_aspect = kStandardAspect;
 std::mutex g_title_mutex;
 std::string g_title;
@@ -110,6 +113,33 @@ bool bound_key(WPARAM key) {
     }
 }
 
+int side_key(WPARAM key, LPARAM lparam) {
+    bool extended = (lparam & (1 << 24)) != 0;
+    switch (key) {
+    case VK_SHIFT:
+        return static_cast<int>(MapVirtualKeyA((lparam >> 16) & 0xFF, MAPVK_VSC_TO_VK_EX));
+    case VK_CONTROL:
+        return extended ? VK_RCONTROL : VK_LCONTROL;
+    case VK_MENU:
+        return extended ? VK_RMENU : VK_LMENU;
+    default:
+        return static_cast<int>(key);
+    }
+}
+
+void note_press(int code, int side = 0) {
+    const keymap::Bindings& keys = input::bindings();
+    if (keys.has(keymap::Action::Screenshot, code) || (side != 0 && keys.has(keymap::Action::Screenshot, side))) {
+        g_screenshot_requested = true;
+    }
+}
+
+void note_key(WPARAM key, LPARAM lparam) {
+    if (!(lparam & (1 << 30))) {
+        note_press(static_cast<int>(key), side_key(key, lparam));
+    }
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
     case WM_CLOSE:
@@ -134,22 +164,43 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             settings::store("video.fullscreen", g_fullscreen ? "1" : "0");
             return 0;
         }
+        note_key(wparam, lparam);
         return DefWindowProc(window, message, wparam, lparam);
     case WM_SYSKEYDOWN:
     case WM_SYSKEYUP:
+        if (message == WM_SYSKEYDOWN) {
+            note_key(wparam, lparam);
+        }
         if (wparam != VK_F4 && bound_key(wparam)) {
             return 0;
         }
         return DefWindowProc(window, message, wparam, lparam);
+    case WM_LBUTTONDOWN:
+        note_press(VK_LBUTTON);
+        return DefWindowProc(window, message, wparam, lparam);
+    case WM_RBUTTONDOWN:
+        note_press(VK_RBUTTON);
+        return DefWindowProc(window, message, wparam, lparam);
+    case WM_MBUTTONDOWN:
+        note_press(VK_MBUTTON);
+        return DefWindowProc(window, message, wparam, lparam);
+    case WM_XBUTTONDOWN:
+        note_press(GET_XBUTTON_WPARAM(wparam) == XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2);
+        return TRUE;
     case WM_SETCURSOR:
         if (LOWORD(lparam) == HTCLIENT && hide_cursor()) {
             SetCursor(nullptr);
             return TRUE;
         }
         return DefWindowProc(window, message, wparam, lparam);
-    case WM_MOUSEWHEEL:
-        input::note_wheel(GET_WHEEL_DELTA_WPARAM(wparam));
+    case WM_MOUSEWHEEL: {
+        int delta = GET_WHEEL_DELTA_WPARAM(wparam);
+        input::note_wheel(delta);
+        if (delta != 0) {
+            note_press(delta > 0 ? keymap::kWheelUp : keymap::kWheelDown);
+        }
         return 0;
+    }
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT: {
@@ -282,9 +333,67 @@ void update_statistics(double fps) {
 
 std::string g_next_frame_path;
 
+namespace {
+
+std::tm local_time() {
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    std::tm time{};
+    time.tm_year = now.wYear - 1900;
+    time.tm_mon = now.wMonth - 1;
+    time.tm_mday = now.wDay;
+    time.tm_hour = now.wHour;
+    time.tm_min = now.wMinute;
+    time.tm_sec = now.wSecond;
+    return time;
+}
+
+void save_screenshot() {
+    std::vector<uint32_t> pixels;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (!gx::render::read_frame(pixels, width, height)) {
+        return;
+    }
+    CreateDirectoryA(screenshot::kFolder, nullptr);
+    std::tm time = local_time();
+    std::string path;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    for (int attempt = 1; attempt < 1000 && file == INVALID_HANDLE_VALUE; attempt++) {
+        path = std::string(screenshot::kFolder) + "/" + screenshot::file_name(game::description().short_name, time, attempt);
+        file = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS) {
+            break;
+        }
+    }
+    if (file == INVALID_HANDLE_VALUE) {
+        std::fprintf(stderr, "screenshot could not be saved to %s", path.c_str());
+        std::fputc(10, stderr);
+        log::write("video", "screenshot could not be saved to %s", path.c_str());
+        return;
+    }
+    std::thread([file, path, pixels = std::move(pixels), width, height] {
+        std::vector<uint8_t> png = encode_png(pixels, width, height);
+        DWORD written = 0;
+        bool ok = WriteFile(file, png.data(), static_cast<DWORD>(png.size()), &written, nullptr) && written == png.size();
+        CloseHandle(file);
+        if (!ok) {
+            DeleteFileA(path.c_str());
+        }
+        std::fprintf(stderr, ok ? "screenshot saved to %s" : "screenshot could not be written to %s", path.c_str());
+        std::fputc(10, stderr);
+        log::write("video", ok ? "screenshot saved to %s" : "screenshot could not be written to %s", path.c_str());
+    }).detach();
+}
+
+}
+
 void present_on_gpu(HWND window, double aspect) {
     if (window) {
         gx::render::present_frame(window, aspect);
+    }
+    if (g_screenshot_requested.exchange(false)) {
+        save_screenshot();
     }
     if (!g_next_frame_path.empty()) {
         std::vector<uint32_t> pixels;
@@ -309,8 +418,9 @@ void present_on_gpu(HWND window, double aspect) {
     }
 }
 
-void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
+std::vector<uint8_t> encode_png(const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
     std::vector<uint8_t> raw;
+    raw.reserve(static_cast<size_t>(width * 3 + 1) * height);
     for (uint32_t y = 0; y < height; y++) {
         raw.push_back(0);
         for (uint32_t x = 0; x < width; x++) {
@@ -346,6 +456,11 @@ void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t wi
     put_chunk(file, "IHDR", header);
     put_chunk(file, "IDAT", deflated);
     put_chunk(file, "IEND", {});
+    return file;
+}
+
+void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
+    std::vector<uint8_t> file = encode_png(pixels, width, height);
     std::FILE* handle = std::fopen(path, "wb");
     if (handle) {
         std::fwrite(file.data(), 1, file.size(), handle);

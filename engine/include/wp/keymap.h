@@ -31,6 +31,7 @@ enum class Action {
     TiltUp,
     TiltDown,
     Grip,
+    Screenshot,
     Count,
 };
 

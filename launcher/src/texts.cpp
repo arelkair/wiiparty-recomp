@@ -14,7 +14,7 @@ Texts english() {
     t.status_not_built = "The game has not been built yet. Build it from your own copy of the disc first.";
     t.status_no_disc = "No extracted disc was found. Choose your copy of Wii Party on the Build page.";
     t.play_button = "Play";
-    t.play_hint = "F11 switches full screen while playing. F12 saves a capture of the frame.";
+    t.play_hint = "F11 switches full screen while playing. F10 saves a screenshot in the screenshots folder. F12 saves a capture of the frame for debugging.";
     t.build_heading = "Build";
     t.build_intro = "Translates the game from your own copy of the disc into a native program. Nothing is downloaded from the game, and nothing leaves your computer. The first build takes about 15 minutes on a 6-core processor.";
     t.tools = "Tools";
@@ -120,6 +120,7 @@ Texts english() {
         {"tilt_up", "Tilt up"},
         {"tilt_down", "Tilt down"},
         {"grip", "Swap upright and sideways grip"},
+        {"screenshot", "Screenshot"},
     };
     t.action_details = {
         {"up", "Left on screen when the remote is held sideways."},
@@ -128,6 +129,7 @@ Texts english() {
         {"right", "Up on screen when the remote is held sideways."},
         {"swing_up", "The mouse wheel gives a short swing."},
         {"swing_down", "The mouse wheel gives a short swing."},
+        {"screenshot", "Saves the picture of the game as PNG in the screenshots folder."},
     };
     return t;
 }
@@ -141,7 +143,7 @@ Texts spanish() {
     t.status_not_built = "El juego aún no está compilado. Compílalo primero a partir de tu propia copia del disco.";
     t.status_no_disc = "No se ha encontrado el disco extraído. Elige tu copia de Wii Party en la página Compilar.";
     t.play_button = "Jugar";
-    t.play_hint = "F11 cambia a pantalla completa durante la partida. F12 guarda una captura del fotograma.";
+    t.play_hint = "F11 cambia a pantalla completa durante la partida. F10 guarda una captura de pantalla en la carpeta screenshots. F12 guarda una captura del fotograma para depuración.";
     t.build_heading = "Compilar";
     t.build_intro = "Traduce el juego desde tu propia copia del disco a un programa nativo. No se descarga nada del juego y nada sale de tu ordenador. La primera compilación tarda unos 15 minutos con un procesador de 6 núcleos.";
     t.tools = "Herramientas";
@@ -246,6 +248,7 @@ Texts spanish() {
         {"tilt_up", "Inclinar hacia arriba"},
         {"tilt_down", "Inclinar hacia abajo"},
         {"grip", "Cambiar entre agarre vertical y horizontal"},
+        {"screenshot", "Captura de pantalla"},
     };
     t.action_details = {
         {"up", "Izquierda en pantalla con el mando en horizontal."},
@@ -254,6 +257,7 @@ Texts spanish() {
         {"right", "Arriba en pantalla con el mando en horizontal."},
         {"swing_up", "La rueda del ratón da un movimiento corto."},
         {"swing_down", "La rueda del ratón da un movimiento corto."},
+        {"screenshot", "Guarda la imagen del juego como PNG en la carpeta screenshots."},
     };
     return t;
 }

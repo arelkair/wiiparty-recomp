@@ -1,9 +1,12 @@
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <map>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "wp/cpu.h"
 #include "wp/function_table.h"
@@ -11,7 +14,9 @@
 #include "wp/ios.h"
 #include "wp/keymap.h"
 #include "wp/modules.h"
+#include "wp/screenshot.h"
 #include "wp/settings.h"
+#include "wp/video.h"
 
 namespace wp {
 const FunctionEntry g_function_table[1] = {};
@@ -291,6 +296,9 @@ void test_key_defaults() {
     CHECK(format(keys.of(Action::SwingUp)) == "WheelUp,T");
     CHECK(format(keys.of(Action::SwingDown)) == "WheelDown,G");
     CHECK(format(keys.of(Action::Grip)) == "Tab");
+    CHECK(format(keys.of(Action::Screenshot)) == "F10");
+    CHECK(action(Action::Screenshot).buttons == 0);
+    CHECK(setting_key(static_cast<size_t>(Action::Screenshot)) == "keys.screenshot");
     CHECK(action(Action::A).buttons == wp::input::kButtonA);
     CHECK(action(Action::TiltDown).buttons == wp::input::kMotionTiltDown);
     CHECK(action(Action::Grip).buttons == 0);
@@ -353,6 +361,30 @@ void test_settings_file_keys() {
     std::remove(path);
 }
 
+void test_screenshot_names() {
+    std::tm time{};
+    time.tm_year = 2026 - 1900;
+    time.tm_mon = 8;
+    time.tm_mday = 6;
+    time.tm_hour = 9;
+    time.tm_min = 5;
+    time.tm_sec = 3;
+    CHECK(wp::screenshot::file_name("wiiparty", time, 1) == "wiiparty_2026-09-06_09-05-03.png");
+    CHECK(wp::screenshot::file_name("wiiparty", time, 2) == "wiiparty_2026-09-06_09-05-03_2.png");
+    CHECK(wp::screenshot::file_name("wiiparty", time, 13) == "wiiparty_2026-09-06_09-05-03_13.png");
+    time.tm_mon = 11;
+    time.tm_mday = 31;
+    time.tm_hour = 23;
+    time.tm_min = 59;
+    time.tm_sec = 59;
+    CHECK(wp::screenshot::file_name("game", time, 1) == "game_2026-12-31_23-59-59.png");
+    CHECK(std::string(wp::screenshot::kFolder) == "screenshots");
+    std::vector<uint8_t> png = wp::video::encode_png({0x00FF0000, 0x0000FF00, 0x000000FF, 0x00FFFFFF, 0, 0x00123456}, 3, 2);
+    const uint8_t signature[] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    CHECK(png.size() > 45 && std::equal(signature, signature + 8, png.begin()));
+    CHECK(png.size() > 24 && png[12] == 'I' && png[13] == 'H' && png[14] == 'D' && png[15] == 'R' && png[19] == 3 && png[23] == 2);
+}
+
 int main() {
     wp::g_memory = static_cast<uint8_t*>(std::calloc(wp::kMemorySize, 1));
     test_memory();
@@ -366,6 +398,7 @@ int main() {
     test_key_names();
     test_key_defaults();
     test_settings_file_keys();
+    test_screenshot_names();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");
