@@ -21,6 +21,7 @@ add_library(wp_engine STATIC
     src/input/wiimote.cpp
     src/input/input.cpp
     src/platform/video.cpp
+    src/platform/settings.cpp
     src/platform/ui_text.cpp
 )
 target_include_directories(wp_engine PUBLIC include)

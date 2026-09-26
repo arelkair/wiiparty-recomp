@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "wp/memory.h"
+#include "wp/settings.h"
 
 namespace wp::nand {
 
@@ -91,11 +92,10 @@ uint8_t console_language() {
     };
     static const Name kNames[] = {{"en", kLanguageEnglish}, {"de", kLanguageGerman}, {"fr", kLanguageFrench},
                                   {"es", kLanguageSpanish}, {"it", kLanguageItalian}, {"nl", kLanguageDutch}};
-    if (const char* setting = std::getenv("WP_LANGUAGE")) {
-        for (const Name& name : kNames) {
-            if (std::strcmp(setting, name.code) == 0) {
-                return name.language;
-            }
+    std::string setting = settings::text("system.language", "WP_LANGUAGE");
+    for (const Name& name : kNames) {
+        if (setting == name.code) {
+            return name.language;
         }
     }
     switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {

@@ -13,6 +13,7 @@
 #include "wp/game.h"
 #include "wp/nand.h"
 #include "wp/ipc.h"
+#include "wp/settings.h"
 #include "wp/threads.h"
 #include "wp/video.h"
 #include "wp/watch.h"
@@ -39,6 +40,7 @@ LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
 
 int main(int argc, char** argv) {
     SetUnhandledExceptionFilter(report_crash);
+    wp::settings::load(wp::game::description().settings_file);
     std::string extracted = argc > 1 ? argv[1] : wp::game::description().data_directory;
     int timeout_seconds = argc > 2 ? std::atoi(argv[2]) : 0;
 

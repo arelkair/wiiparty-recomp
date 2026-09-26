@@ -13,6 +13,7 @@
 
 #include "wp/input.h"
 #include "wp/log.h"
+#include "wp/settings.h"
 
 namespace wp::gamepad {
 
@@ -44,6 +45,7 @@ struct Snapshot {
     bool pointer_valid = false;
     float pointer_x = 0.0f;
     float pointer_y = 0.0f;
+    bool nintendo_layout = false;
 };
 
 struct Pad {
@@ -51,6 +53,7 @@ struct Pad {
     SDL_JoystickID id = 0;
     bool has_gyro = false;
     bool has_accel = false;
+    bool nintendo_layout = false;
     float pointer_x = 0.0f;
     float pointer_y = 0.0f;
     bool pointer_active = false;
@@ -72,10 +75,7 @@ std::array<std::atomic<int>, kSlots> g_player{};
 std::once_flag g_started;
 
 bool enabled() {
-    static const bool value = [] {
-        const char* setting = std::getenv("WP_GAMEPAD");
-        return !setting || std::atoi(setting) != 0;
-    }();
+    static const bool value = settings::flag("input.gamepads", "WP_GAMEPAD");
     return value;
 }
 
@@ -104,9 +104,10 @@ void open(std::array<Pad, kSlots>& pads, SDL_JoystickID id) {
         pad.has_gyro = SDL_GamepadHasSensor(handle, SDL_SENSOR_GYRO) && SDL_SetGamepadSensorEnabled(handle, SDL_SENSOR_GYRO, true);
         pad.has_accel = SDL_GamepadHasSensor(handle, SDL_SENSOR_ACCEL) && SDL_SetGamepadSensorEnabled(handle, SDL_SENSOR_ACCEL, true);
         pad.pointer_active = pad.has_gyro;
+        pad.nintendo_layout = SDL_GetGamepadButtonLabel(handle, SDL_GAMEPAD_BUTTON_SOUTH) == SDL_GAMEPAD_BUTTON_LABEL_B;
         const char* name = SDL_GetGamepadName(handle);
-        log::write("input", "gamepad %s connected as Wii Remote %u, gyroscope %s, accelerometer %s", name ? name : "?", static_cast<unsigned>(slot + 1),
-                   pad.has_gyro ? "yes" : "no", pad.has_accel ? "yes" : "no");
+        log::write("input", "gamepad %s connected as Wii Remote %u, gyroscope %s, accelerometer %s, %s layout", name ? name : "?", static_cast<unsigned>(slot + 1),
+                   pad.has_gyro ? "yes" : "no", pad.has_accel ? "yes" : "no", pad.nintendo_layout ? "Nintendo" : "Xbox");
         return;
     }
 }
@@ -163,6 +164,7 @@ Snapshot read(Pad& pad, float dt) {
     Snapshot snapshot;
     SDL_Gamepad* handle = pad.handle;
     snapshot.connected = true;
+    snapshot.nintendo_layout = pad.nintendo_layout;
     for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; i++) {
         snapshot.buttons[i] = SDL_GetGamepadButton(handle, static_cast<SDL_GamepadButton>(i));
     }
@@ -384,10 +386,12 @@ State poll(uint32_t slot, bool sideways) {
             b |= input::kButtonA;
         }
     } else {
-        if (held(SDL_GAMEPAD_BUTTON_SOUTH)) {
+        SDL_GamepadButton a_button = current.nintendo_layout ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH;
+        SDL_GamepadButton b_button = current.nintendo_layout ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST;
+        if (held(a_button)) {
             b |= input::kButtonA;
         }
-        if (held(SDL_GAMEPAD_BUTTON_EAST)) {
+        if (held(b_button)) {
             b |= input::kButtonB;
         }
         if (held(SDL_GAMEPAD_BUTTON_WEST)) {

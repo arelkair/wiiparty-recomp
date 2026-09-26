@@ -18,8 +18,9 @@
 #include "wp/gx_lighting.h"
 #include "wp/gx_render.h"
 #include "wp/log.h"
-#include "wp/profile.h"
 #include "wp/memory.h"
+#include "wp/profile.h"
+#include "wp/settings.h"
 #include "wp/video.h"
 
 namespace wp::gx {
@@ -867,10 +868,7 @@ render::CopyFilter copy_filter(uint32_t control) {
     filter.coefficients[0] = weights[0] + weights[1];
     filter.coefficients[1] = weights[2] + weights[3] + weights[4];
     filter.coefficients[2] = weights[5] + weights[6];
-    static const bool filter_enabled = [] {
-        const char* setting = std::getenv("WP_COPY_FILTER");
-        return !setting || std::atoi(setting) != 0;
-    }();
+    static const bool filter_enabled = settings::flag("video.copy_filter", "WP_COPY_FILTER");
     if (!filter_enabled) {
         filter.coefficients[1] += filter.coefficients[0] + filter.coefficients[2];
         filter.coefficients[0] = 0;

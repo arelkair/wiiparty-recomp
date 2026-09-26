@@ -16,6 +16,7 @@ constexpr Description kDescription = {
     "Wii Party",
     "games/wiiparty/extracted",
     "games/wiiparty/nand",
+    "games/wiiparty/settings.ini",
     kSidewaysModules,
     std::size(kSidewaysModules),
 };

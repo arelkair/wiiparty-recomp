@@ -20,6 +20,7 @@
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
+#include "wp/settings.h"
 #include "wp/ui_text.h"
 
 namespace wp::video {
@@ -65,6 +66,29 @@ void put_chunk(std::vector<uint8_t>& out, const char* type, const std::vector<ui
 }
 
 
+WINDOWPLACEMENT g_placement{};
+bool g_fullscreen = false;
+
+void set_fullscreen(HWND window, bool enable) {
+    LONG style = GetWindowLong(window, GWL_STYLE);
+    if (enable) {
+        MONITORINFO monitor{};
+        monitor.cbSize = sizeof(MONITORINFO);
+        g_placement.length = sizeof(WINDOWPLACEMENT);
+        if (!GetWindowPlacement(window, &g_placement) || !GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)) {
+            return;
+        }
+        SetWindowLong(window, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+        SetWindowPos(window, HWND_TOP, monitor.rcMonitor.left, monitor.rcMonitor.top, monitor.rcMonitor.right - monitor.rcMonitor.left,
+                     monitor.rcMonitor.bottom - monitor.rcMonitor.top, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    } else {
+        SetWindowLong(window, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(window, &g_placement);
+        SetWindowPos(window, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+    g_fullscreen = enable;
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
     case WM_CLOSE:
@@ -82,6 +106,11 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_KEYDOWN:
         if (wparam == VK_F12 && !(lparam & (1 << 30))) {
             gx::request_capture();
+            return 0;
+        }
+        if (wparam == VK_F11 && !(lparam & (1 << 30))) {
+            set_fullscreen(window, !g_fullscreen);
+            settings::store("video.fullscreen", g_fullscreen ? "1" : "0");
             return 0;
         }
         return DefWindowProc(window, message, wparam, lparam);
@@ -152,6 +181,9 @@ void window_thread() {
                                 CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr,
                                 window_class.hInstance, nullptr);
     g_window = window;
+    if (settings::flag("video.fullscreen", "WP_FULLSCREEN")) {
+        set_fullscreen(window, true);
+    }
     MSG message;
     while (GetMessage(&message, nullptr, 0, 0) > 0) {
         TranslateMessage(&message);

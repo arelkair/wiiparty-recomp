@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "wp/memory.h"
+#include "wp/settings.h"
 #include "wp/video.h"
 
 namespace wp::gx::render {
@@ -809,8 +810,7 @@ bool initialize() {
     if (g_device.failed) {
         return false;
     }
-    const char* scale_text = std::getenv("WP_SCALE");
-    g_scale = scale_text ? std::clamp(std::atoi(scale_text), 1, 6) : 1;
+    g_scale = std::clamp(settings::number("video.scale", "WP_SCALE"), 1, 6);
     D3D_FEATURE_LEVEL level;
     HRESULT result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &g_device.device, &level,
                                        &g_device.context);

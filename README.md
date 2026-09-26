@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 73% (estimate, see below).
+> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 74% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -26,7 +26,7 @@ The overall figure is the equal-weight average of the components below. They are
 | Input | 65% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons and as an accelerometer model (tilt, swing, shake) with the grip chosen per minigame; up to four gamepads (SDL3) as Wii Remotes 1-4 with gyroscope pointer, accelerometer, rumble and player lights, untested with a physical gamepad; no real Wii Remotes |
 | Audio | 83% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no stale audio blocks on busy board scenes or scene loads; windowed-sinc WASAPI output |
 | Game flow | 80% | A complete game of Board Game Island (17 rounds, final ranking, save) played by hand without faults; a first boot without a save works; 62 minigames played by hand in Free Play, 57 without faults seen (`docs/MINIGAMES.md`); pair games and the other modes not played through |
-| PC features | 15% | Native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; launcher, options menu, ultrawide and online not started |
+| PC features | 20% | A settings file for every PC option (read by a future launcher), borderless full screen with F11, native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; launcher, options menu, ultrawide and online not started |
 
 ### Working
 
@@ -56,7 +56,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys and the gamepad buttons always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
 
-Gamepads: the first gamepad adds to the keyboard and mouse as Wii Remote 1, and the second, third and fourth are Wii Remotes 2, 3 and 4. As on a Wii, a remote connects when one of its buttons is pressed, and unplugging the gamepad disconnects it. The gamepad vibrates when the game makes the Wii Remote rumble, and gamepads with player lights show the remote's number. The gyroscope recalibrates itself whenever the gamepad is held still for a second; R3 recenters the pointer. `WP_GAMEPAD=0` turns gamepads off.
+Face buttons follow the letters printed on the gamepad: on Nintendo-layout gamepads (A on the right, B at the bottom) the A button is the Wii Remote's A. Gamepads: the first gamepad adds to the keyboard and mouse as Wii Remote 1, and the second, third and fourth are Wii Remotes 2, 3 and 4. As on a Wii, a remote connects when one of its buttons is pressed, and unplugging the gamepad disconnects it. The gamepad vibrates when the game makes the Wii Remote rumble, and gamepads with player lights show the remote's number. The gyroscope recalibrates itself whenever the gamepad is held still for a second; R3 recenters the pointer. `WP_GAMEPAD=0` turns gamepads off.
 
 ### Known problems
 
@@ -92,6 +92,21 @@ The project is split into a reusable Wii engine and one folder per game, so othe
 | `captures/` | F12 captures, ignored by Git. |
 
 To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `analysis/`, `res/` and `CMakeLists.txt`, then run the tools with `WP_GAME=<name>` and configure CMake with `-DWP_GAME=<name>`.
+
+## Settings
+
+Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, created with the defaults on the first start (ignored by Git). The recompiled game code does not read it; only the engine's PC layer does, so a launcher can edit the file. An environment variable, where listed, overrides the file.
+
+| Setting | Default | Effect | Variable |
+| --- | --- | --- | --- |
+| `[video] scale` | `1` | Internal resolution multiplier, 1 to 6 | `WP_SCALE` |
+| `[video] fullscreen` | `0` | Borderless full screen; F11 toggles it and saves the choice | `WP_FULLSCREEN` |
+| `[video] copy_filter` | `1` | The anti-flicker filter the game programs for its EFB copies (0 gives a sharper picture) | `WP_COPY_FILTER` |
+| `[input] gamepads` | `1` | Gamepads as Wii Remotes | `WP_GAMEPAD` |
+| `[input] auto_grip` | `1` | Hold the emulated remote sideways in the minigames that ask for it | `WP_AUTO_ORIENTATION` |
+| `[input] wake_on_mouse` | `1` | Moving the mouse reconnects a remote the game disconnected for inactivity | `WP_RECONNECT_ON_POINTER` |
+| `[system] language` | `auto` | Console language: `auto` follows Windows, or `en`, `de`, `fr`, `es`, `it`, `nl` | `WP_LANGUAGE` |
+| `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
 
 ## Setup
 

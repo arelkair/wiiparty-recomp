@@ -14,6 +14,7 @@
 #include "wp/game.h"
 #include "wp/gamepad.h"
 #include "wp/modules.h"
+#include "wp/settings.h"
 #include "wp/video.h"
 
 namespace wp::input {
@@ -44,10 +45,7 @@ int64_t now_ms() {
 }
 
 bool sideways_minigame() {
-    static const bool automatic = [] {
-        const char* setting = std::getenv("WP_AUTO_ORIENTATION");
-        return !setting || std::atoi(setting) != 0;
-    }();
+    static const bool automatic = settings::flag("input.auto_grip", "WP_AUTO_ORIENTATION");
     if (!automatic) {
         return false;
     }
@@ -173,10 +171,7 @@ bool wakes_remote(uint32_t channel) {
     if ((current.buttons & ~kMotionSideways) != 0) {
         return true;
     }
-    static const bool pointer_wakes = [] {
-        const char* setting = std::getenv("WP_RECONNECT_ON_POINTER");
-        return !setting || std::atoi(setting) != 0;
-    }();
+    static const bool pointer_wakes = settings::flag("input.wake_on_mouse", "WP_RECONNECT_ON_POINTER");
     static bool had_pointer = false;
     static float last_x = 0.0f;
     static float last_y = 0.0f;

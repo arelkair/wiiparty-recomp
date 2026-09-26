@@ -1,6 +1,7 @@
 /games/*/disc/
 /games/*/extracted/
 /games/*/nand/
+/games/*/settings.ini
 /reference/
 *.iso
 *.wbfs

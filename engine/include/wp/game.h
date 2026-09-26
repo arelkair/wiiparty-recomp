@@ -8,6 +8,7 @@ struct Description {
     const char* title;
     const char* data_directory;
     const char* nand_directory;
+    const char* settings_file;
     const char* const* sideways_modules;
     size_t sideways_module_count;
 };

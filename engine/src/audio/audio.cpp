@@ -17,6 +17,7 @@
 
 #include "wp/log.h"
 #include "wp/memory.h"
+#include "wp/settings.h"
 
 namespace wp::audio {
 
@@ -52,7 +53,10 @@ struct Frame {
 std::mutex g_queue_mutex;
 std::deque<Frame> g_queue;
 uint32_t g_source_rate = 32000;
-bool g_muted = std::getenv("WP_MUTE") != nullptr;
+bool muted() {
+    static const bool value = settings::flag("audio.mute", "WP_MUTE");
+    return value;
+}
 std::FILE* g_dump = nullptr;
 uint32_t g_dump_frames = 0;
 
@@ -221,8 +225,8 @@ void output_thread() {
             }
         }
         for (UINT32 i = 0; i < available; i++) {
-            float left = g_muted ? 0.0f : mixed[i].left;
-            float right = g_muted ? 0.0f : mixed[i].right;
+            float left = muted() ? 0.0f : mixed[i].left;
+            float right = muted() ? 0.0f : mixed[i].right;
             for (uint32_t channel = 0; channel < channels; channel++) {
                 float value = channel == 0 ? left : channel == 1 ? right : 0.0f;
                 if (floats) {
