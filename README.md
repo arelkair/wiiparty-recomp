@@ -33,13 +33,14 @@ The overall figure is the equal-weight average of the components below. They are
 - **Recompilation:** the main executable (about 7,350 functions) and all 115 REL modules are translated to C++ and build into one native program of roughly 440 MB. Unit tests cover the translator; one game function is checked against the C++ standard library.
 - **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace, decrementer and GPU draw-done (PE finish) interrupts, OS alarms, module loading and linking, disc reads from the extracted files, the IPC hardware between the CPU and IOS with IOS's measured file system timing, and a virtual NAND (a first boot creates the save as on a console). Real Mii databases (`RFL_DB.dat`) load.
 - **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, logic operations (approximated with blending, as Dolphin does when the render target has no integer format; exact for clear, copy, no-op, set, copy inverted and invert, exact for the others only when each channel is 0 or 255; not yet seen in any game screen), lines and points with their texture coordinate offsets (not yet seen in any game screen), depth, scissor, EFB copies to textures, texture coordinates generated from normals with per-vertex texture matrices and the dual texture transform, and per-vertex color-channel lighting (adapted from Dolphin's software renderer, see `THIRD_PARTY_NOTICES.md`).
+- **Screenshots:** F10 (or the key set as `screenshot` in `[keys]`) saves the picture the player sees, at the internal resolution, as `screenshots/wiiparty_YYYY-MM-DD_HH-MM-SS.png` (`_2`, `_3` and so on when a name is taken); the file is written on a separate thread, so the game does not pause.
 - **GPU thread:** as on the Wii, where the GPU is a separate chip, graphics commands are processed and drawn on their own thread while the CPU thread keeps running the game and answering interrupts (`WP_GPU_THREAD=0` processes them on the CPU thread, for debugging).
 - **Window:** 16:9 when the virtual Wii is set to widescreen (the default, as in Dolphin), 4:3 otherwise; native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain. The title bar shows the game, graphics API, region, frames per second and whether the DSP microcode runs recompiled (`NATIVE`) or on the interpreter (`INTERP`) with its share of the CPU thread; its texts are in `engine/src/platform/ui_text.cpp`, ready for other languages.
 - **Diagnostics:** `WP_DSP_VERIFY` (replays every recompiled DSP run on Dolphin's interpreter and compares, with a coverage count), `WP_DSP_SELFTEST=N` (runs every instruction of the recompiled microcode from N random states against the interpreter and exits), `WP_DUMP_AUDIO` / `WP_DUMP_OUTPUT` (WAV of the emulated audio / of what goes to the speakers), `WP_LOG_FILE` (timestamped log of fps, slow frames, CPU and GPU thread load with the guest's idle share, audio, disc reads, modules and IOS opens), `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_RECONNECT_ON_POINTER` (0 stops mouse movement from waking a disconnected Wii Remote), `WP_VIRTUAL_GAMEPADS=N` (N virtual SDL gamepads that press the bottom button every 3 s, logging rumble and player lights) and `WP_VIRTUAL_GAMEPADS_UNTIL=ms` (unplugs them at that time), `WP_COPY_FILTER=0` (turns off the vertical anti-flicker filter the game programs for its copies, for a sharper picture; on by default, as on a Wii), `WP_POLL_INTERVAL` (loop back-edges between interrupt and audio checks, 1024 by default), `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, F12 in the game window (saves every GPU draw of the next frame, with the registers it changes and its first vertices, to `captures/gx_capture_NNN.txt` plus the frame as `gx_capture_NNN.png`, every EFB copy to a texture as `gx_capture_NNN_copyK.png` with the EFB just before it as `gx_capture_NNN_copyK_efb.png`, and where each texture of the frame came from (an EFB copy or RAM) in `gx_capture_NNN_textures.txt`; `WP_CAPTURE_AT=seconds,...` does the same at those times), a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
 
 ### Controls
 
-| Wii Remote | Keyboard and mouse | Gamepad, remote upright | Gamepad, remote sideways |
+| Wii Remote | Keyboard and mouse (default keys) | Gamepad, remote upright | Gamepad, remote sideways |
 | --- | --- | --- | --- |
 | Pointer | Mouse over the window | Gyroscope or right stick; R3 recenters | Same |
 | A | Enter, Space or left click | Bottom face button or R1 | Top face button or R1 |
@@ -53,6 +54,9 @@ The overall figure is the equal-weight average of the components below. They are
 | Swing up / down | Mouse wheel, or T / G | Move the gamepad sharply | Same |
 | Shake | Middle click or left Shift | Shake the gamepad | Same |
 | Swap upright and sideways | Tab | Tab | Tab |
+| Screenshot (not a Wii Remote button) | F10 | - | - |
+
+Every keyboard and mouse key can be changed in the launcher's Controls page or in the `[keys]` section of the settings file, as a list of names separated by commas, for example `a=Enter,Space,MouseLeft`: letters and digits, `F1` to `F24`, `Enter`, `Space`, `Backspace`, `Tab`, `Escape`, `Shift`, `LeftShift`, `RightShift`, `Ctrl`, `LeftCtrl`, `RightCtrl`, `Alt`, `LeftAlt`, `RightAlt`, `Up`, `Down`, `Left`, `Right`, `Plus`, `Minus`, `Num0` to `Num9`, `NumPlus`, `NumMinus`, `NumMultiply`, `NumDivide`, `NumPeriod`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Comma`, `Period`, `Semicolon`, `Slash`, `Backslash`, `Quote`, `Backquote`, `LeftBracket`, `RightBracket`, `CapsLock`, `Pause`, `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseX1`, `MouseX2`, `WheelUp` and `WheelDown` (a wheel step holds the action for 120 ms). Case does not matter; unknown names are ignored and reported on the console and in the `WP_LOG_FILE` log. F11 and F12 are reserved. An empty list leaves the action without a key.
 
 The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys and the gamepad buttons always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
 
@@ -90,6 +94,7 @@ The project is split into a reusable Wii engine and one folder per game, so othe
 | `docs/` | Progress notes (`DECOMP_PROGRESS.md`), the minigame check (`MINIGAMES.md`), planned features (`FEATURES_QOL.md`) and the progress badge. |
 | `build/` | Generated, ignored by Git: `deps/` (SDL3), `out/` (compiled program and tests) and `<game>/` (unpacked modules, symbols and the generated C++ in `generated/dol`, `generated/modules/<module>` and `generated/dsp`). |
 | `captures/` | F12 captures, ignored by Git. |
+| `screenshots/` | F10 screenshots, ignored by Git. |
 
 To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `analysis/`, `res/` and `CMakeLists.txt`, then run the tools with `WP_GAME=<name>` and configure CMake with `-DWP_GAME=<name>`.
 
@@ -100,6 +105,7 @@ To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `a
 - **Game**: when the game is installed, a Play button; otherwise Install. Install checks each tool (nodtool, Python 3.11+, CMake 3.20+, Ninja, and on Windows MinGW-w64 GCC 13+) and downloads the missing or incompatible ones from their official sites into `build/deps/toolchain/`, checking each file's SHA-256, then extracts your disc and runs every generation and build step, showing the log. Nothing from the game is downloaded. On Linux and macOS missing tools must come from the system's package manager.
 - **Settings**: every PC improvement from `games/wiiparty/settings.ini`, with a switch or a list.
 - **Saves**: the automatic save backups by date, each with Restore (after a confirmation; the current save is backed up first), and Open folder.
+- **Controls**: the keyboard and mouse keys of each Wii Remote action; click a binding and press a key, click a mouse button or turn the wheel on it to add it, Clear removes them and Reset to defaults restores every action.
 
 Build it with Qt 6 (on Windows the MSYS2 `mingw-w64-x86_64-qt6-base` package; its MinGW build is separate from the game's compiler, and the needed DLLs are copied next to the launcher):
 
@@ -130,6 +136,8 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |
 | `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
 | `[saves] backups` | `5` | Number of save backups kept in `games/wiiparty/backups/`; 0 turns them off | `WP_SAVE_BACKUPS` |
+
+| `[keys] a`, `b`, `one`, `two`, `plus`, `minus`, `home`, `up`, `down`, `left`, `right`, `shake`, `swing_up`, `swing_down`, `tilt_left`, `tilt_right`, `tilt_up`, `tilt_down`, `grip`, `screenshot` | The keys in the Controls table | Keyboard and mouse keys of each Wii Remote action and of the screenshot, separated by commas (see below) | |
 
 ### Save backups
 

@@ -5,7 +5,7 @@
 #include <QString>
 
 struct Option {
-    enum class Kind { Toggle, Choice };
+    enum class Kind { Toggle, Choice, Keys };
 
     QString key;
     Kind kind;

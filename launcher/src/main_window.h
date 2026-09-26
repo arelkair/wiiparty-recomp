@@ -8,6 +8,7 @@
 #include "toolchain.h"
 
 class BuildRunner;
+class KeyCaptureButton;
 class QLabel;
 class QListWidget;
 class QPlainTextEdit;
@@ -34,6 +35,7 @@ private:
     void refresh_saves();
     void restore_backup(const QString& name);
     void open_backups();
+    QWidget* make_controls_page();
     void refresh();
     void choose_disc();
     void install();
@@ -59,4 +61,5 @@ private:
     QString disc_;
     QVBoxLayout* backup_rows_ = nullptr;
     QLabel* saves_result_ = nullptr;
+    QList<QPair<Option, KeyCaptureButton*>> bindings_;
 };

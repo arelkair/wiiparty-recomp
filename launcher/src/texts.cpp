@@ -14,7 +14,7 @@ Texts english() {
     t.status_not_built = "The game has not been built yet. Build it from your own copy of the disc first.";
     t.status_no_disc = "No extracted disc was found. Choose your copy of Wii Party on the Build page.";
     t.play_button = "Play";
-    t.play_hint = "F11 switches full screen while playing. F12 saves a capture of the frame.";
+    t.play_hint = "F11 switches full screen while playing. F10 saves a screenshot in the screenshots folder. F12 saves a capture of the frame for debugging.";
     t.build_heading = "Build";
     t.build_intro = "Translates the game from your own copy of the disc into a native program. Nothing is downloaded from the game, and nothing leaves your computer. The first build takes about 15 minutes on a 6-core processor.";
     t.tools = "Tools";
@@ -114,6 +114,45 @@ Texts english() {
     t.hash_mismatch = "%1 does not match its published checksum and was deleted. Try again.";
     t.project_missing = "The project folder was not found. Start the launcher from inside the wiiparty-recomp folder.";
     t.start_failed = "The game could not be started.";
+    t.controls = "Controls";
+    t.controls_heading = "Controls";
+    t.controls_intro = "Keyboard and mouse keys of the emulated Wii Remote 1. Click a binding and press a key, click a mouse button or turn the wheel on it to add it. F11 and F12 are reserved. Changes apply the next time the game starts.";
+    t.controls_reset = "Reset to defaults";
+    t.keys_clear = "Clear";
+    t.keys_none = "Not set";
+    t.keys_press = "Press a key, click or scroll here (Esc cancels)";
+    t.keys_reserved = "F11 and F12 are reserved, press another key";
+    t.actions = {
+        {"a", "A button"},
+        {"b", "B button"},
+        {"one", "1 button"},
+        {"two", "2 button"},
+        {"plus", "+ button"},
+        {"minus", "- button"},
+        {"home", "HOME button"},
+        {"up", "D-pad up"},
+        {"down", "D-pad down"},
+        {"left", "D-pad left"},
+        {"right", "D-pad right"},
+        {"shake", "Shake"},
+        {"swing_up", "Swing up"},
+        {"swing_down", "Swing down"},
+        {"tilt_left", "Tilt left"},
+        {"tilt_right", "Tilt right"},
+        {"tilt_up", "Tilt up"},
+        {"tilt_down", "Tilt down"},
+        {"grip", "Swap upright and sideways grip"},
+        {"screenshot", "Screenshot"},
+    };
+    t.action_details = {
+        {"up", "Left on screen when the remote is held sideways."},
+        {"down", "Right on screen when the remote is held sideways."},
+        {"left", "Down on screen when the remote is held sideways."},
+        {"right", "Up on screen when the remote is held sideways."},
+        {"swing_up", "The mouse wheel gives a short swing."},
+        {"swing_down", "The mouse wheel gives a short swing."},
+        {"screenshot", "Saves the picture of the game as PNG in the screenshots folder."},
+    };
     return t;
 }
 
@@ -126,7 +165,7 @@ Texts spanish() {
     t.status_not_built = "El juego aún no está compilado. Compílalo primero a partir de tu propia copia del disco.";
     t.status_no_disc = "No se ha encontrado el disco extraído. Elige tu copia de Wii Party en la página Compilar.";
     t.play_button = "Jugar";
-    t.play_hint = "F11 cambia a pantalla completa durante la partida. F12 guarda una captura del fotograma.";
+    t.play_hint = "F11 cambia a pantalla completa durante la partida. F10 guarda una captura de pantalla en la carpeta screenshots. F12 guarda una captura del fotograma para depuración.";
     t.build_heading = "Compilar";
     t.build_intro = "Traduce el juego desde tu propia copia del disco a un programa nativo. No se descarga nada del juego y nada sale de tu ordenador. La primera compilación tarda unos 15 minutos con un procesador de 6 núcleos.";
     t.tools = "Herramientas";
@@ -161,7 +200,7 @@ Texts spanish() {
     t.settings_heading = "Opciones";
     t.settings_intro = "Mejoras de PC, separadas del juego traducido. Los cambios se aplican la próxima vez que se abra el juego.";
     t.group_video = "Vídeo";
-    t.group_input = "Controles";
+    t.group_input = "Entrada";
     t.group_system = "Sistema";
     t.group_audio = "Sonido";
     t.scale = "Resolución interna";
@@ -224,6 +263,45 @@ Texts spanish() {
     t.hash_mismatch = "%1 no coincide con su huella publicada y se ha borrado. Vuelve a intentarlo.";
     t.project_missing = "No se ha encontrado la carpeta del proyecto. Abre el lanzador desde dentro de la carpeta wiiparty-recomp.";
     t.start_failed = "No se ha podido abrir el juego.";
+    t.controls = "Controles";
+    t.controls_heading = "Controles";
+    t.controls_intro = "Teclas y botones del ratón del Wii Remote 1 emulado. Haz clic en una asignación y pulsa una tecla, haz clic con un botón del ratón o gira la rueda sobre ella para añadirla. F11 y F12 están reservadas. Los cambios se aplican la próxima vez que se abra el juego.";
+    t.controls_reset = "Restablecer valores predeterminados";
+    t.keys_clear = "Borrar";
+    t.keys_none = "Sin asignar";
+    t.keys_press = "Pulsa una tecla, haz clic o gira la rueda aquí (Esc cancela)";
+    t.keys_reserved = "F11 y F12 están reservadas, pulsa otra tecla";
+    t.actions = {
+        {"a", "Botón A"},
+        {"b", "Botón B"},
+        {"one", "Botón 1"},
+        {"two", "Botón 2"},
+        {"plus", "Botón +"},
+        {"minus", "Botón -"},
+        {"home", "Botón HOME"},
+        {"up", "Cruceta arriba"},
+        {"down", "Cruceta abajo"},
+        {"left", "Cruceta izquierda"},
+        {"right", "Cruceta derecha"},
+        {"shake", "Agitar"},
+        {"swing_up", "Mover hacia arriba"},
+        {"swing_down", "Mover hacia abajo"},
+        {"tilt_left", "Inclinar a la izquierda"},
+        {"tilt_right", "Inclinar a la derecha"},
+        {"tilt_up", "Inclinar hacia arriba"},
+        {"tilt_down", "Inclinar hacia abajo"},
+        {"grip", "Cambiar entre agarre vertical y horizontal"},
+        {"screenshot", "Captura de pantalla"},
+    };
+    t.action_details = {
+        {"up", "Izquierda en pantalla con el mando en horizontal."},
+        {"down", "Derecha en pantalla con el mando en horizontal."},
+        {"left", "Abajo en pantalla con el mando en horizontal."},
+        {"right", "Arriba en pantalla con el mando en horizontal."},
+        {"swing_up", "La rueda del ratón da un movimiento corto."},
+        {"swing_down", "La rueda del ratón da un movimiento corto."},
+        {"screenshot", "Guarda la imagen del juego como PNG en la carpeta screenshots."},
+    };
     return t;
 }
 

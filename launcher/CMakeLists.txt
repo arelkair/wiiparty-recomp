@@ -13,12 +13,14 @@ set(LAUNCHER_SOURCES
     src/main.cpp
     src/main_window.cpp
     src/build_runner.cpp
+    src/key_capture.cpp
     src/options.cpp
     src/project.cpp
     src/settings_file.cpp
     src/texts.cpp
     src/toolchain.cpp
     ../engine/src/platform/save_backup.cpp
+    ../engine/src/input/keymap.cpp
     res/launcher.qrc
 )
 

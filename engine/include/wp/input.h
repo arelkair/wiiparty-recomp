@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "wp/keymap.h"
+
 namespace wp::input {
 
 constexpr uint32_t kButtonLeft = 0x0001;
@@ -37,5 +39,6 @@ bool connected(uint32_t channel);
 Sample sample(uint32_t channel);
 bool wakes_remote(uint32_t channel);
 void note_wheel(int delta);
+const keymap::Bindings& bindings();
 
 }

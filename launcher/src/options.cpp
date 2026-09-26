@@ -1,6 +1,7 @@
 #include "options.h"
 
 #include "texts.h"
+#include "wp/keymap.h"
 
 namespace {
 
@@ -14,7 +15,7 @@ QList<Option> build() {
     QList<QPair<QString, QString>> languages = {{"auto", t.language_auto}, {"en", "English"},  {"de", "Deutsch"},    {"fr", "Français"},
                                                 {"es", "Español"},         {"it", "Italiano"}, {"nl", "Nederlands"}};
     QList<QPair<QString, QString>> backups = {{"0", t.backups_off}, {"1", "1"}, {"3", "3"}, {"5", "5"}, {"10", "10"}, {"20", "20"}};
-    return {
+    QList<Option> list = {
         Option{"video.scale", Option::Kind::Choice, "1", t.group_video, t.scale, t.scale_detail, scales},
         toggle("video.fullscreen", "0", t.group_video, t.fullscreen, t.fullscreen_detail),
         toggle("video.copy_filter", "1", t.group_video, t.copy_filter, t.copy_filter_detail),
@@ -30,6 +31,11 @@ QList<Option> build() {
         toggle("audio.mute", "0", t.group_audio, t.mute, t.mute_detail),
         Option{"saves.backups", Option::Kind::Choice, "5", t.group_saves, t.backups, t.backups_detail, backups},
     };
+    for (size_t i = 0; i < wp::keymap::kActionCount; i++) {
+        const wp::keymap::ActionInfo& action = wp::keymap::action(i);
+        list << Option{QString::fromStdString(wp::keymap::setting_key(i)), Option::Kind::Keys, action.defaults, t.controls, t.actions.value(action.name), t.action_details.value(action.name), {}};
+    }
+    return list;
 }
 
 }
