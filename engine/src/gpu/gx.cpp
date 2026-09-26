@@ -17,6 +17,7 @@
 
 #include "wp/gx_lighting.h"
 #include "wp/gx_render.h"
+#include "wp/gx_state.h"
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/profile.h"
@@ -626,8 +627,10 @@ void emit_line(std::vector<ScreenVertex>& out, const Prepared& a, const Prepared
         return;
     }
     float width = static_cast<float>(g_bp[0x22] & 0xFF) / 6.0f;
-    float dx = std::fabs(b.vertex.x / b.vertex.w - a.vertex.x / a.vertex.w) * kEfbWidth;
-    float dy = std::fabs(b.vertex.y / b.vertex.w - a.vertex.y / a.vertex.w) * kEfbHeight;
+    float sx = b.vertex.x / b.vertex.w - a.vertex.x / a.vertex.w;
+    float sy = b.vertex.y / b.vertex.w - a.vertex.y / a.vertex.w;
+    float dx = std::fabs(sx) * kEfbWidth;
+    float dy = std::fabs(sy) * kEfbHeight;
     float ox = 0.0f;
     float oy = 0.0f;
     if (dy > dx) {
@@ -639,6 +642,12 @@ void emit_line(std::vector<ScreenVertex>& out, const Prepared& a, const Prepared
     ScreenVertex a1 = shifted(a.vertex, ox, oy);
     ScreenVertex b0 = shifted(b.vertex, -ox, -oy);
     ScreenVertex b1 = shifted(b.vertex, ox, oy);
+    LinePointOffsets offsets = line_point_offsets(g_bp);
+    if (offsets.line_coordinates != 0) {
+        bool negative = line_offset_negative_side(sx, sy, dy > dx);
+        offset_texture_coordinates(negative ? a0 : a1, offsets.line_coordinates, offsets.line, 0.0f);
+        offset_texture_coordinates(negative ? b0 : b1, offsets.line_coordinates, offsets.line, 0.0f);
+    }
     emit_unculled(out, a0, a1, b1);
     emit_unculled(out, a0, b1, b0);
 }
@@ -654,6 +663,12 @@ void emit_point(std::vector<ScreenVertex>& out, const Prepared& a) {
     ScreenVertex v1 = shifted(a.vertex, ox, -oy);
     ScreenVertex v2 = shifted(a.vertex, ox, oy);
     ScreenVertex v3 = shifted(a.vertex, -ox, oy);
+    LinePointOffsets offsets = line_point_offsets(g_bp);
+    if (offsets.point_coordinates != 0) {
+        offset_texture_coordinates(v0, offsets.point_coordinates, 0.0f, offsets.point);
+        offset_texture_coordinates(v1, offsets.point_coordinates, offsets.point, offsets.point);
+        offset_texture_coordinates(v2, offsets.point_coordinates, offsets.point, 0.0f);
+    }
     emit_unculled(out, v0, v1, v2);
     emit_unculled(out, v0, v2, v3);
 }

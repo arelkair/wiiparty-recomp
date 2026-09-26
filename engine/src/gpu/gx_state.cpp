@@ -147,4 +147,36 @@ const char* logic_op_name(uint32_t logic_mode) {
     return kLogicNames[logic_mode & 15];
 }
 
+LinePointOffsets line_point_offsets(const uint32_t* bp) {
+    static const float kOffsets[8] = {0.0f, 1.0f / 16.0f, 1.0f / 8.0f, 1.0f / 4.0f, 1.0f / 2.0f, 1.0f, 1.0f, 1.0f};
+    LinePointOffsets offsets;
+    offsets.line = kOffsets[(bp[0x22] >> 16) & 7];
+    offsets.point = kOffsets[(bp[0x22] >> 19) & 7];
+    for (uint32_t i = 0; i < 8; i++) {
+        uint32_t s = bp[0x30 + 2 * i];
+        offsets.line_coordinates |= ((s >> 18) & 1) << i;
+        offsets.point_coordinates |= ((s >> 19) & 1) << i;
+    }
+    if (offsets.line == 0.0f) {
+        offsets.line_coordinates = 0;
+    }
+    if (offsets.point == 0.0f) {
+        offsets.point_coordinates = 0;
+    }
+    return offsets;
+}
+
+bool line_offset_negative_side(float dx, float dy, bool tall) {
+    return tall ? dy < 0.0f : dx > 0.0f;
+}
+
+void offset_texture_coordinates(ScreenVertex& vertex, uint32_t coordinates, float s, float t) {
+    for (uint32_t i = 0; i < 8; i++) {
+        if (coordinates & (1u << i)) {
+            vertex.uv[i][0] += s;
+            vertex.uv[i][1] += t;
+        }
+    }
+}
+
 }

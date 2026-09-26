@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "wp/gx_render.h"
+
 namespace wp::gx {
 
 enum class BlendFactor : uint8_t {
@@ -51,5 +53,16 @@ struct BlendState {
 BlendState blend_state(uint32_t mode, bool target_has_alpha, bool constant_alpha, bool alpha_test_can_pass);
 bool logic_op_exact(uint32_t logic_mode);
 const char* logic_op_name(uint32_t logic_mode);
+
+struct LinePointOffsets {
+    float line = 0.0f;
+    float point = 0.0f;
+    uint32_t line_coordinates = 0;
+    uint32_t point_coordinates = 0;
+};
+
+LinePointOffsets line_point_offsets(const uint32_t* bp);
+bool line_offset_negative_side(float dx, float dy, bool tall);
+void offset_texture_coordinates(ScreenVertex& vertex, uint32_t coordinates, float s, float t);
 
 }

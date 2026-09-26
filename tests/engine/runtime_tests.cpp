@@ -328,6 +328,37 @@ void test_gx_logic_ops() {
     CHECK(!disabled.enable && !disabled.logic_op && disabled.output == LogicSource::Tev);
 }
 
+void test_gx_line_point_offsets() {
+    using namespace wp::gx;
+    uint32_t bp[256] = {};
+    CHECK(line_point_offsets(bp).line_coordinates == 0 && line_point_offsets(bp).point_coordinates == 0);
+    bp[0x30] = (1u << 18) | 0xFF;
+    bp[0x32] = 1u << 19;
+    bp[0x34] = 3u << 18;
+    bp[0x31] = 3u << 18;
+    CHECK(line_point_offsets(bp).line_coordinates == 0 && line_point_offsets(bp).point_coordinates == 0);
+    bp[0x22] = (3u << 16) | (5u << 19) | 0x1234;
+    LinePointOffsets offsets = line_point_offsets(bp);
+    CHECK(offsets.line == 0.25f && offsets.point == 1.0f);
+    CHECK(offsets.line_coordinates == 5 && offsets.point_coordinates == 6);
+    const float expected[8] = {0.0f, 1.0f / 16.0f, 1.0f / 8.0f, 1.0f / 4.0f, 1.0f / 2.0f, 1.0f, 1.0f, 1.0f};
+    for (uint32_t code = 0; code < 8; code++) {
+        bp[0x22] = (code << 16) | (code << 19);
+        CHECK(line_point_offsets(bp).line == expected[code] && line_point_offsets(bp).point == expected[code]);
+    }
+    CHECK(line_offset_negative_side(0.5f, 0.1f, false));
+    CHECK(!line_offset_negative_side(-0.5f, 0.1f, false));
+    CHECK(line_offset_negative_side(0.1f, -0.5f, true));
+    CHECK(!line_offset_negative_side(0.1f, 0.5f, true));
+    ScreenVertex vertex{};
+    vertex.uv[0][0] = 0.5f;
+    vertex.uv[2][1] = 0.25f;
+    offset_texture_coordinates(vertex, 5, 0.125f, 0.5f);
+    CHECK(vertex.uv[0][0] == 0.625f && vertex.uv[0][1] == 0.5f);
+    CHECK(vertex.uv[1][0] == 0.0f && vertex.uv[1][1] == 0.0f);
+    CHECK(vertex.uv[2][0] == 0.125f && vertex.uv[2][1] == 0.75f);
+}
+
 }
 
 int main() {
@@ -341,6 +372,7 @@ int main() {
     test_quantization();
     test_disc_drive();
     test_gx_logic_ops();
+    test_gx_line_point_offsets();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");

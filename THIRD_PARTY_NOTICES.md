@@ -64,6 +64,11 @@ Adapted third-party components are included (see below). This file records what 
 - Repository files: `engine/src/gpu/gx_state.cpp` (`blend_state`) and the pixel shader in `engine/src/gpu/gx_render.cpp`, own code.
 - Behaviour studied in the Dolphin Emulator's `Source/Core/VideoCommon/RenderState.cpp` (`BlendingState::Generate`, `ApproximateLogicOpWithBlending`, `LogicOpApproximationIsExact`, `LogicOpApproximationWantsShaderHelp`) and `Source/Core/VideoCommon/BPMemory.h` (`BlendMode`, `LogicOp`), current `master` read on 2026-09-26 ("Copyright 2017 Dolphin Emulator Project" and related years, GPL-2.0-or-later). No code was copied: the priority rules (blend enable first, with subtract over the blend factors; logic operation only when blending is off; no-op keeps only a constant alpha write), the register layout and the idea of letting the shader output 0, 255 or the inverted color are reimplemented. The blending table for the inexact operations was derived again for this project and differs from Dolphin's.
 
+### Line and point texture offsets from the Dolphin Emulator
+
+- Repository files: `engine/src/gpu/gx_state.cpp` (`line_point_offsets`, `line_offset_negative_side`) and `emit_line` / `emit_point` in `engine/src/gpu/gx.cpp`, own code.
+- Behaviour studied in the Dolphin Emulator's `Source/Core/VideoBackends/Software/Clipper.cpp` (`CopyLineVertex`, `ProcessLine`, `CopyPointVertex`), `Source/Core/VideoCommon/GeometryShaderManager.cpp`, `GeometryShaderGen.cpp` and `BPMemory.h` (`LPSize`, `TCInfo`), current `master` read on 2026-09-26 ("Copyright 2009 Dolphin Emulator Project" and related years, GPL-2.0-or-later). No code was copied: the register bits, the offset table (0, 1/16, 1/8, 1/4, 1/2, 1, 1, 1) and which expanded vertices receive the offset are reimplemented.
+
 ### DSP core and free DSP ROMs from the Dolphin Emulator
 
 - Repository files: everything under `third_party/dolphin/`, kept in Dolphin's own directory layout so it stays separate from this project's code. `third_party/dolphin/COPYING` and `third_party/dolphin/LICENSES/GPL-2.0-or-later.txt` are copied from the same snapshot.
