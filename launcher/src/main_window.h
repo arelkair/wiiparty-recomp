@@ -13,6 +13,7 @@ class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
+class QVBoxLayout;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -29,6 +30,10 @@ private:
     QWidget* make_play_panel();
     QWidget* make_install_panel();
     QWidget* make_settings_page();
+    QWidget* make_saves_page();
+    void refresh_saves();
+    void restore_backup(const QString& name);
+    void open_backups();
     void refresh();
     void choose_disc();
     void install();
@@ -52,4 +57,6 @@ private:
     QPushButton* install_button_ = nullptr;
     QPushButton* cancel_button_ = nullptr;
     QString disc_;
+    QVBoxLayout* backup_rows_ = nullptr;
+    QLabel* saves_result_ = nullptr;
 };

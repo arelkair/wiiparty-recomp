@@ -13,6 +13,7 @@ QList<Option> build() {
     QList<QPair<QString, QString>> scales = {{"1", t.scale_native}, {"2", "2x"}, {"3", "3x"}, {"4", "4x"}, {"5", "5x"}, {"6", "6x"}};
     QList<QPair<QString, QString>> languages = {{"auto", t.language_auto}, {"en", "English"},  {"de", "Deutsch"},    {"fr", "Français"},
                                                 {"es", "Español"},         {"it", "Italiano"}, {"nl", "Nederlands"}};
+    QList<QPair<QString, QString>> backups = {{"0", t.backups_off}, {"1", "1"}, {"3", "3"}, {"5", "5"}, {"10", "10"}, {"20", "20"}};
     return {
         Option{"video.scale", Option::Kind::Choice, "1", t.group_video, t.scale, t.scale_detail, scales},
         toggle("video.fullscreen", "0", t.group_video, t.fullscreen, t.fullscreen_detail),
@@ -25,6 +26,7 @@ QList<Option> build() {
         toggle("system.pal60", "1", t.group_system, t.pal60, t.pal60_detail),
         toggle("system.skip_notices", "1", t.group_system, t.skip_notices, t.skip_notices_detail),
         toggle("audio.mute", "0", t.group_audio, t.mute, t.mute_detail),
+        Option{"saves.backups", Option::Kind::Choice, "5", t.group_saves, t.backups, t.backups_detail, backups},
     };
 }
 

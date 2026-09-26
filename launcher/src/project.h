@@ -13,6 +13,8 @@ public:
     QString game_folder() const;
     QString extracted_folder() const;
     QString settings_file() const;
+    QString nand_folder() const;
+    QString backups_folder() const;
     QString executable() const;
     bool extracted() const;
     bool built() const;

@@ -18,6 +18,7 @@ set(LAUNCHER_SOURCES
     src/settings_file.cpp
     src/texts.cpp
     src/toolchain.cpp
+    ../engine/src/platform/save_backup.cpp
     res/launcher.qrc
 )
 
@@ -27,6 +28,7 @@ endif()
 
 add_executable(launcher WIN32 ${LAUNCHER_SOURCES})
 set_target_properties(launcher PROPERTIES OUTPUT_NAME wiiparty-launcher)
+target_include_directories(launcher PRIVATE ../engine/include)
 target_compile_options(launcher PRIVATE -Wall -Wextra)
 target_link_libraries(launcher PRIVATE Qt6::Widgets)
 

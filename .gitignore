@@ -1,6 +1,7 @@
 /games/*/disc/
 /games/*/extracted/
 /games/*/nand/
+/games/*/backups/
 /games/*/settings.ini
 /reference/
 *.iso

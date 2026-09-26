@@ -4,7 +4,10 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -12,6 +15,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QLocale>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
@@ -19,7 +24,13 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QStackedWidget>
+#include <QUrl>
 #include <QVBoxLayout>
+
+#include <ctime>
+#include <filesystem>
+
+#include "wp/save_backup.h"
 
 #include "build_runner.h"
 #include "options.h"
@@ -32,6 +43,38 @@ QLabel* label(const QString& text, const char* name, QWidget* parent) {
     widget->setObjectName(name);
     widget->setWordWrap(true);
     return widget;
+}
+
+std::filesystem::path to_path(const QString& path) {
+    return std::filesystem::path(path.toStdU16String());
+}
+
+QString backup_date(const QString& name) {
+    QDateTime date = QDateTime::fromString(name.left(19), "yyyy-MM-dd_HH-mm-ss");
+    if (!date.isValid()) {
+        return name;
+    }
+    QLocale locale;
+    return locale.toString(date.date(), QLocale::LongFormat) + ", " + locale.toString(date.time(), "HH:mm:ss");
+}
+
+qint64 folder_size(const QString& folder) {
+    qint64 total = 0;
+    QDirIterator it(folder, QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        total += it.fileInfo().size();
+    }
+    return total;
+}
+
+const Option* find_option(const QString& key) {
+    for (const Option& option : options()) {
+        if (option.key == key) {
+            return &option;
+        }
+    }
+    return nullptr;
 }
 
 QString first_disc(const QString& folder) {
@@ -60,6 +103,7 @@ MainWindow::MainWindow(Project project, QWidget* parent)
     pages_ = new QStackedWidget(central);
     pages_->addWidget(make_game_page());
     pages_->addWidget(make_settings_page());
+    pages_->addWidget(make_saves_page());
     layout->addWidget(make_sidebar());
     layout->addWidget(pages_, 1);
     setCentralWidget(central);
@@ -94,8 +138,8 @@ QWidget* MainWindow::make_sidebar() {
     layout->addWidget(label("Recomp", "detail", sidebar));
     layout->addSpacing(24);
     auto* group = new QButtonGroup(sidebar);
-    const QString names[] = {texts().game, texts().settings};
-    for (int i = 0; i < 2; i++) {
+    const QString names[] = {texts().game, texts().settings, texts().saves};
+    for (int i = 0; i < 3; i++) {
         auto* button = new QPushButton(names[i], sidebar);
         button->setObjectName("nav");
         button->setCheckable(true);
@@ -104,7 +148,12 @@ QWidget* MainWindow::make_sidebar() {
         group->addButton(button, i);
         layout->addWidget(button);
     }
-    connect(group, &QButtonGroup::idClicked, pages_, &QStackedWidget::setCurrentIndex);
+    connect(group, &QButtonGroup::idClicked, this, [this](int index) {
+        if (index == 2) {
+            refresh_saves();
+        }
+        pages_->setCurrentIndex(index);
+    });
     layout->addStretch(1);
     return sidebar;
 }
@@ -230,6 +279,10 @@ QWidget* MainWindow::make_settings_page() {
                 combo->addItem(name, value);
             }
             int index = combo->findData(settings_.value(option));
+            if (index < 0 && !settings_.value(option).isEmpty()) {
+                combo->addItem(settings_.value(option), settings_.value(option));
+                index = combo->count() - 1;
+            }
             combo->setCurrentIndex(index < 0 ? 0 : index);
             connect(combo, &QComboBox::currentIndexChanged, this, [this, option, combo](int) { settings_.set(option, combo->currentData().toString()); });
             row_layout->addWidget(combo);
@@ -239,6 +292,105 @@ QWidget* MainWindow::make_settings_page() {
     layout->addStretch(1);
     scroll->setWidget(page);
     return scroll;
+}
+
+QWidget* MainWindow::make_saves_page() {
+    const Texts& t = texts();
+    auto* scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    auto* page = new QWidget(scroll);
+    page->setObjectName("page");
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(48, 40, 48, 40);
+    layout->setSpacing(6);
+    layout->addWidget(label(t.saves_heading, "heading", page));
+    layout->addWidget(label(t.saves_intro, "lead", page));
+    layout->addSpacing(18);
+    auto* header = new QHBoxLayout;
+    header->addWidget(label(t.saves_backups, "section", page), 1, Qt::AlignBottom);
+    auto* open_button = new QPushButton(t.open_folder, page);
+    open_button->setCursor(Qt::PointingHandCursor);
+    connect(open_button, &QPushButton::clicked, this, &MainWindow::open_backups);
+    header->addWidget(open_button);
+    layout->addLayout(header);
+    backup_rows_ = new QVBoxLayout;
+    backup_rows_->setSpacing(0);
+    layout->addLayout(backup_rows_);
+    layout->addSpacing(10);
+    saves_result_ = label(QString(), "detail", page);
+    layout->addWidget(saves_result_);
+    layout->addStretch(1);
+    scroll->setWidget(page);
+    refresh_saves();
+    return scroll;
+}
+
+void MainWindow::refresh_saves() {
+    const Texts& t = texts();
+    while (QLayoutItem* item = backup_rows_->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    QWidget* page = saves_result_->parentWidget();
+    std::vector<wp::saves::Backup> backups = wp::saves::list(to_path(project_.backups_folder()));
+    if (backups.empty()) {
+        const Option* option = find_option("saves.backups");
+        bool disabled = option && settings_.value(*option) == "0";
+        auto* empty = label(disabled ? t.saves_disabled : t.saves_empty, "detail", page);
+        empty->setContentsMargins(0, 10, 0, 10);
+        backup_rows_->addWidget(empty);
+        return;
+    }
+    for (const wp::saves::Backup& backup : backups) {
+        QString name = QString::fromStdString(backup.name);
+        auto* row = new QWidget(page);
+        row->setObjectName("row");
+        auto* row_layout = new QHBoxLayout(row);
+        row_layout->setContentsMargins(0, 10, 0, 10);
+        auto* text = new QVBoxLayout;
+        text->setSpacing(2);
+        text->addWidget(label(backup_date(name), "value", row));
+        qint64 size = folder_size(project_.backups_folder() + "/" + name);
+        text->addWidget(label(t.backup_size.arg(QLocale().toString((size + 1023) / 1024)), "detail", row));
+        row_layout->addLayout(text, 1);
+        auto* restore_button = new QPushButton(t.restore, row);
+        restore_button->setCursor(Qt::PointingHandCursor);
+        connect(restore_button, &QPushButton::clicked, this, [this, name] { restore_backup(name); });
+        row_layout->addWidget(restore_button);
+        backup_rows_->addWidget(row);
+    }
+}
+
+void MainWindow::restore_backup(const QString& name) {
+    const Texts& t = texts();
+    QString date = backup_date(name);
+    if (QMessageBox::question(this, t.restore_title, t.restore_question.arg(date), QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) !=
+        QMessageBox::Yes) {
+        return;
+    }
+    const Option* option = find_option("saves.backups");
+    int keep = option ? settings_.value(*option).toInt() : 0;
+    wp::saves::Backup backup{name.toStdString(), to_path(project_.backups_folder() + "/" + name)};
+    wp::saves::Outcome outcome =
+        wp::saves::restore(to_path(project_.nand_folder()), to_path(project_.backups_folder()), backup, keep, std::time(nullptr));
+    switch (outcome.result) {
+    case wp::saves::Result::Created:
+        saves_result_->setText(t.restore_done.arg(date));
+        break;
+    case wp::saves::Result::Unchanged:
+        saves_result_->setText(t.restore_unchanged.arg(date));
+        break;
+    default:
+        saves_result_->setText(t.restore_failed.arg(QString::fromLocal8Bit(outcome.message.c_str())));
+        break;
+    }
+    refresh_saves();
+}
+
+void MainWindow::open_backups() {
+    QDir().mkpath(project_.backups_folder());
+    QDesktopServices::openUrl(QUrl::fromLocalFile(project_.backups_folder()));
 }
 
 void MainWindow::refresh() {
@@ -349,6 +501,10 @@ void MainWindow::save_pages(const QString& prefix) {
     pages_->setCurrentIndex(1);
     QCoreApplication::processEvents();
     grab().save(prefix + "settings.png");
+    refresh_saves();
+    pages_->setCurrentIndex(2);
+    QCoreApplication::processEvents();
+    grab().save(prefix + "saves.png");
     pages_->setCurrentIndex(0);
     refresh();
 }

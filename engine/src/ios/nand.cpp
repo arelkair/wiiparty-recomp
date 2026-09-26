@@ -3,14 +3,19 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <cwctype>
 #include <filesystem>
 #include <map>
 #include <vector>
 
+#include "wp/log.h"
 #include "wp/memory.h"
+#include "wp/save_backup.h"
 #include "wp/settings.h"
 
 namespace wp::nand {
@@ -33,10 +38,24 @@ constexpr uint8_t kLanguageFrench = 3;
 constexpr uint8_t kLanguageSpanish = 4;
 constexpr uint8_t kLanguageItalian = 5;
 constexpr uint8_t kLanguageDutch = 6;
+constexpr uint32_t kGameIdAddress = 0x80000000;
+constexpr int kDefaultBackups = 5;
+constexpr auto kBackupInterval = std::chrono::minutes(1);
+
+struct OpenFile {
+    std::FILE* file;
+    fs::path path;
+    bool written;
+};
 
 fs::path g_root;
-std::map<int32_t, std::FILE*> g_files;
+std::map<int32_t, OpenFile> g_files;
 int32_t g_next_handle = 1;
+fs::path g_save;
+fs::path g_backups;
+bool g_backup_pending = false;
+bool g_backed_up = false;
+std::chrono::steady_clock::time_point g_last_backup;
 
 fs::path host_path(const std::string& path) {
     fs::path relative;
@@ -46,6 +65,73 @@ fs::path host_path(const std::string& path) {
         }
     }
     return g_root / relative;
+}
+
+int backups_to_keep() {
+    const std::string value = settings::text("saves.backups", "WP_SAVE_BACKUPS");
+    char* end = nullptr;
+    long number = std::strtol(value.c_str(), &end, 10);
+    if (value.empty() || *end != 0) {
+        return kDefaultBackups;
+    }
+    return static_cast<int>(std::clamp(number, 0L, 1000L));
+}
+
+void back_up_save(const char* moment) {
+    int keep = backups_to_keep();
+    if (keep == 0 || g_save.empty()) {
+        return;
+    }
+    g_backup_pending = false;
+    saves::Outcome outcome = saves::back_up(g_root, g_save, g_backups, keep, std::time(nullptr));
+    if (outcome.result != saves::Result::NoSave && outcome.result != saves::Result::Unchanged) {
+        g_backed_up = true;
+        g_last_backup = std::chrono::steady_clock::now();
+    }
+    if (outcome.result == saves::Result::Invalid) {
+        std::fprintf(stderr, "save backup (%s): %s; no backup was made and the existing backups are kept. Restore one from the launcher's Saves page if the game reports damaged data.\n",
+                     moment, outcome.message.c_str());
+    } else if (outcome.result == saves::Result::Failed) {
+        std::fprintf(stderr, "save backup (%s) failed: %s\n", moment, outcome.message.c_str());
+    } else if (outcome.result == saves::Result::Created) {
+        std::fprintf(stderr, "save backup (%s): %s\n", moment, outcome.message.c_str());
+    }
+    log::write("nand", "save backup (%s): %s", moment, outcome.message.c_str());
+}
+
+bool same_element(const fs::path& first, const fs::path& second) {
+    const auto& a = first.native();
+    const auto& b = second.native();
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](auto x, auto y) {
+               return std::towlower(static_cast<wint_t>(x)) == std::towlower(static_cast<wint_t>(y));
+           });
+}
+
+bool inside_save(const fs::path& path) {
+    if (g_save.empty()) {
+        return false;
+    }
+    fs::path folder = g_root / g_save;
+    auto part = path.begin();
+    for (const auto& element : folder) {
+        if (part == path.end() || !same_element(*part, element)) {
+            return false;
+        }
+        ++part;
+    }
+    return true;
+}
+
+void save_changed() {
+    if (backups_to_keep() == 0) {
+        return;
+    }
+    bool writing = std::any_of(g_files.begin(), g_files.end(), [](const auto& entry) { return entry.second.written && inside_save(entry.second.path); });
+    if (writing || (g_backed_up && std::chrono::steady_clock::now() - g_last_backup < kBackupInterval)) {
+        g_backup_pending = true;
+        return;
+    }
+    back_up_save("after a write");
 }
 
 void append16(std::vector<uint8_t>& out, uint16_t value) {
@@ -265,6 +351,10 @@ bool mount(const std::string& root) {
         return false;
     }
     ensure_sysconf();
+    g_save = saves::save_relative(rd32(kGameIdAddress));
+    g_backups = saves::backups_beside(g_root);
+    g_backed_up = false;
+    back_up_save("start");
     return true;
 }
 
@@ -305,7 +395,7 @@ int32_t open(const std::string& path, uint32_t mode) {
         return kNotFound;
     }
     int32_t handle = g_next_handle++;
-    g_files[handle] = file;
+    g_files[handle] = OpenFile{file, target, false};
     return handle;
 }
 
@@ -314,7 +404,7 @@ int32_t read(int32_t handle, uint32_t destination, uint32_t length) {
     if (it == g_files.end()) {
         return kInvalid;
     }
-    return static_cast<int32_t>(std::fread(host(destination), 1, length, it->second));
+    return static_cast<int32_t>(std::fread(host(destination), 1, length, it->second.file));
 }
 
 int32_t write(int32_t handle, uint32_t source, uint32_t length) {
@@ -322,8 +412,9 @@ int32_t write(int32_t handle, uint32_t source, uint32_t length) {
     if (it == g_files.end()) {
         return kInvalid;
     }
-    int32_t written = static_cast<int32_t>(std::fwrite(host(source), 1, length, it->second));
-    std::fflush(it->second);
+    int32_t written = static_cast<int32_t>(std::fwrite(host(source), 1, length, it->second.file));
+    std::fflush(it->second.file);
+    it->second.written = true;
     return written;
 }
 
@@ -333,17 +424,22 @@ int32_t seek(int32_t handle, int32_t offset, int32_t whence) {
         return kInvalid;
     }
     static const int kOrigins[] = {SEEK_SET, SEEK_CUR, SEEK_END};
-    if (whence < 0 || whence > 2 || std::fseek(it->second, offset, kOrigins[whence]) != 0) {
+    if (whence < 0 || whence > 2 || std::fseek(it->second.file, offset, kOrigins[whence]) != 0) {
         return kInvalid;
     }
-    return static_cast<int32_t>(std::ftell(it->second));
+    return static_cast<int32_t>(std::ftell(it->second.file));
 }
 
 void close(int32_t handle) {
     auto it = g_files.find(handle);
-    if (it != g_files.end()) {
-        std::fclose(it->second);
-        g_files.erase(it);
+    if (it == g_files.end()) {
+        return;
+    }
+    std::fclose(it->second.file);
+    bool saved = it->second.written && inside_save(it->second.path);
+    g_files.erase(it);
+    if (saved || g_backup_pending) {
+        save_changed();
     }
 }
 
@@ -379,8 +475,15 @@ int32_t remove(const std::string& path) {
 
 int32_t rename(const std::string& from, const std::string& to) {
     std::error_code error;
-    fs::rename(host_path(from), host_path(to), error);
-    return error ? kNotFound : 0;
+    fs::path target = host_path(to);
+    fs::rename(host_path(from), target, error);
+    if (error) {
+        return kNotFound;
+    }
+    if (inside_save(target)) {
+        save_changed();
+    }
+    return 0;
 }
 
 }

@@ -76,6 +76,14 @@ QString Project::settings_file() const {
     return game_folder() + "/settings.ini";
 }
 
+QString Project::nand_folder() const {
+    return game_folder() + "/nand";
+}
+
+QString Project::backups_folder() const {
+    return game_folder() + "/backups";
+}
+
 QString Project::executable() const {
 #ifdef Q_OS_WIN
     return root_ + "/build/out/" + game_ + ".exe";

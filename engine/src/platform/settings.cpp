@@ -28,6 +28,7 @@ constexpr Option kOptions[] = {
     {"system.pal60", "1"},
     {"system.skip_notices", "1"},
     {"audio.mute", "0"},
+    {"saves.backups", "5"},
 };
 
 std::mutex g_mutex;

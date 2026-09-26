@@ -1,10 +1,14 @@
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 #include "wp/cpu.h"
 #include "wp/function_table.h"
 #include "wp/ios.h"
 #include "wp/modules.h"
+#include "wp/save_backup.h"
 
 namespace wp {
 const FunctionEntry g_function_table[1] = {};
@@ -212,6 +216,91 @@ void test_disc_drive() {
     CHECK(wp::rd32(output) == 0x53100);
 }
 
+void write_file(const std::filesystem::path& path, const std::string& contents) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << contents;
+}
+
+std::string read_file(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
+void test_save_backups() {
+    namespace fs = std::filesystem;
+    using wp::saves::Result;
+    std::error_code error;
+    fs::path root = fs::temp_directory_path(error) / "wp_save_backup_tests";
+    fs::remove_all(root, error);
+    fs::path nand = root / "nand";
+    fs::path backups = wp::saves::backups_beside(nand);
+    fs::path relative = wp::saves::save_relative(0x53555045);
+    fs::path save = nand / relative;
+    const std::time_t start = 1790000000;
+    CHECK(relative == fs::path("title/00010000/53555045/data"));
+    CHECK(backups == root / "backups");
+    CHECK(wp::saves::backups_beside(fs::path(nand) += "/") == backups);
+
+    CHECK(wp::saves::back_up(nand, relative, backups, 5, start).result == Result::NoSave);
+    CHECK(wp::saves::list(backups).empty());
+
+    write_file(save / "wiiparty.bin", "first");
+    write_file(save / "banner.bin", "banner");
+    std::string problem;
+    CHECK(wp::saves::validate(save, problem));
+    wp::saves::Outcome first = wp::saves::back_up(nand, relative, backups, 5, start);
+    CHECK(first.result == Result::Created);
+    CHECK(wp::saves::list(backups).size() == 1);
+    CHECK(wp::saves::same_contents(save, first.backup / relative));
+    CHECK(read_file(first.backup / relative / "wiiparty.bin") == "first");
+
+    CHECK(wp::saves::back_up(nand, relative, backups, 5, start + 10).result == Result::Unchanged);
+    CHECK(wp::saves::list(backups).size() == 1);
+
+    write_file(save / "wiiparty.bin", "second");
+    wp::saves::Outcome same_second = wp::saves::back_up(nand, relative, backups, 5, start);
+    CHECK(same_second.result == Result::Created);
+    std::vector<wp::saves::Backup> listed = wp::saves::list(backups);
+    CHECK(listed.size() == 2 && listed.front().path == same_second.backup && listed.back().path == first.backup);
+
+    for (int i = 0; i < 4; i++) {
+        write_file(save / "wiiparty.bin", "round " + std::to_string(i));
+        CHECK(wp::saves::back_up(nand, relative, backups, 3, start + 100 + i).result == Result::Created);
+    }
+    listed = wp::saves::list(backups);
+    CHECK(listed.size() == 3);
+    CHECK(listed.size() == 3 && read_file(listed[0].path / relative / "wiiparty.bin") == "round 3");
+    CHECK(listed.size() == 3 && read_file(listed[2].path / relative / "wiiparty.bin") == "round 1");
+    CHECK(!fs::exists(first.backup) && !fs::exists(same_second.backup));
+    CHECK(read_file(save / "wiiparty.bin") == "round 3");
+
+    write_file(save / "wiiparty.bin", "current");
+    wp::saves::Backup oldest = listed.back();
+    CHECK(wp::saves::saved_relative(oldest) == relative);
+    wp::saves::Outcome restored = wp::saves::restore(nand, backups, oldest, 3, start + 200);
+    CHECK(restored.result == Result::Created);
+    CHECK(read_file(save / "wiiparty.bin") == "round 1");
+    CHECK(read_file(save / "banner.bin") == "banner");
+    listed = wp::saves::list(backups);
+    CHECK(listed.size() == 3 && read_file(listed[0].path / relative / "wiiparty.bin") == "current");
+    CHECK(!fs::exists(fs::path(save) += ".replaced") && !fs::exists(fs::path(save) += ".restoring"));
+    CHECK(wp::saves::restore(nand, backups, listed[0], 3, start + 300).result == Result::Created);
+    CHECK(read_file(save / "wiiparty.bin") == "current");
+    CHECK(wp::saves::restore(nand, backups, listed[0], 3, start + 400).result == Result::Unchanged);
+    listed = wp::saves::list(backups);
+    CHECK(listed.size() == 3 && read_file(listed[0].path / relative / "wiiparty.bin") == "round 1");
+
+    wp::saves::Backup empty{"2026-01-01_00-00-00", backups / "2026-01-01_00-00-00"};
+    fs::create_directories(empty.path);
+    CHECK(wp::saves::restore(nand, backups, empty, 3, start + 500).result == Result::Failed);
+    CHECK(read_file(save / "wiiparty.bin") == "current");
+    fs::create_directories(backups / "notes");
+    fs::create_directories(backups / "2026-01-01_00-00-00.partial");
+    CHECK(wp::saves::list(backups).size() == 4);
+    fs::remove_all(root, error);
+}
+
 }
 
 int main() {
@@ -224,6 +313,7 @@ int main() {
     test_paired_singles();
     test_quantization();
     test_disc_drive();
+    test_save_backups();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");

@@ -82,7 +82,7 @@ The project is split into a reusable Wii engine and one folder per game, so othe
 | --- | --- |
 | `engine/` | The Wii engine in C++, shared by every game: `src/core` (CPU runtime, threads, interrupts, modules, boot), `src/gpu` (GX), `src/audio` (DSP and audio output), `src/ios` (IPC, IOS, NAND, disc), `src/input` (Bluetooth, Wii Remote, keyboard, gamepads), `src/platform` (window and text), `src/app` (the program entry point), `include/wp` (headers) and `res` (Dolphin's free DSP ROMs). |
 | `recompiler/` | The PowerPC and DSP recompilers in Python, shared by every game: `ppc` (decoder and C++ emitter), `dsp` (DSP microcode), the DOL and REL readers, and `game.py`, which reads a game's `game.toml` and gives every tool its paths. |
-| `games/wiiparty/` | Everything specific to Wii Party: `game.toml` (name, ID, SDK addresses), `game.cpp` (window title, default folders, minigames played sideways), `analysis/` (function lists, symbols, replaced functions, DSP microcode list, progress), `res/` (icon) and `CMakeLists.txt` (the executable). Local, ignored by Git: `disc/` (your dump), `extracted/` (the extracted disc) and `nand/` (settings and saves). |
+| `games/wiiparty/` | Everything specific to Wii Party: `game.toml` (name, ID, SDK addresses), `game.cpp` (window title, default folders, minigames played sideways), `analysis/` (function lists, symbols, replaced functions, DSP microcode list, progress), `res/` (icon) and `CMakeLists.txt` (the executable). Local, ignored by Git: `disc/` (your dump), `extracted/` (the extracted disc) `nand/` (settings and saves) and `backups/` (save backups). |
 | `launcher/` | The Qt launcher: install (tools, disc, build), play and PC settings. |
 | `tools/` | Development utilities: SDL3 download, icon, progress badge, Ghidra import and decompilation, Dolphin GDB client. |
 | `tests/` | `engine/` (runtime tests), `recompiler/` (PowerPC decoder and emitter tests), `wiiparty/` (tests on the recompiled game code). |
@@ -96,10 +96,11 @@ To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `a
 
 ## Launcher
 
-`launcher/` is a small Qt 6 application (Windows now; written for Linux and macOS too) with two pages:
+`launcher/` is a small Qt 6 application (Windows now; written for Linux and macOS too) with three pages:
 
 - **Game**: when the game is installed, a Play button; otherwise Install. Install checks each tool (nodtool, Python 3.11+, CMake 3.20+, Ninja, and on Windows MinGW-w64 GCC 13+) and downloads the missing or incompatible ones from their official sites into `build/deps/toolchain/`, checking each file's SHA-256, then extracts your disc and runs every generation and build step, showing the log. Nothing from the game is downloaded. On Linux and macOS missing tools must come from the system's package manager.
 - **Settings**: every PC improvement from `games/wiiparty/settings.ini`, with a switch or a list.
+- **Saves**: the automatic save backups by date, each with Restore (after a confirmation; the current save is backed up first), and Open folder.
 
 Build it with Qt 6 (on Windows the MSYS2 `mingw-w64-x86_64-qt6-base` package; its MinGW build is separate from the game's compiler, and the needed DLLs are copied next to the launcher):
 
@@ -127,6 +128,11 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[system] pal60` | `1` | The console's own PAL60 setting (`IPL.E60`), so the PAL game runs at 60 Hz; 0 gives 50 Hz | `WP_PAL60` |
 | `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |
 | `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
+| `[saves] backups` | `5` | Number of save backups kept in `games/wiiparty/backups/`; 0 turns them off | `WP_SAVE_BACKUPS` |
+
+### Save backups
+
+On every start, before the game runs, the engine copies the save (`title/00010000/<game ID in hex>/data` in the virtual NAND) to `games/wiiparty/backups/<YYYY-MM-DD_HH-MM-SS>/` when it differs from the newest backup, and deletes the oldest backups beyond the limit. After the game writes a file of its save (a written file is closed, or a file is renamed into the save folder) another backup is made, at most one per minute. Before each backup every save file must read back completely at its full size; the game's code does not show a fixed save size, so no size is assumed. If the check fails the engine prints it and makes no backup, so the existing good backups stay; nothing is restored without the launcher. The live save is never deleted by the engine. The launcher's Saves page restores a backup: it backs up the current save first, then swaps the copy in.
 
 ## Setup
 
@@ -189,7 +195,7 @@ Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (f
 
    Commands are `regs`, `mem`, `u32`, `write`, `break`, `unbreak`, `watch`, `rwatch`, `awatch`, `step`, `continue`, `halt`, `raw` and `sleep`. Dolphin accepts one client per boot, so each call starts a fresh emulator (`--launch`; `--keep` leaves it running). It expects `reference/dolphin/Dolphin.exe` and `games/wiiparty/disc/wiiparty.rvz` unless `--dolphin` and `--game` are given.
 
-`games/wiiparty/disc/`, `games/wiiparty/extracted/`, `games/wiiparty/nand/` and `reference/` (optional local material such as an emulator and RAM dumps of your own copy) are ignored by Git and must never be committed.
+`games/wiiparty/disc/`, `games/wiiparty/extracted/`, `games/wiiparty/nand/`, `games/wiiparty/backups/` and `reference/` (optional local material such as an emulator and RAM dumps of your own copy) are ignored by Git and must never be committed.
 
 ## Legal notice
 
