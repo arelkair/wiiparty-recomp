@@ -10,7 +10,7 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Tiro a la lata | OK | |
 | Terror zombi | OK | |
 | Montaña de regalos | OK | Unlocked "Montaña de regalos+" in Challenges |
-| Obstáculos rodantes | Slow | 40-50 fps, drops within that range. The race end no longer crashes |
+| Obstáculos rodantes | Slow | 40-50 fps, drops within that range. The race end no longer crashes. After the vertex speed-up of 2026-09-26: 48-50 fps in a scripted run, to be confirmed by hand |
 | ¡A por la bandera! | OK | |
 | Pica y trocea | Slow | 42-50 fps, drops within that range |
 | La pieza correcta | OK | |

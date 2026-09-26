@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -183,7 +184,7 @@ uint32_t element_size(const Element& element) {
     }
 }
 
-Layout make_layout(uint32_t vat) {
+Layout build_layout(uint32_t vat) {
     Layout layout;
     uint32_t a = g_vat[0][vat];
     uint32_t b = g_vat[1][vat];
@@ -231,6 +232,32 @@ Layout make_layout(uint32_t vat) {
     return layout;
 }
 
+const std::array<float, 32> kShiftScale = [] {
+    std::array<float, 32> scale{};
+    for (int i = 0; i < 32; i++) {
+        scale[i] = std::ldexp(1.0f, -i);
+    }
+    return scale;
+}();
+
+struct CachedLayout {
+    uint32_t key[5] = {};
+    bool valid = false;
+    Layout layout;
+};
+
+const Layout& make_layout(uint32_t vat) {
+    static CachedLayout cache[8];
+    CachedLayout& entry = cache[vat];
+    uint32_t key[5] = {g_vat[0][vat], g_vat[1][vat], g_vat[2][vat], g_vcd_low, g_vcd_high};
+    if (!entry.valid || std::memcmp(entry.key, key, sizeof key) != 0) {
+        std::memcpy(entry.key, key, sizeof key);
+        entry.layout = build_layout(vat);
+        entry.valid = true;
+    }
+    return entry.layout;
+}
+
 float read_number(const uint8_t* p, uint32_t format, uint32_t shift) {
     float value;
     switch (format) {
@@ -249,19 +276,19 @@ float read_number(const uint8_t* p, uint32_t format, uint32_t shift) {
     default:
         return bits_to_float(be32(p));
     }
-    return std::ldexp(value, -static_cast<int>(shift));
+    return value * kShiftScale[shift];
 }
 
 float read_normal_component(const uint8_t* p, uint32_t format) {
     switch (format) {
     case 0:
-        return std::ldexp(static_cast<float>(p[0]), -7);
+        return static_cast<float>(p[0]) * kShiftScale[7];
     case 1:
-        return std::ldexp(static_cast<float>(static_cast<int8_t>(p[0])), -6);
+        return static_cast<float>(static_cast<int8_t>(p[0])) * kShiftScale[6];
     case 2:
-        return std::ldexp(static_cast<float>(be16(p)), -15);
+        return static_cast<float>(be16(p)) * kShiftScale[15];
     case 3:
-        return std::ldexp(static_cast<float>(static_cast<int16_t>(be16(p))), -14);
+        return static_cast<float>(static_cast<int16_t>(be16(p))) * kShiftScale[14];
     default:
         return bits_to_float(be32(p));
     }
@@ -695,8 +722,9 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
         return;
     }
     count_indirect();
-    Layout layout = make_layout(command & 7);
-    std::vector<Prepared> vertices;
+    const Layout& layout = make_layout(command & 7);
+    static std::vector<Prepared> vertices;
+    vertices.clear();
     vertices.reserve(count);
     const uint8_t* stream = data;
     Vertex raw[3];
@@ -707,7 +735,8 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
         }
         vertices.push_back(prepare(vertex));
     }
-    std::vector<ScreenVertex> triangles;
+    static std::vector<ScreenVertex> triangles;
+    triangles.clear();
     uint32_t primitive = (command >> 3) & 7;
     switch (primitive) {
     case 0:
@@ -1052,7 +1081,7 @@ size_t parse_one(const uint8_t* data, size_t size, bool list) {
             return 0;
         }
         uint32_t count = be16(data + 1);
-        Layout layout = make_layout(command & 7);
+        const Layout& layout = make_layout(command & 7);
         size_t total = 3 + static_cast<size_t>(count) * layout.size;
         if (size < total) {
             return 0;
@@ -1155,6 +1184,7 @@ const bool g_threaded = [] {
     const char* setting = std::getenv("WP_GPU_THREAD");
     return !setting || std::atoi(setting) != 0;
 }();
+
 
 void gpu_thread() {
     std::vector<uint8_t> buffer;

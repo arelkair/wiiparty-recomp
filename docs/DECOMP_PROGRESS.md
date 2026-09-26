@@ -721,3 +721,9 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 ## Manual minigame check (2026-09-26)
 
 - The user is playing every minigame in Free Play and recording the result in `docs/MINIGAMES.md`. So far 35 four-player minigames: most with no fault seen, three below 50 fps (Obstáculos rodantes, Pica y trocea, Laberinto mareante), graphics faults in ¡Puños fuera! (water), Carrera galáctica (background flashes) and Saltos selváticos (Mii faces), and input lost after switching windows in Bebés llorones.
+
+## Faster vertex decoding on the GPU thread (2026-09-26)
+
+- Why Hurdle Hover ran at about 41 fps: the game waits for the GPU (`GXDrawDone`) twice per frame, so the CPU and the GPU thread worked one after the other. A temporary sampling profiler of the GPU thread (removed) showed it half idle, and inside the executable `draw_primitive` 17% of samples, lighting 11%, `ldexp` 5%, `render::draw` 5% and `make_layout` 2.5%, plus 4% in the C runtime (allocations and copies). The real GPU is much faster than this emulation, so the faithful fix is to make vertex processing cheaper.
+- Changes in `engine/src/gpu/gx.cpp`, all exact: the fixed-point scaling of positions, texture coordinates and normals multiplies by a power of two from a table instead of calling `ldexp`, which MinGW implements as a slow library call (the product is bit-identical); the vertex layout is cached per VAT slot and rebuilt only when the VAT or VCD registers change (it was built twice per draw); the per-draw vertex and triangle vectors are reused instead of allocated for each draw.
+- Result on the scripted Hurdle Hover run: 48-50 fps during the race (before: 40-42). The strap screen frames are pixel-identical to the previous build. `ctest` passes. Pica y trocea and Laberinto mareante, also below 50 fps in the user's check, have not been measured yet.
