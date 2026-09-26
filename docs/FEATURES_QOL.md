@@ -41,6 +41,8 @@ Requirements:
 - Fall back to the original resource.
 - Document the naming convention and the directory structure.
 
+Status: done in the engine's renderer rather than per resource: textures are replaced by their content hash with Dolphin's naming, from `games/wiiparty/textures/load/`, with dumping to `games/wiiparty/textures/dump/` (see the README, "Custom textures").
+
 ---
 
 ## 2. Pace of play
@@ -240,7 +242,7 @@ Requirements:
 
 - [ ] Implement the dynamic aspect ratio.
 - [ ] Separate rendering and logic to support high refresh rates.
-- [ ] Add HD texture support.
+- [x] Add HD texture support.
 - [ ] Validate the 2D interface at different resolutions.
 
 ### Priority 4: extended features

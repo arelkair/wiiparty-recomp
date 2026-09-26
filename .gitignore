@@ -3,6 +3,7 @@
 /games/*/nand/
 /games/*/backups/
 /games/*/settings.ini
+/games/*/textures/
 /reference/
 *.iso
 *.wbfs

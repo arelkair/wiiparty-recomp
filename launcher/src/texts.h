@@ -56,6 +56,10 @@ struct Texts {
     QString fullscreen_detail;
     QString copy_filter;
     QString copy_filter_detail;
+    QString custom_textures;
+    QString custom_textures_detail;
+    QString dump_textures;
+    QString dump_textures_detail;
     QString gamepads;
     QString gamepads_detail;
     QString auto_grip;

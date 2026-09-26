@@ -287,17 +287,9 @@ void present_on_gpu(HWND window, double aspect) {
     }
 }
 
-void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
-    std::vector<uint8_t> raw;
-    for (uint32_t y = 0; y < height; y++) {
-        raw.push_back(0);
-        for (uint32_t x = 0; x < width; x++) {
-            uint32_t p = pixels[static_cast<size_t>(y) * width + x];
-            raw.push_back(static_cast<uint8_t>(p >> 16));
-            raw.push_back(static_cast<uint8_t>(p >> 8));
-            raw.push_back(static_cast<uint8_t>(p));
-        }
-    }
+namespace {
+
+void write_png(const char* path, const std::vector<uint8_t>& raw, uint32_t width, uint32_t height, uint8_t color_type) {
     std::vector<uint8_t> deflated = {0x78, 0x01};
     size_t position = 0;
     while (position < raw.size()) {
@@ -320,7 +312,7 @@ void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t wi
     std::vector<uint8_t> header;
     put32(header, width);
     put32(header, height);
-    header.insert(header.end(), {8, 2, 0, 0, 0});
+    header.insert(header.end(), {8, color_type, 0, 0, 0});
     put_chunk(file, "IHDR", header);
     put_chunk(file, "IDAT", deflated);
     put_chunk(file, "IEND", {});
@@ -329,6 +321,39 @@ void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t wi
         std::fwrite(file.data(), 1, file.size(), handle);
         std::fclose(handle);
     }
+}
+
+}
+
+void save_png(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
+    std::vector<uint8_t> raw;
+    raw.reserve(static_cast<size_t>(width * 3 + 1) * height);
+    for (uint32_t y = 0; y < height; y++) {
+        raw.push_back(0);
+        for (uint32_t x = 0; x < width; x++) {
+            uint32_t p = pixels[static_cast<size_t>(y) * width + x];
+            raw.push_back(static_cast<uint8_t>(p >> 16));
+            raw.push_back(static_cast<uint8_t>(p >> 8));
+            raw.push_back(static_cast<uint8_t>(p));
+        }
+    }
+    write_png(path, raw, width, height, 2);
+}
+
+void save_png_rgba(const char* path, const std::vector<uint32_t>& pixels, uint32_t width, uint32_t height) {
+    std::vector<uint8_t> raw;
+    raw.reserve(static_cast<size_t>(width * 4 + 1) * height);
+    for (uint32_t y = 0; y < height; y++) {
+        raw.push_back(0);
+        for (uint32_t x = 0; x < width; x++) {
+            uint32_t p = pixels[static_cast<size_t>(y) * width + x];
+            raw.push_back(static_cast<uint8_t>(p));
+            raw.push_back(static_cast<uint8_t>(p >> 8));
+            raw.push_back(static_cast<uint8_t>(p >> 16));
+            raw.push_back(static_cast<uint8_t>(p >> 24));
+        }
+    }
+    write_png(path, raw, width, height, 6);
 }
 
 void save_next_frame(const char* path) {

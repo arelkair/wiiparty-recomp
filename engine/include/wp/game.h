@@ -9,6 +9,7 @@ struct Description {
     const char* data_directory;
     const char* nand_directory;
     const char* settings_file;
+    const char* textures_directory;
     const char* notice_module;
     const char* const* sideways_modules;
     size_t sideways_module_count;
