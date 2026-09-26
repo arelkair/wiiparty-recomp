@@ -37,6 +37,8 @@ constexpr Binding kBindings[] = {
 };
 
 constexpr auto kWheelSwing = std::chrono::milliseconds(120);
+constexpr int64_t kNoticePulsePeriod = 500;
+constexpr int64_t kNoticePulseLength = 100;
 std::atomic<int64_t> g_wheel_up{0};
 std::atomic<int64_t> g_wheel_down{0};
 
@@ -188,7 +190,7 @@ bool connected(uint32_t channel) {
     return channel == 0 || gamepad::connected(channel);
 }
 
-Sample sample(uint32_t channel) {
+Sample device_sample(uint32_t channel) {
     static const char* script_text = std::getenv("WP_INPUT_SCRIPT");
     if (script_text) {
         static const std::vector<ScriptEntry> script = [] {
@@ -285,6 +287,23 @@ Sample sample(uint32_t channel) {
         result.pointer_valid = true;
         result.pointer_x = pad.pointer_x;
         result.pointer_y = pad.pointer_y;
+    }
+    return result;
+}
+
+bool skipping_notice() {
+    static const bool enabled = settings::flag("system.skip_notices", "WP_SKIP_NOTICES") && !std::getenv("WP_INPUT_SCRIPT") && !std::getenv("WP_INPUT_BUTTONS");
+    const char* module = game::description().notice_module;
+    if (!enabled || !module || !module_loaded(module)) {
+        return false;
+    }
+    return now_ms() % kNoticePulsePeriod < kNoticePulseLength;
+}
+
+Sample sample(uint32_t channel) {
+    Sample result = device_sample(channel);
+    if (channel == 0 && skipping_notice()) {
+        result.buttons |= kButtonA;
     }
     return result;
 }

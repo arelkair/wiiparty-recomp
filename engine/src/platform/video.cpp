@@ -66,6 +66,11 @@ void put_chunk(std::vector<uint8_t>& out, const char* type, const std::vector<ui
 }
 
 
+bool hide_cursor() {
+    static const bool value = settings::flag("input.hide_cursor", "WP_HIDE_CURSOR");
+    return value;
+}
+
 WINDOWPLACEMENT g_placement{};
 bool g_fullscreen = false;
 
@@ -114,6 +119,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
         return DefWindowProc(window, message, wparam, lparam);
+    case WM_SETCURSOR:
+        if (LOWORD(lparam) == HTCLIENT && hide_cursor()) {
+            SetCursor(nullptr);
+            return TRUE;
+        }
+        return DefWindowProc(window, message, wparam, lparam);
     case WM_MOUSEWHEEL:
         input::note_wheel(GET_WHEEL_DELTA_WPARAM(wparam));
         return 0;
@@ -144,6 +155,9 @@ std::string game_code() {
 std::string window_title(double fps) {
     const ui::Text& text = ui::text();
     bool pal = (rd16(kDisplayConfig) & 0x0300) == 0x0100;
+    std::string code = game_code();
+    bool pal_disc = code.size() >= 4 && code[3] == 'P';
+    const char* region = pal ? "PAL" : pal_disc ? "PAL60" : "NTSC";
     dsp::Status status = dsp::status();
     char statistics[128];
     if (status.loaded) {
@@ -152,7 +166,7 @@ std::string window_title(double fps) {
     } else {
         std::snprintf(statistics, sizeof statistics, "%s: %.0f | %s: %s", text.fps, fps, text.dsp, text.dsp_stopped);
     }
-    return std::string(game::description().title) + " (" + game_code() + ") | " + gx::render::api_name() + " | " + (pal ? "PAL" : "NTSC") + " | " +
+    return std::string(game::description().title) + " (" + code + ") | " + gx::render::api_name() + " | " + region + " | " +
            statistics;
 }
 

@@ -23,7 +23,10 @@ constexpr Option kOptions[] = {
     {"input.gamepads", "1"},
     {"input.auto_grip", "1"},
     {"input.wake_on_mouse", "1"},
+    {"input.hide_cursor", "1"},
     {"system.language", "auto"},
+    {"system.pal60", "1"},
+    {"system.skip_notices", "1"},
     {"audio.mute", "0"},
 };
 

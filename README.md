@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 74% (estimate, see below).
+> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 76% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -12,7 +12,7 @@ Wii Party Recomp is a project that aims to translate the original game executabl
 
 ## Current state
 
-The game runs natively on Windows at a steady 50 fps (PAL), using about one and a half CPU threads and 200 MB of memory. Input goes through an emulated Wii Remote: the mouse is the pointer and the keyboard gives the buttons and the motion. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
+The game runs natively on Windows at a steady 60 fps (PAL60, the console setting; 50 fps with it off), using about one and a half CPU threads and 200 MB of memory. Input goes through an emulated Wii Remote: the mouse is the pointer and the keyboard gives the buttons and the motion. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
 
 ### Progress
 
@@ -26,7 +26,7 @@ The overall figure is the equal-weight average of the components below. They are
 | Input | 65% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons and as an accelerometer model (tilt, swing, shake) with the grip chosen per minigame; up to four gamepads (SDL3) as Wii Remotes 1-4 with gyroscope pointer, accelerometer, rumble and player lights, untested with a physical gamepad; no real Wii Remotes |
 | Audio | 83% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no stale audio blocks on busy board scenes or scene loads; windowed-sinc WASAPI output |
 | Game flow | 80% | A complete game of Board Game Island (17 rounds, final ranking, save) played by hand without faults; a first boot without a save works; 62 minigames played by hand in Free Play, 57 without faults seen (`docs/MINIGAMES.md`); pair games and the other modes not played through |
-| PC features | 20% | A settings file for every PC option (read by a future launcher), borderless full screen with F11, native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; launcher, options menu, ultrawide and online not started |
+| PC features | 30% | A settings file for every PC option (read by a future launcher), borderless full screen with F11, 60 Hz through the console's PAL60 setting, the Windows cursor hidden over the game, the strap notice skipped, native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; launcher, options menu, ultrawide and online not started |
 
 ### Working
 
@@ -105,7 +105,10 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[input] gamepads` | `1` | Gamepads as Wii Remotes | `WP_GAMEPAD` |
 | `[input] auto_grip` | `1` | Hold the emulated remote sideways in the minigames that ask for it | `WP_AUTO_ORIENTATION` |
 | `[input] wake_on_mouse` | `1` | Moving the mouse reconnects a remote the game disconnected for inactivity | `WP_RECONNECT_ON_POINTER` |
+| `[input] hide_cursor` | `1` | Hide the Windows cursor over the game window (the game draws its own pointer) | `WP_HIDE_CURSOR` |
 | `[system] language` | `auto` | Console language: `auto` follows Windows, or `en`, `de`, `fr`, `es`, `it`, `nl` | `WP_LANGUAGE` |
+| `[system] pal60` | `1` | The console's own PAL60 setting (`IPL.E60`), so the PAL game runs at 60 Hz; 0 gives 50 Hz | `WP_PAL60` |
+| `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |
 | `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
 
 ## Setup

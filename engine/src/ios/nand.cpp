@@ -85,6 +85,10 @@ std::vector<uint8_t> paired_remotes() {
     return data;
 }
 
+uint8_t pal60() {
+    return settings::flag("system.pal60", "WP_PAL60") ? 1 : 0;
+}
+
 uint8_t console_language() {
     struct Name {
         const char* code;
@@ -139,7 +143,7 @@ std::vector<uint8_t> default_sysconf() {
     add_item(items, kTypeBool, "IPL.EULA", {1});
     add_item(items, kTypeByte, "IPL.UPT", {2});
     add_item(items, kTypeByte, "IPL.PGS", {0});
-    add_item(items, kTypeByte, "IPL.E60", {0});
+    add_item(items, kTypeByte, "IPL.E60", {pal60()});
     add_item(items, kTypeByte, "IPL.DH", {0});
     add_item(items, kTypeLong, "IPL.INC", {0, 0, 0, 8});
     add_item(items, kTypeLong, "IPL.FRC", {0, 0, 0, 0x28});
@@ -211,32 +215,35 @@ bool valid_sysconf(const fs::path& path) {
     return true;
 }
 
-void apply_language(const fs::path& path) {
+void set_byte_item(std::vector<uint8_t>& data, size_t count, const char* name, uint8_t value, std::FILE* file) {
+    size_t length = std::strlen(name);
+    for (size_t i = 1; i + length < count; i++) {
+        if (data[i - 1] == ((kTypeByte << 5) | (length - 1)) && std::memcmp(&data[i], name, length) == 0) {
+            if (data[i + length] != value) {
+                std::fseek(file, static_cast<long>(i + length), SEEK_SET);
+                std::fwrite(&value, 1, 1, file);
+            }
+            return;
+        }
+    }
+}
+
+void apply_settings(const fs::path& path) {
     std::FILE* file = std::fopen(path.string().c_str(), "r+b");
     if (!file) {
         return;
     }
     std::vector<uint8_t> data(kSysconfSize);
     size_t count = std::fread(data.data(), 1, data.size(), file);
-    static const char kName[] = "IPL.LNG";
-    constexpr size_t kNameLength = sizeof(kName) - 1;
-    for (size_t i = 1; i + kNameLength < count; i++) {
-        if (data[i - 1] == ((kTypeByte << 5) | (kNameLength - 1)) && std::memcmp(&data[i], kName, kNameLength) == 0) {
-            uint8_t language = console_language();
-            if (data[i + kNameLength] != language) {
-                std::fseek(file, static_cast<long>(i + kNameLength), SEEK_SET);
-                std::fwrite(&language, 1, 1, file);
-            }
-            break;
-        }
-    }
+    set_byte_item(data, count, "IPL.LNG", console_language(), file);
+    set_byte_item(data, count, "IPL.E60", pal60(), file);
     std::fclose(file);
 }
 
 void ensure_sysconf() {
     fs::path path = host_path("/shared2/sys/SYSCONF");
     if (fs::exists(path) && valid_sysconf(path)) {
-        apply_language(path);
+        apply_settings(path);
         return;
     }
     fs::create_directories(path.parent_path());
