@@ -80,7 +80,16 @@ Adapted third-party components are included (see below). This file records what 
 - Version 3.4.16, the official MinGW development package `SDL3-devel-3.4.16-mingw.tar.gz` from https://github.com/libsdl-org/SDL/releases, downloaded by `tools/fetch_sdl.py` into `build/deps/` (ignored by Git) and checked by SHA-256. `SDL3.dll` is copied next to the executable and must be shipped with it.
 - Copyright: "Copyright (C) 1997-2026 Sam Lantinga", as stated in `LICENSE.txt` of the package. License: zlib, which is compatible with GPL-3.0-or-later. A binary distribution should carry that `LICENSE.txt` (an acknowledgment is appreciated but not required). No SDL source is copied or changed.
 
-## Rules for adding third-party code
+### Qt 6 (launcher)
+
+- Used by `launcher/` (own code) through its public API: Qt Core, Gui and Widgets 6.11. Not included in the repository; on Windows the MSYS2 package is used and `launcher/cmake/deploy_windows.cmake` copies the DLLs (Qt and its dependencies: ICU, HarfBuzz, FreeType, zstd and others, each under its own license) next to the executable at build time.
+- License: Qt is available under LGPL-3.0 and GPL-3.0 (among others). Used as dynamically linked libraries, which is compatible with this project's GPL-3.0-or-later. A binary distribution of the launcher must carry the licenses of Qt and of the DLLs shipped with it.
+
+### Tools downloaded by the launcher
+
+- On Windows the launcher downloads, only when missing, the official builds of nodtool 1.4.4 (GitHub encounter/nod), Python 3.12.10 embeddable (python.org), CMake 4.4.3 (GitHub Kitware), Ninja 1.13.2 (GitHub ninja-build) and the nuwen.net MinGW distribution 20.0 (GCC 15.2), checking the SHA-256 recorded in `launcher/src/toolchain.cpp` (CMake's matches its published checksum file). They are stored in the user's `build/deps/toolchain/`, never in the repository; their licenses apply to their use.
+
+
 
 Before any external file is added it must have, in this file:
 

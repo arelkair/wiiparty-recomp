@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 76% (estimate, see below).
+> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 77% (estimate, see below).
 
 ![Project progress](docs/progress.svg)
 
@@ -26,7 +26,7 @@ The overall figure is the equal-weight average of the components below. They are
 | Input | 65% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons and as an accelerometer model (tilt, swing, shake) with the grip chosen per minigame; up to four gamepads (SDL3) as Wii Remotes 1-4 with gyroscope pointer, accelerometer, rumble and player lights, untested with a physical gamepad; no real Wii Remotes |
 | Audio | 83% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no stale audio blocks on busy board scenes or scene loads; windowed-sinc WASAPI output |
 | Game flow | 80% | A complete game of Board Game Island (17 rounds, final ranking, save) played by hand without faults; a first boot without a save works; 62 minigames played by hand in Free Play, 57 without faults seen (`docs/MINIGAMES.md`); pair games and the other modes not played through |
-| PC features | 30% | A settings file for every PC option (read by a future launcher), borderless full screen with F11, 60 Hz through the console's PAL60 setting, the Windows cursor hidden over the game, the strap notice skipped, native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; launcher, options menu, ultrawide and online not started |
+| PC features | 40% | A Qt launcher (install with automatic tool download, play, every PC setting), a settings file for every PC option, borderless full screen with F11, 60 Hz through the console's PAL60 setting, optional hidden Windows cursor, the strap notice skipped, native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; in-game options menu, Mii editor, ultrawide and online not started |
 
 ### Working
 
@@ -70,7 +70,7 @@ Face buttons follow the letters printed on the gamepad: on Nintendo-layout gamep
 
 - Real Wii Remotes. Gamepad support (through SDL3) has not yet been tested with a physical gamepad.
 - GX: logic operations (not used by any screen checked so far), texture offsets of lines and points.
-- Planned: ultrawide display support, higher frame rates, a launcher and options menu, online play, quality-of-life options and a Galician translation.
+- Planned: ultrawide display support, higher frame rates, an in-game options menu, a Mii editor in the launcher, launchers for Linux and macOS once the engine runs there, online play, quality-of-life options and a Galician translation.
 
 Progress notes and the list of goals are in `docs/DECOMP_PROGRESS.md`; the manual check of every minigame is in `docs/MINIGAMES.md`; planned features are in `docs/FEATURES_QOL.md`.
 
@@ -83,6 +83,7 @@ The project is split into a reusable Wii engine and one folder per game, so othe
 | `engine/` | The Wii engine in C++, shared by every game: `src/core` (CPU runtime, threads, interrupts, modules, boot), `src/gpu` (GX), `src/audio` (DSP and audio output), `src/ios` (IPC, IOS, NAND, disc), `src/input` (Bluetooth, Wii Remote, keyboard, gamepads), `src/platform` (window and text), `src/app` (the program entry point), `include/wp` (headers) and `res` (Dolphin's free DSP ROMs). |
 | `recompiler/` | The PowerPC and DSP recompilers in Python, shared by every game: `ppc` (decoder and C++ emitter), `dsp` (DSP microcode), the DOL and REL readers, and `game.py`, which reads a game's `game.toml` and gives every tool its paths. |
 | `games/wiiparty/` | Everything specific to Wii Party: `game.toml` (name, ID, SDK addresses), `game.cpp` (window title, default folders, minigames played sideways), `analysis/` (function lists, symbols, replaced functions, DSP microcode list, progress), `res/` (icon) and `CMakeLists.txt` (the executable). Local, ignored by Git: `disc/` (your dump), `extracted/` (the extracted disc) and `nand/` (settings and saves). |
+| `launcher/` | The Qt launcher: install (tools, disc, build), play and PC settings. |
 | `tools/` | Development utilities: SDL3 download, icon, progress badge, Ghidra import and decompilation, Dolphin GDB client. |
 | `tests/` | `engine/` (runtime tests), `recompiler/` (PowerPC decoder and emitter tests), `wiiparty/` (tests on the recompiled game code). |
 | `third_party/` | Code from other projects, kept apart with its licences (see `THIRD_PARTY_NOTICES.md`). |
@@ -92,6 +93,22 @@ The project is split into a reusable Wii engine and one folder per game, so othe
 | `captures/` | F12 captures, ignored by Git. |
 
 To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `analysis/`, `res/` and `CMakeLists.txt`, then run the tools with `WP_GAME=<name>` and configure CMake with `-DWP_GAME=<name>`.
+
+## Launcher
+
+`launcher/` is a small Qt 6 application (Windows now; written for Linux and macOS too) with two pages:
+
+- **Game**: when the game is installed, a Play button; otherwise Install. Install checks each tool (nodtool, Python 3.11+, CMake 3.20+, Ninja, and on Windows MinGW-w64 GCC 13+) and downloads the missing or incompatible ones from their official sites into `build/deps/toolchain/`, checking each file's SHA-256, then extracts your disc and runs every generation and build step, showing the log. Nothing from the game is downloaded. On Linux and macOS missing tools must come from the system's package manager.
+- **Settings**: every PC improvement from `games/wiiparty/settings.ini`, with a switch or a list.
+
+Build it with Qt 6 (on Windows the MSYS2 `mingw-w64-x86_64-qt6-base` package; its MinGW build is separate from the game's compiler, and the needed DLLs are copied next to the launcher):
+
+```
+cmake -S launcher -B build/launcher -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/launcher
+```
+
+Run `build/launcher/wiiparty-launcher`. `--install` installs without interaction and writes `build/install.log`.
 
 ## Settings
 

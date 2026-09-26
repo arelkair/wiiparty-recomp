@@ -1,0 +1,160 @@
+QWidget {
+    background: #ffffff;
+    color: #161618;
+    font-size: 10pt;
+}
+
+#sidebar {
+    background: #f5f5f7;
+    border-right: 1px solid #e3e3e8;
+}
+
+#sidebar QLabel {
+    background: transparent;
+}
+
+#brand {
+    font-size: 14pt;
+    font-weight: 600;
+}
+
+#display {
+    font-size: 30pt;
+    font-weight: 700;
+}
+
+#heading {
+    font-size: 20pt;
+    font-weight: 600;
+}
+
+#lead {
+    font-size: 11pt;
+    color: #45454a;
+}
+
+#section {
+    font-size: 9pt;
+    font-weight: 600;
+    color: #6e6e73;
+    padding-top: 6px;
+}
+
+#value {
+    font-size: 10.5pt;
+}
+
+#detail {
+    font-size: 9pt;
+    color: #6e6e73;
+}
+
+#row {
+    border-bottom: 1px solid #ececf0;
+}
+
+QPushButton {
+    background: #ffffff;
+    border: 1px solid #c9c9cf;
+    border-radius: 17px;
+    padding: 7px 18px;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background: #f5f5f7;
+}
+
+QPushButton:disabled {
+    color: #a1a1a6;
+    border-color: #e3e3e8;
+}
+
+QPushButton#primary {
+    background: #161618;
+    color: #ffffff;
+    border: 1px solid #161618;
+    font-weight: 600;
+}
+
+QPushButton#primary:hover {
+    background: #d4146f;
+    border-color: #d4146f;
+}
+
+QPushButton#primary:disabled {
+    background: #e3e3e8;
+    border-color: #e3e3e8;
+    color: #a1a1a6;
+}
+
+QPushButton#nav {
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    text-align: left;
+    padding: 8px 12px;
+    color: #45454a;
+}
+
+QPushButton#nav:hover {
+    background: #ebebef;
+}
+
+QPushButton#nav:checked {
+    background: #ffffff;
+    color: #161618;
+    font-weight: 600;
+    border-left: 2px solid #d4146f;
+}
+
+QListWidget#steps {
+    border: 1px solid #e3e3e8;
+    border-radius: 12px;
+    padding: 4px;
+}
+
+QListWidget#steps::item {
+    padding: 5px 8px;
+}
+
+QPlainTextEdit#log {
+    background: #f5f5f7;
+    border: 1px solid #e3e3e8;
+    border-radius: 12px;
+    padding: 8px;
+    color: #45454a;
+}
+
+QComboBox {
+    border: 1px solid #c9c9cf;
+    border-radius: 8px;
+    padding: 5px 10px;
+    min-width: 150px;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #a1a1a6;
+    border-radius: 5px;
+    background: #ffffff;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #161618;
+}
+
+QCheckBox::indicator:checked {
+    background: #161618;
+    border-color: #161618;
+}
+
+QCheckBox::indicator:checked:hover {
+    background: #d4146f;
+    border-color: #d4146f;
+}
+
+QScrollArea, #page {
+    background: #ffffff;
+}
