@@ -9,6 +9,7 @@
 #include "wp/cpu.h"
 #include "wp/custom_textures.h"
 #include "wp/function_table.h"
+#include "wp/gx_state.h"
 #include "wp/ios.h"
 #include "wp/modules.h"
 #include "wp/save_backup.h"
@@ -405,6 +406,151 @@ void test_custom_texture_index() {
     std::filesystem::remove_all(root, error);
 }
 
+int blend_factor(wp::gx::BlendFactor factor, int written, int tev, int destination) {
+    using wp::gx::BlendFactor;
+    switch (factor) {
+    case BlendFactor::Zero:
+        return 0;
+    case BlendFactor::One:
+        return 255;
+    case BlendFactor::SourceColor:
+    case BlendFactor::SourceAlpha:
+        return written;
+    case BlendFactor::InverseSourceColor:
+    case BlendFactor::InverseSourceAlpha:
+        return 255 - written;
+    case BlendFactor::DestinationColor:
+    case BlendFactor::DestinationAlpha:
+        return destination;
+    case BlendFactor::InverseDestinationColor:
+    case BlendFactor::InverseDestinationAlpha:
+        return 255 - destination;
+    case BlendFactor::TevColor:
+    case BlendFactor::TevAlpha:
+        return tev;
+    case BlendFactor::InverseTevAlpha:
+        return 255 - tev;
+    }
+    return -1;
+}
+
+int blend_channel(const wp::gx::BlendState& state, bool alpha, int tev, int destination) {
+    using wp::gx::LogicSource;
+    int written = state.output == LogicSource::Tev ? tev : (state.output == LogicSource::Zero ? 0 : (state.output == LogicSource::One ? 255 : 255 - tev));
+    if (!state.enable) {
+        return written;
+    }
+    double source = written * blend_factor(alpha ? state.source_alpha : state.source, written, tev, destination) / (255.0 * 255.0);
+    double target = destination * blend_factor(alpha ? state.destination_alpha : state.destination, written, tev, destination) / (255.0 * 255.0);
+    wp::gx::BlendOperation operation = alpha ? state.alpha_operation : state.operation;
+    double value = operation == wp::gx::BlendOperation::Add ? source + target
+                   : (operation == wp::gx::BlendOperation::Subtract ? source - target : target - source);
+    value = value < 0.0 ? 0.0 : (value > 1.0 ? 1.0 : value);
+    return static_cast<int>(value * 255.0 + 0.5);
+}
+
+int logic_reference(uint32_t op, int s, int d) {
+    int results[16] = {0, s & d, s & ~d, s, ~s & d, d, s ^ d, s | d, ~(s | d), ~(s ^ d), ~d, s | ~d, ~s, ~s | d, ~(s & d), 255};
+    return results[op] & 255;
+}
+
+void test_gx_logic_ops() {
+    using namespace wp::gx;
+    for (uint32_t op = 0; op < 16; op++) {
+        uint32_t mode = 2 | (1u << 3) | (1u << 4) | (op << 12);
+        BlendState state = blend_state(mode, true, false, true);
+        CHECK(state.logic_op);
+        CHECK(state.logic_mode == op);
+        if (op == 5) {
+            CHECK(!state.color_update && !state.alpha_update && !state.enable);
+            CHECK(blend_state(mode, true, true, true).alpha_update);
+            continue;
+        }
+        CHECK(state.color_update && state.alpha_update);
+        bool binary = true;
+        for (int s = 0; s <= 255; s += 255) {
+            for (int d = 0; d <= 255; d += 255) {
+                binary &= blend_channel(state, false, s, d) == logic_reference(op, s, d);
+                binary &= blend_channel(state, true, s, d) == logic_reference(op, s, d);
+            }
+        }
+        CHECK(binary);
+        bool exact = true;
+        for (int s = 0; s < 256; s++) {
+            for (int d = 0; d < 256; d++) {
+                exact &= blend_channel(state, false, s, d) == logic_reference(op, s, d) && blend_channel(state, true, s, d) == logic_reference(op, s, d);
+            }
+        }
+        CHECK(exact == logic_op_exact(op));
+        BlendState constant = blend_state(mode, true, true, true);
+        CHECK(!constant.enable || (constant.source_alpha == BlendFactor::One && constant.destination_alpha == BlendFactor::Zero &&
+                                   constant.alpha_operation == BlendOperation::Add));
+    }
+    CHECK(logic_op_exact(0) && logic_op_exact(3) && logic_op_exact(5) && logic_op_exact(10) && logic_op_exact(12) && logic_op_exact(15));
+    CHECK(!logic_op_exact(1) && !logic_op_exact(6) && !logic_op_exact(7) && !logic_op_exact(14));
+    CHECK(std::string(logic_op_name(6)) == "xor");
+
+    uint32_t all = 1 | 2 | (1u << 11) | (1u << 3) | (1u << 4) | (6u << 12);
+    BlendState subtract = blend_state(all, true, false, true);
+    CHECK(subtract.enable && !subtract.logic_op && subtract.operation == BlendOperation::ReverseSubtract);
+    CHECK(subtract.source == BlendFactor::One && subtract.destination == BlendFactor::One);
+    BlendState subtract_alone = blend_state((1u << 11) | (1u << 3), true, false, true);
+    CHECK(!subtract_alone.enable && !subtract_alone.logic_op);
+    BlendState subtract_logic = blend_state(2 | (1u << 11) | (1u << 3) | (6u << 12), true, false, true);
+    CHECK(subtract_logic.logic_op && subtract_logic.logic_mode == 6 && subtract_logic.operation == BlendOperation::Add);
+    BlendState subtract_constant = blend_state(all, true, true, true);
+    CHECK(subtract_constant.alpha_operation == BlendOperation::Add && subtract_constant.destination_alpha == BlendFactor::Zero);
+
+    uint32_t blend = 1 | 2 | (1u << 3) | (1u << 4) | (4u << 8) | (5u << 5) | (6u << 12);
+    BlendState alpha_blend = blend_state(blend, true, false, true);
+    CHECK(alpha_blend.enable && !alpha_blend.logic_op && alpha_blend.operation == BlendOperation::Add);
+    CHECK(alpha_blend.source == BlendFactor::TevAlpha && alpha_blend.destination == BlendFactor::InverseTevAlpha);
+    CHECK(alpha_blend.source_alpha == BlendFactor::TevAlpha && alpha_blend.destination_alpha == BlendFactor::InverseTevAlpha);
+    CHECK(alpha_blend.output == LogicSource::Tev);
+    BlendState color_blend = blend_state(1 | (1u << 3) | (1u << 4) | (2u << 8) | (3u << 5), true, false, true);
+    CHECK(color_blend.source == BlendFactor::DestinationColor && color_blend.destination == BlendFactor::InverseSourceColor);
+    CHECK(color_blend.source_alpha == BlendFactor::DestinationAlpha && color_blend.destination_alpha == BlendFactor::InverseTevAlpha);
+    BlendState no_alpha = blend_state(1 | (1u << 3) | (1u << 4) | (6u << 8) | (7u << 5), false, false, true);
+    CHECK(no_alpha.source == BlendFactor::One && no_alpha.destination == BlendFactor::Zero && !no_alpha.alpha_update);
+    BlendState constant_blend = blend_state(blend, true, true, true);
+    CHECK(constant_blend.source_alpha == BlendFactor::One && constant_blend.destination_alpha == BlendFactor::Zero);
+    BlendState failing = blend_state(blend, true, false, false);
+    CHECK(!failing.color_update && !failing.alpha_update);
+    BlendState disabled = blend_state((1u << 3) | (1u << 4) | (4u << 8), true, false, true);
+    CHECK(!disabled.enable && !disabled.logic_op && disabled.output == LogicSource::Tev);
+}
+
+void test_gx_line_point_offsets() {
+    using namespace wp::gx;
+    uint32_t bp[256] = {};
+    CHECK(line_point_offsets(bp).line_coordinates == 0 && line_point_offsets(bp).point_coordinates == 0);
+    bp[0x30] = (1u << 18) | 0xFF;
+    bp[0x32] = 1u << 19;
+    bp[0x34] = 3u << 18;
+    bp[0x31] = 3u << 18;
+    CHECK(line_point_offsets(bp).line_coordinates == 0 && line_point_offsets(bp).point_coordinates == 0);
+    bp[0x22] = (3u << 16) | (5u << 19) | 0x1234;
+    LinePointOffsets offsets = line_point_offsets(bp);
+    CHECK(offsets.line == 0.25f && offsets.point == 1.0f);
+    CHECK(offsets.line_coordinates == 5 && offsets.point_coordinates == 6);
+    const float expected[8] = {0.0f, 1.0f / 16.0f, 1.0f / 8.0f, 1.0f / 4.0f, 1.0f / 2.0f, 1.0f, 1.0f, 1.0f};
+    for (uint32_t code = 0; code < 8; code++) {
+        bp[0x22] = (code << 16) | (code << 19);
+        CHECK(line_point_offsets(bp).line == expected[code] && line_point_offsets(bp).point == expected[code]);
+    }
+    CHECK(line_offset_negative_side(0.5f, 0.1f, false));
+    CHECK(!line_offset_negative_side(-0.5f, 0.1f, false));
+    CHECK(line_offset_negative_side(0.1f, -0.5f, true));
+    CHECK(!line_offset_negative_side(0.1f, 0.5f, true));
+    ScreenVertex vertex{};
+    vertex.uv[0][0] = 0.5f;
+    vertex.uv[2][1] = 0.25f;
+    offset_texture_coordinates(vertex, 5, 0.125f, 0.5f);
+    CHECK(vertex.uv[0][0] == 0.625f && vertex.uv[0][1] == 0.5f);
+    CHECK(vertex.uv[1][0] == 0.0f && vertex.uv[1][1] == 0.0f);
+    CHECK(vertex.uv[2][0] == 0.125f && vertex.uv[2][1] == 0.75f);
+}
+
 }
 
 int main() {
@@ -421,6 +567,8 @@ int main() {
     test_custom_texture_hash();
     test_custom_texture_names();
     test_custom_texture_index();
+    test_gx_logic_ops();
+    test_gx_line_point_offsets();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");
