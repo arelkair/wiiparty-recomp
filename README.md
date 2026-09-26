@@ -53,10 +53,13 @@ The overall figure is the equal-weight average of the components below. They are
 | Swing up / down | Mouse wheel, or T / G | Move the gamepad sharply | Same |
 | Shake | Middle click or left Shift | Shake the gamepad | Same |
 | Swap upright and sideways | Tab | Tab | Tab |
+| Options menu (PC) | F1 | Start with Guide or Back | Same |
 
 The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys and the gamepad buttons always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
 
 Face buttons follow the letters printed on the gamepad: on Nintendo-layout gamepads (A on the right, B at the bottom) the A button is the Wii Remote's A. Gamepads: the first gamepad adds to the keyboard and mouse as Wii Remote 1, and the second, third and fourth are Wii Remotes 2, 3 and 4. As on a Wii, a remote connects when one of its buttons is pressed, and unplugging the gamepad disconnects it. The gamepad vibrates when the game makes the Wii Remote rumble, and gamepads with player lights show the remote's number. The gyroscope recalibrates itself whenever the gamepad is held still for a second; R3 recenters the pointer. `WP_GAMEPAD=0` turns gamepads off.
+
+F1 opens the options menu over the game: a dark panel that lists every setting of `settings.ini` with its value, in English or Spanish after the Windows language. Up and Down choose, Left, Right and Enter change the value (a click changes the row under the mouse, the wheel moves the selection), and Esc, Backspace, a right click or F1 closes it; on a gamepad, the D-pad or left stick, the A and B buttons, and Start with Guide or Back. Each change is saved at once. The game keeps running underneath, but while the menu is open the Wii Remotes see no buttons, and a button still held when it closes is ignored until released. Every setting applies at once except the console language and PAL60, which the menu marks as applying on restart. An environment variable that overrides a setting still wins over the menu.
 
 ### Known problems
 
@@ -70,7 +73,7 @@ Face buttons follow the letters printed on the gamepad: on Nintendo-layout gamep
 
 - Real Wii Remotes. Gamepad support (through SDL3) has not yet been tested with a physical gamepad.
 - GX: logic operations (not used by any screen checked so far), texture offsets of lines and points.
-- Planned: ultrawide display support, higher frame rates, an in-game options menu, a Mii editor in the launcher, launchers for Linux and macOS once the engine runs there, online play, quality-of-life options and a Galician translation.
+- Planned: ultrawide display support, higher frame rates, a Mii editor in the launcher, launchers for Linux and macOS once the engine runs there, online play, quality-of-life options and a Galician translation.
 
 Progress notes and the list of goals are in `docs/DECOMP_PROGRESS.md`; the manual check of every minigame is in `docs/MINIGAMES.md`; planned features are in `docs/FEATURES_QOL.md`.
 
@@ -112,7 +115,7 @@ Run `build/launcher/wiiparty-launcher`. `--install` installs without interaction
 
 ## Settings
 
-Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, created with the defaults on the first start (ignored by Git). The recompiled game code does not read it; only the engine's PC layer does, so a launcher can edit the file. An environment variable, where listed, overrides the file.
+Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, created with the defaults on the first start (ignored by Git). The recompiled game code does not read it; only the engine's PC layer does, so a launcher can edit the file. An environment variable, where listed, overrides the file. The options menu (F1) edits the same file while the game runs.
 
 | Setting | Default | Effect | Variable |
 | --- | --- | --- | --- |
@@ -126,6 +129,7 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[system] language` | `auto` | Console language: `auto` follows Windows, or `en`, `de`, `fr`, `es`, `it`, `nl` | `WP_LANGUAGE` |
 | `[system] pal60` | `1` | The console's own PAL60 setting (`IPL.E60`), so the PAL game runs at 60 Hz; 0 gives 50 Hz | `WP_PAL60` |
 | `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |
+| `[system] options_menu` | `1` | F1 (or Start with Guide or Back on a gamepad) opens the options menu over the game | `WP_OPTIONS_MENU` |
 | `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
 
 ## Setup

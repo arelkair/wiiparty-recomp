@@ -37,5 +37,6 @@ bool connected(uint32_t channel);
 Sample sample(uint32_t channel);
 bool wakes_remote(uint32_t channel);
 void note_wheel(int delta);
+void set_blocked(bool blocked);
 
 }

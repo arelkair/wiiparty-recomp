@@ -71,6 +71,8 @@ struct Texts {
     QString pal60_detail;
     QString skip_notices;
     QString skip_notices_detail;
+    QString options_menu;
+    QString options_menu_detail;
     QString mute;
     QString mute_detail;
     QString game;

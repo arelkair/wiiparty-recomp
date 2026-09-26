@@ -24,6 +24,7 @@ QList<Option> build() {
         Option{"system.language", Option::Kind::Choice, "auto", t.group_system, t.language, t.language_detail, languages},
         toggle("system.pal60", "1", t.group_system, t.pal60, t.pal60_detail),
         toggle("system.skip_notices", "1", t.group_system, t.skip_notices, t.skip_notices_detail),
+        toggle("system.options_menu", "1", t.group_system, t.options_menu, t.options_menu_detail),
         toggle("audio.mute", "0", t.group_audio, t.mute, t.mute_detail),
     };
 }

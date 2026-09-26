@@ -1,6 +1,7 @@
 #include "wp/video.h"
 
 #include <windows.h>
+#include <windowsx.h>
 
 #include <algorithm>
 #include <atomic>
@@ -20,6 +21,7 @@
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
+#include "wp/options_window.h"
 #include "wp/settings.h"
 #include "wp/ui_text.h"
 
@@ -35,6 +37,8 @@ constexpr double kStandardAspect = 4.0 / 3.0;
 constexpr double kWideAspect = 16.0 / 9.0;
 constexpr const char* kWindowClass = "WiiRecompWindow";
 constexpr UINT kTitleMessage = WM_APP + 1;
+constexpr UINT_PTR kMenuTimer = 1;
+constexpr UINT kMenuTimerPeriod = 16;
 
 std::atomic<HWND> g_window{nullptr};
 double g_aspect = kStandardAspect;
@@ -67,8 +71,8 @@ void put_chunk(std::vector<uint8_t>& out, const char* type, const std::vector<ui
 
 
 bool hide_cursor() {
-    static const bool value = settings::flag("input.hide_cursor", "WP_HIDE_CURSOR");
-    return value;
+    static const settings::LiveFlag value("input.hide_cursor", "WP_HIDE_CURSOR");
+    return value();
 }
 
 WINDOWPLACEMENT g_placement{};
@@ -94,6 +98,15 @@ void set_fullscreen(HWND window, bool enable) {
     g_fullscreen = enable;
 }
 
+void apply_option(HWND window, const std::string& key) {
+    if (key == "video.fullscreen") {
+        bool enable = settings::flag("video.fullscreen", nullptr);
+        if (enable != g_fullscreen) {
+            set_fullscreen(window, enable);
+        }
+    }
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
     case WM_CLOSE:
@@ -108,24 +121,55 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         SetWindowTextA(window, title.c_str());
         return 0;
     }
-    case WM_KEYDOWN:
-        if (wparam == VK_F12 && !(lparam & (1 << 30))) {
+    case WM_KEYDOWN: {
+        bool repeat = (lparam & (1 << 30)) != 0;
+        if (wparam == VK_F12 && !repeat) {
             gx::request_capture();
             return 0;
         }
-        if (wparam == VK_F11 && !(lparam & (1 << 30))) {
+        if (wparam == VK_F11 && !repeat) {
             set_fullscreen(window, !g_fullscreen);
             settings::store("video.fullscreen", g_fullscreen ? "1" : "0");
+            options::refresh_menu(window);
+            return 0;
+        }
+        if (wparam == VK_F1 && !repeat) {
+            options::toggle_menu(window);
+            return 0;
+        }
+        if (options::menu_open()) {
+            apply_option(window, options::menu_key(window, static_cast<unsigned>(wparam), repeat));
             return 0;
         }
         return DefWindowProc(window, message, wparam, lparam);
+    }
+    case WM_TIMER:
+        if (wparam == kMenuTimer) {
+            apply_option(window, options::poll_gamepads(window));
+            return 0;
+        }
+        return DefWindowProc(window, message, wparam, lparam);
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+        if (options::menu_open()) {
+            apply_option(window, options::menu_click(window, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam), message == WM_RBUTTONDOWN));
+            return 0;
+        }
+        return DefWindowProc(window, message, wparam, lparam);
+    case WM_SIZE:
+        options::refresh_menu(window);
+        return DefWindowProc(window, message, wparam, lparam);
     case WM_SETCURSOR:
-        if (LOWORD(lparam) == HTCLIENT && hide_cursor()) {
+        if (LOWORD(lparam) == HTCLIENT && hide_cursor() && !options::menu_open()) {
             SetCursor(nullptr);
             return TRUE;
         }
         return DefWindowProc(window, message, wparam, lparam);
     case WM_MOUSEWHEEL:
+        if (options::menu_open()) {
+            options::menu_wheel(window, GET_WHEEL_DELTA_WPARAM(wparam));
+            return 0;
+        }
         input::note_wheel(GET_WHEEL_DELTA_WPARAM(wparam));
         return 0;
     case WM_ERASEBKGND:
@@ -198,6 +242,7 @@ void window_thread() {
     if (settings::flag("video.fullscreen", "WP_FULLSCREEN")) {
         set_fullscreen(window, true);
     }
+    SetTimer(window, kMenuTimer, kMenuTimerPeriod, nullptr);
     MSG message;
     while (GetMessage(&message, nullptr, 0, 0) > 0) {
         TranslateMessage(&message);
@@ -210,6 +255,7 @@ void window_thread() {
 void start() {
     log::write("video", "build %s", WP_BUILD);
     g_aspect = nand::widescreen() ? kWideAspect : kStandardAspect;
+    ui::set_language(PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_SPANISH ? ui::Language::Spanish : ui::Language::English);
     if (std::getenv("WP_HEADLESS")) {
         return;
     }

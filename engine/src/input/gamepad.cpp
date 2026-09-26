@@ -75,8 +75,8 @@ std::array<std::atomic<int>, kSlots> g_player{};
 std::once_flag g_started;
 
 bool enabled() {
-    static const bool value = settings::flag("input.gamepads", "WP_GAMEPAD");
-    return value;
+    static const settings::LiveFlag value("input.gamepads", "WP_GAMEPAD");
+    return value();
 }
 
 float axis(SDL_Gamepad* pad, SDL_GamepadAxis which) {
@@ -358,6 +358,41 @@ void set_outputs(uint32_t slot, bool rumble, uint8_t leds) {
     }
     g_rumble[slot] = rumble;
     g_player[slot] = player;
+}
+
+uint32_t menu_buttons() {
+    uint32_t result = 0;
+    for (uint32_t slot = 0; slot < kSlots; slot++) {
+        Snapshot current = snapshot(slot);
+        if (!current.connected) {
+            continue;
+        }
+        auto held = [&](SDL_GamepadButton button) { return current.buttons[button]; };
+        SDL_GamepadButton accept = current.nintendo_layout ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH;
+        SDL_GamepadButton cancel = current.nintendo_layout ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST;
+        if (held(SDL_GAMEPAD_BUTTON_DPAD_UP) || current.left_y < -kStickThreshold) {
+            result |= kMenuUp;
+        }
+        if (held(SDL_GAMEPAD_BUTTON_DPAD_DOWN) || current.left_y > kStickThreshold) {
+            result |= kMenuDown;
+        }
+        if (held(SDL_GAMEPAD_BUTTON_DPAD_LEFT) || current.left_x < -kStickThreshold) {
+            result |= kMenuLeft;
+        }
+        if (held(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || current.left_x > kStickThreshold) {
+            result |= kMenuRight;
+        }
+        if (held(accept)) {
+            result |= kMenuAccept;
+        }
+        if (held(cancel)) {
+            result |= kMenuCancel;
+        }
+        if (held(SDL_GAMEPAD_BUTTON_START) && (held(SDL_GAMEPAD_BUTTON_GUIDE) || held(SDL_GAMEPAD_BUTTON_BACK))) {
+            result |= kMenuToggle;
+        }
+    }
+    return result;
 }
 
 State poll(uint32_t slot, bool sideways) {

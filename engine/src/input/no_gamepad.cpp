@@ -12,4 +12,8 @@ State poll(uint32_t, bool) {
 
 void set_outputs(uint32_t, bool, uint8_t) {}
 
+uint32_t menu_buttons() {
+    return 0;
+}
+
 }
