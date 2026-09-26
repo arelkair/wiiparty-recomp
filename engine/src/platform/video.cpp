@@ -179,10 +179,6 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             options::refresh_menu(window);
             return 0;
         }
-        if (wparam == VK_F1 && !repeat) {
-            options::toggle_menu(window);
-            return 0;
-        }
         if (options::menu_open()) {
             apply_option(window, options::menu_key(window, static_cast<unsigned>(wparam), repeat));
             return 0;
@@ -192,6 +188,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     }
     case WM_SYSKEYDOWN:
     case WM_SYSKEYUP:
+        if (wparam == VK_F10) {
+            if (message == WM_SYSKEYDOWN && !(lparam & (1 << 30))) {
+                options::toggle_menu(window);
+            }
+            return 0;
+        }
         if (message == WM_SYSKEYDOWN && !options::menu_open()) {
             note_key(wparam, lparam);
         }

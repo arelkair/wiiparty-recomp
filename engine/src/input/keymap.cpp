@@ -29,7 +29,7 @@ constexpr ActionInfo kActions[kActionCount] = {
     {"tilt_up", input::kMotionTiltUp, "R"},
     {"tilt_down", input::kMotionTiltDown, "F"},
     {"grip", 0, "Tab"},
-    {"screenshot", 0, "F10"},
+    {"screenshot", 0, "F9"},
 };
 
 struct Key {
@@ -54,6 +54,7 @@ constexpr Key kKeys[] = {
 };
 
 constexpr int kF1 = 0x70;
+constexpr int kF10 = 0x79;
 constexpr int kF11 = 0x7A;
 constexpr int kF12 = 0x7B;
 constexpr int kF24 = 0x87;
@@ -123,7 +124,7 @@ std::string key_name(int code) {
 }
 
 bool reserved(int code) {
-    return code == kF11 || code == kF12;
+    return code == kF10 || code == kF11 || code == kF12;
 }
 
 Parsed parse(const std::string& list) {

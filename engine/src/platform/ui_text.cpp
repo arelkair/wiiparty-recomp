@@ -20,7 +20,7 @@ constexpr Label kEnglishLabels[] = {
     {"system.language", "Console language"},
     {"system.pal60", "60 Hz (PAL60)"},
     {"system.skip_notices", "Skip the strap notice"},
-    {"system.options_menu", "Options menu (F1)"},
+    {"system.options_menu", "Options menu (F10)"},
     {"audio.mute", "Mute"},
     {"saves.backups", "Save backups kept"},
 };
@@ -38,7 +38,7 @@ constexpr Label kSpanishLabels[] = {
     {"system.language", "Idioma de la consola"},
     {"system.pal60", "60 Hz (PAL60)"},
     {"system.skip_notices", "Saltar el aviso de la correa"},
-    {"system.options_menu", "Menú de opciones (F1)"},
+    {"system.options_menu", "Menú de opciones (F10)"},
     {"audio.mute", "Silenciar"},
     {"saves.backups", "Copias de la partida"},
 };

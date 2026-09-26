@@ -14,7 +14,7 @@ Texts english() {
     t.status_not_built = "The game has not been built yet. Build it from your own copy of the disc first.";
     t.status_no_disc = "No extracted disc was found. Choose your copy of Wii Party on the Build page.";
     t.play_button = "Play";
-    t.play_hint = "F1 opens the options menu while playing. F11 switches full screen. F10 saves a screenshot in the screenshots folder. F12 saves a capture of the frame for debugging.";
+    t.play_hint = "F10 opens the options menu while playing. F11 switches full screen. F9 saves a screenshot in the screenshots folder. F12 saves a capture of the frame for debugging.";
     t.build_heading = "Build";
     t.build_intro = "Translates the game from your own copy of the disc into a native program. Nothing is downloaded from the game, and nothing leaves your computer. The first build takes about 15 minutes on a 6-core processor.";
     t.tools = "Tools";
@@ -118,12 +118,12 @@ Texts english() {
     t.start_failed = "The game could not be started.";
     t.controls = "Controls";
     t.controls_heading = "Controls";
-    t.controls_intro = "Keyboard and mouse keys of the emulated Wii Remote 1. Click a binding and press a key, click a mouse button or turn the wheel on it to add it. F11 and F12 are reserved. Changes apply the next time the game starts.";
+    t.controls_intro = "Keyboard and mouse keys of the emulated Wii Remote 1. Click a binding and press a key, click a mouse button or turn the wheel on it to add it. F10, F11 and F12 are reserved. Changes apply the next time the game starts.";
     t.controls_reset = "Reset to defaults";
     t.keys_clear = "Clear";
     t.keys_none = "Not set";
     t.keys_press = "Press a key, click or scroll here (Esc cancels)";
-    t.keys_reserved = "F11 and F12 are reserved, press another key";
+    t.keys_reserved = "F10, F11 and F12 are reserved, press another key";
     t.actions = {
         {"a", "A button"},
         {"b", "B button"},
@@ -167,7 +167,7 @@ Texts spanish() {
     t.status_not_built = "El juego aún no está compilado. Compílalo primero a partir de tu propia copia del disco.";
     t.status_no_disc = "No se ha encontrado el disco extraído. Elige tu copia de Wii Party en la página Compilar.";
     t.play_button = "Jugar";
-    t.play_hint = "F1 abre el menú de opciones durante la partida. F11 cambia a pantalla completa. F10 guarda una captura de pantalla en la carpeta screenshots. F12 guarda una captura del fotograma para depuración.";
+    t.play_hint = "F10 abre el menú de opciones durante la partida. F11 cambia a pantalla completa. F9 guarda una captura de pantalla en la carpeta screenshots. F12 guarda una captura del fotograma para depuración.";
     t.build_heading = "Compilar";
     t.build_intro = "Traduce el juego desde tu propia copia del disco a un programa nativo. No se descarga nada del juego y nada sale de tu ordenador. La primera compilación tarda unos 15 minutos con un procesador de 6 núcleos.";
     t.tools = "Herramientas";
@@ -269,12 +269,12 @@ Texts spanish() {
     t.start_failed = "No se ha podido abrir el juego.";
     t.controls = "Controles";
     t.controls_heading = "Controles";
-    t.controls_intro = "Teclas y botones del ratón del Wii Remote 1 emulado. Haz clic en una asignación y pulsa una tecla, haz clic con un botón del ratón o gira la rueda sobre ella para añadirla. F11 y F12 están reservadas. Los cambios se aplican la próxima vez que se abra el juego.";
+    t.controls_intro = "Teclas y botones del ratón del Wii Remote 1 emulado. Haz clic en una asignación y pulsa una tecla, haz clic con un botón del ratón o gira la rueda sobre ella para añadirla. F10, F11 y F12 están reservadas. Los cambios se aplican la próxima vez que se abra el juego.";
     t.controls_reset = "Restablecer valores predeterminados";
     t.keys_clear = "Borrar";
     t.keys_none = "Sin asignar";
     t.keys_press = "Pulsa una tecla, haz clic o gira la rueda aquí (Esc cancela)";
-    t.keys_reserved = "F11 y F12 están reservadas, pulsa otra tecla";
+    t.keys_reserved = "F10, F11 y F12 están reservadas, pulsa otra tecla";
     t.actions = {
         {"a", "Botón A"},
         {"b", "Botón B"},

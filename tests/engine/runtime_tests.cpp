@@ -608,7 +608,8 @@ void test_key_names() {
     }
     CHECK(reserved(key_code("F11")));
     CHECK(reserved(key_code("F12")));
-    CHECK(!reserved(key_code("F10")));
+    CHECK(reserved(key_code("F10")));
+    CHECK(!reserved(key_code("F9")));
     Parsed parsed = parse(" Enter , space,MouseLeft,,Nope,F12,enter,F11 ");
     CHECK(parsed.codes.size() == 3);
     CHECK(format(parsed.codes) == "Enter,Space,MouseLeft");
@@ -632,7 +633,7 @@ void test_key_defaults() {
     CHECK(format(keys.of(Action::SwingUp)) == "WheelUp,T");
     CHECK(format(keys.of(Action::SwingDown)) == "WheelDown,G");
     CHECK(format(keys.of(Action::Grip)) == "Tab");
-    CHECK(format(keys.of(Action::Screenshot)) == "F10");
+    CHECK(format(keys.of(Action::Screenshot)) == "F9");
     CHECK(action(Action::Screenshot).buttons == 0);
     CHECK(setting_key(static_cast<size_t>(Action::Screenshot)) == "keys.screenshot");
     CHECK(action(Action::A).buttons == wp::input::kButtonA);
