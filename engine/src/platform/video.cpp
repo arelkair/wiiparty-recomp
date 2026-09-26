@@ -17,6 +17,7 @@
 #include "wp/gx.h"
 #include "wp/gx_render.h"
 #include "wp/input.h"
+#include "wp/keymap.h"
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/nand.h"
@@ -94,6 +95,21 @@ void set_fullscreen(HWND window, bool enable) {
     g_fullscreen = enable;
 }
 
+bool bound_key(WPARAM key) {
+    const keymap::Bindings& keys = input::bindings();
+    int code = static_cast<int>(key);
+    switch (key) {
+    case VK_SHIFT:
+        return keys.bound(code) || keys.bound(VK_LSHIFT) || keys.bound(VK_RSHIFT);
+    case VK_CONTROL:
+        return keys.bound(code) || keys.bound(VK_LCONTROL) || keys.bound(VK_RCONTROL);
+    case VK_MENU:
+        return keys.bound(code) || keys.bound(VK_LMENU) || keys.bound(VK_RMENU);
+    default:
+        return keys.bound(code);
+    }
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
     case WM_CLOSE:
@@ -116,6 +132,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         if (wparam == VK_F11 && !(lparam & (1 << 30))) {
             set_fullscreen(window, !g_fullscreen);
             settings::store("video.fullscreen", g_fullscreen ? "1" : "0");
+            return 0;
+        }
+        return DefWindowProc(window, message, wparam, lparam);
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+        if (wparam != VK_F4 && bound_key(wparam)) {
             return 0;
         }
         return DefWindowProc(window, message, wparam, lparam);

@@ -1,22 +1,25 @@
 #include "wp/settings.h"
 
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <sstream>
+#include <vector>
+
+#include "wp/keymap.h"
 
 namespace wp::settings {
 
 namespace {
 
 struct Option {
-    const char* key;
-    const char* fallback;
+    std::string key;
+    std::string fallback;
 };
 
-constexpr Option kOptions[] = {
+const Option kBaseOptions[] = {
     {"video.scale", "1"},
     {"video.fullscreen", "0"},
     {"video.copy_filter", "1"},
@@ -30,13 +33,24 @@ constexpr Option kOptions[] = {
     {"audio.mute", "0"},
 };
 
+const std::vector<Option>& options() {
+    static const std::vector<Option> list = [] {
+        std::vector<Option> result(std::begin(kBaseOptions), std::end(kBaseOptions));
+        for (size_t i = 0; i < keymap::kActionCount; i++) {
+            result.push_back({keymap::setting_key(i), keymap::action(i).defaults});
+        }
+        return result;
+    }();
+    return list;
+}
+
 std::mutex g_mutex;
 std::string g_path;
 std::map<std::string, std::string> g_values;
 
-const char* fallback_of(const char* key) {
-    for (const Option& option : kOptions) {
-        if (std::strcmp(option.key, key) == 0) {
+std::string fallback_of(const char* key) {
+    for (const Option& option : options()) {
+        if (option.key == key) {
             return option.fallback;
         }
     }
@@ -58,8 +72,8 @@ void write_file() {
     }
     std::ostringstream out;
     std::string section;
-    for (const Option& option : kOptions) {
-        std::string key = option.key;
+    for (const Option& option : options()) {
+        const std::string& key = option.key;
         size_t dot = key.find('.');
         std::string group = key.substr(0, dot);
         if (group != section) {
@@ -91,7 +105,7 @@ std::string value_of(const char* key, const char* variable) {
 void load(const std::string& path) {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_path = path;
-    for (const Option& option : kOptions) {
+    for (const Option& option : options()) {
         g_values[option.key] = option.fallback;
     }
     std::ifstream file(path, std::ios::binary);

@@ -92,6 +92,43 @@ Texts english() {
     t.hash_mismatch = "%1 does not match its published checksum and was deleted. Try again.";
     t.project_missing = "The project folder was not found. Start the launcher from inside the wiiparty-recomp folder.";
     t.start_failed = "The game could not be started.";
+    t.controls = "Controls";
+    t.controls_heading = "Controls";
+    t.controls_intro = "Keyboard and mouse keys of the emulated Wii Remote 1. Click a binding and press a key, click a mouse button or turn the wheel on it to add it. F11 and F12 are reserved. Changes apply the next time the game starts.";
+    t.controls_reset = "Reset to defaults";
+    t.keys_clear = "Clear";
+    t.keys_none = "Not set";
+    t.keys_press = "Press a key, click or scroll here (Esc cancels)";
+    t.keys_reserved = "F11 and F12 are reserved, press another key";
+    t.actions = {
+        {"a", "A button"},
+        {"b", "B button"},
+        {"one", "1 button"},
+        {"two", "2 button"},
+        {"plus", "+ button"},
+        {"minus", "- button"},
+        {"home", "HOME button"},
+        {"up", "D-pad up"},
+        {"down", "D-pad down"},
+        {"left", "D-pad left"},
+        {"right", "D-pad right"},
+        {"shake", "Shake"},
+        {"swing_up", "Swing up"},
+        {"swing_down", "Swing down"},
+        {"tilt_left", "Tilt left"},
+        {"tilt_right", "Tilt right"},
+        {"tilt_up", "Tilt up"},
+        {"tilt_down", "Tilt down"},
+        {"grip", "Swap upright and sideways grip"},
+    };
+    t.action_details = {
+        {"up", "Left on screen when the remote is held sideways."},
+        {"down", "Right on screen when the remote is held sideways."},
+        {"left", "Down on screen when the remote is held sideways."},
+        {"right", "Up on screen when the remote is held sideways."},
+        {"swing_up", "The mouse wheel gives a short swing."},
+        {"swing_down", "The mouse wheel gives a short swing."},
+    };
     return t;
 }
 
@@ -139,7 +176,7 @@ Texts spanish() {
     t.settings_heading = "Opciones";
     t.settings_intro = "Mejoras de PC, separadas del juego traducido. Los cambios se aplican la próxima vez que se abra el juego.";
     t.group_video = "Vídeo";
-    t.group_input = "Controles";
+    t.group_input = "Entrada";
     t.group_system = "Sistema";
     t.group_audio = "Sonido";
     t.scale = "Resolución interna";
@@ -181,6 +218,43 @@ Texts spanish() {
     t.hash_mismatch = "%1 no coincide con su huella publicada y se ha borrado. Vuelve a intentarlo.";
     t.project_missing = "No se ha encontrado la carpeta del proyecto. Abre el lanzador desde dentro de la carpeta wiiparty-recomp.";
     t.start_failed = "No se ha podido abrir el juego.";
+    t.controls = "Controles";
+    t.controls_heading = "Controles";
+    t.controls_intro = "Teclas y botones del ratón del Wii Remote 1 emulado. Haz clic en una asignación y pulsa una tecla, haz clic con un botón del ratón o gira la rueda sobre ella para añadirla. F11 y F12 están reservadas. Los cambios se aplican la próxima vez que se abra el juego.";
+    t.controls_reset = "Restablecer valores predeterminados";
+    t.keys_clear = "Borrar";
+    t.keys_none = "Sin asignar";
+    t.keys_press = "Pulsa una tecla, haz clic o gira la rueda aquí (Esc cancela)";
+    t.keys_reserved = "F11 y F12 están reservadas, pulsa otra tecla";
+    t.actions = {
+        {"a", "Botón A"},
+        {"b", "Botón B"},
+        {"one", "Botón 1"},
+        {"two", "Botón 2"},
+        {"plus", "Botón +"},
+        {"minus", "Botón -"},
+        {"home", "Botón HOME"},
+        {"up", "Cruceta arriba"},
+        {"down", "Cruceta abajo"},
+        {"left", "Cruceta izquierda"},
+        {"right", "Cruceta derecha"},
+        {"shake", "Agitar"},
+        {"swing_up", "Mover hacia arriba"},
+        {"swing_down", "Mover hacia abajo"},
+        {"tilt_left", "Inclinar a la izquierda"},
+        {"tilt_right", "Inclinar a la derecha"},
+        {"tilt_up", "Inclinar hacia arriba"},
+        {"tilt_down", "Inclinar hacia abajo"},
+        {"grip", "Cambiar entre agarre vertical y horizontal"},
+    };
+    t.action_details = {
+        {"up", "Izquierda en pantalla con el mando en horizontal."},
+        {"down", "Derecha en pantalla con el mando en horizontal."},
+        {"left", "Abajo en pantalla con el mando en horizontal."},
+        {"right", "Arriba en pantalla con el mando en horizontal."},
+        {"swing_up", "La rueda del ratón da un movimiento corto."},
+        {"swing_down", "La rueda del ratón da un movimiento corto."},
+    };
     return t;
 }
 

@@ -8,6 +8,7 @@
 #include "toolchain.h"
 
 class BuildRunner;
+class KeyCaptureButton;
 class QLabel;
 class QListWidget;
 class QPlainTextEdit;
@@ -29,6 +30,7 @@ private:
     QWidget* make_play_panel();
     QWidget* make_install_panel();
     QWidget* make_settings_page();
+    QWidget* make_controls_page();
     void refresh();
     void choose_disc();
     void install();
@@ -52,4 +54,5 @@ private:
     QPushButton* install_button_ = nullptr;
     QPushButton* cancel_button_ = nullptr;
     QString disc_;
+    QList<QPair<Option, KeyCaptureButton*>> bindings_;
 };

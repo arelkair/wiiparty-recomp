@@ -1,10 +1,17 @@
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <string>
 
 #include "wp/cpu.h"
 #include "wp/function_table.h"
+#include "wp/input.h"
 #include "wp/ios.h"
+#include "wp/keymap.h"
 #include "wp/modules.h"
+#include "wp/settings.h"
 
 namespace wp {
 const FunctionEntry g_function_table[1] = {};
@@ -214,6 +221,138 @@ void test_disc_drive() {
 
 }
 
+void test_key_names() {
+    using namespace wp::keymap;
+    CHECK(key_code("A") == 'A');
+    CHECK(key_code("a") == 'A');
+    CHECK(key_code("7") == '7');
+    CHECK(key_code("F1") == 0x70);
+    CHECK(key_code("f24") == 0x87);
+    CHECK(key_code("F25") == -1);
+    CHECK(key_code("F0") == -1);
+    CHECK(key_code("F01") == -1);
+    CHECK(key_code("Enter") == 0x0D);
+    CHECK(key_code(" space ") == 0x20);
+    CHECK(key_code("BACKSPACE") == 0x08);
+    CHECK(key_code("Tab") == 0x09);
+    CHECK(key_code("Shift") == 0x10);
+    CHECK(key_code("LeftShift") == 0xA0);
+    CHECK(key_code("Ctrl") == 0x11);
+    CHECK(key_code("Alt") == 0x12);
+    CHECK(key_code("Up") == 0x26);
+    CHECK(key_code("Down") == 0x28);
+    CHECK(key_code("Left") == 0x25);
+    CHECK(key_code("Right") == 0x27);
+    CHECK(key_code("Plus") == 0xBB);
+    CHECK(key_code("Minus") == 0xBD);
+    CHECK(key_code("NumPlus") == 0x6B);
+    CHECK(key_code("MouseLeft") == 0x01);
+    CHECK(key_code("MouseRight") == 0x02);
+    CHECK(key_code("MouseMiddle") == 0x04);
+    CHECK(key_code("MouseX1") == 0x05);
+    CHECK(key_code("MouseX2") == 0x06);
+    CHECK(key_code("WheelUp") == kWheelUp);
+    CHECK(key_code("WheelDown") == kWheelDown);
+    CHECK(key_code("") == -1);
+    CHECK(key_code("Banana") == -1);
+    CHECK(key_code("AB") == -1);
+    CHECK(key_name('Q') == "Q");
+    CHECK(key_name(0x7A) == "F11");
+    CHECK(key_name(0xA0) == "LeftShift");
+    CHECK(key_name(kWheelDown) == "WheelDown");
+    CHECK(key_name(0x3000).empty());
+    for (int code = 0; code < 0x200; code++) {
+        std::string name = key_name(code);
+        CHECK(name.empty() || key_code(name) == code);
+    }
+    CHECK(reserved(key_code("F11")));
+    CHECK(reserved(key_code("F12")));
+    CHECK(!reserved(key_code("F10")));
+    Parsed parsed = parse(" Enter , space,MouseLeft,,Nope,F12,enter,F11 ");
+    CHECK(parsed.codes.size() == 3);
+    CHECK(format(parsed.codes) == "Enter,Space,MouseLeft");
+    CHECK(format(parsed.codes, ", ") == "Enter, Space, MouseLeft");
+    CHECK(parsed.invalid.size() == 3);
+    CHECK(parsed.invalid.size() == 3 && parsed.invalid[0] == "Nope" && parsed.invalid[1] == "F12" && parsed.invalid[2] == "F11");
+    CHECK(parse("").codes.empty() && parse("").invalid.empty());
+}
+
+void test_key_defaults() {
+    using namespace wp::keymap;
+    Bindings keys = defaults();
+    CHECK(format(keys.of(Action::A)) == "Enter,Space,MouseLeft");
+    CHECK(format(keys.of(Action::B)) == "Backspace,MouseRight");
+    CHECK(format(keys.of(Action::Plus)) == "Plus,NumPlus");
+    CHECK(format(keys.of(Action::Minus)) == "Minus,NumMinus");
+    CHECK(format(keys.of(Action::Home)) == "H");
+    CHECK(format(keys.of(Action::Up)) == "Up,A");
+    CHECK(format(keys.of(Action::Right)) == "Right,W");
+    CHECK(format(keys.of(Action::Shake)) == "MouseMiddle,LeftShift");
+    CHECK(format(keys.of(Action::SwingUp)) == "WheelUp,T");
+    CHECK(format(keys.of(Action::SwingDown)) == "WheelDown,G");
+    CHECK(format(keys.of(Action::Grip)) == "Tab");
+    CHECK(action(Action::A).buttons == wp::input::kButtonA);
+    CHECK(action(Action::TiltDown).buttons == wp::input::kMotionTiltDown);
+    CHECK(action(Action::Grip).buttons == 0);
+    CHECK(keys.has(Action::A, 0x0D));
+    CHECK(!keys.has(Action::B, 0x0D));
+    CHECK(keys.bound('Q'));
+    CHECK(!keys.bound(0x7A));
+    CHECK(!keys.bound(0x7B));
+    for (size_t i = 0; i < kActionCount; i++) {
+        CHECK(parse(action(i).defaults).invalid.empty());
+        CHECK(!keys.codes[i].empty());
+        CHECK(setting_key(i) == std::string("keys.") + action(i).name);
+    }
+    std::map<std::string, std::string> file = {{"keys.a", "K,Wrong"}, {"keys.grip", ""}, {"keys.b", "F12"}};
+    std::vector<std::string> invalid;
+    Bindings loaded = load(
+        [&](const std::string& key) {
+            auto it = file.find(key);
+            if (it != file.end()) {
+                return it->second;
+            }
+            for (size_t i = 0; i < kActionCount; i++) {
+                if (setting_key(i) == key) {
+                    return std::string(action(i).defaults);
+                }
+            }
+            return std::string();
+        },
+        invalid);
+    CHECK(format(loaded.of(Action::A)) == "K");
+    CHECK(loaded.of(Action::Grip).empty());
+    CHECK(loaded.of(Action::B).empty());
+    CHECK(format(loaded.of(Action::Home)) == "H");
+    CHECK(invalid.size() == 2 && invalid[0] == "keys.a: Wrong" && invalid[1] == "keys.b: F12");
+}
+
+void test_settings_file_keys() {
+    const char* path = "runtime_tests_settings.ini";
+    {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file << "[keys]\na = K, MouseX1\nunknown=1\n";
+    }
+    wp::settings::load(path);
+    CHECK(wp::settings::text("keys.a", nullptr) == "K, MouseX1");
+    CHECK(wp::settings::text("keys.grip", nullptr) == "Tab");
+    CHECK(wp::settings::text("video.scale", nullptr) == "1");
+    std::ifstream file(path, std::ios::binary);
+    std::stringstream contents;
+    contents << file.rdbuf();
+    std::string text = contents.str();
+    CHECK(text.find("[keys]\n") != std::string::npos);
+    CHECK(text.find("a=K, MouseX1\n") != std::string::npos);
+    CHECK(text.find("unknown") == std::string::npos);
+    CHECK(text.find("[video]\nscale=1\n") == 0);
+    for (size_t i = 0; i < wp::keymap::kActionCount; i++) {
+        std::string line = "\n" + std::string(wp::keymap::action(i).name) + "=";
+        CHECK(text.find(line, text.find("[keys]")) != std::string::npos);
+    }
+    file.close();
+    std::remove(path);
+}
+
 int main() {
     wp::g_memory = static_cast<uint8_t*>(std::calloc(wp::kMemorySize, 1));
     test_memory();
@@ -224,6 +363,9 @@ int main() {
     test_paired_singles();
     test_quantization();
     test_disc_drive();
+    test_key_names();
+    test_key_defaults();
+    test_settings_file_keys();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");

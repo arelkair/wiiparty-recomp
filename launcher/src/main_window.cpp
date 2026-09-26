@@ -1,5 +1,7 @@
 #include "main_window.h"
 
+#include <algorithm>
+
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
@@ -22,8 +24,10 @@
 #include <QVBoxLayout>
 
 #include "build_runner.h"
+#include "key_capture.h"
 #include "options.h"
 #include "texts.h"
+#include "wp/keymap.h"
 
 namespace {
 
@@ -32,6 +36,11 @@ QLabel* label(const QString& text, const char* name, QWidget* parent) {
     widget->setObjectName(name);
     widget->setWordWrap(true);
     return widget;
+}
+
+QString shown_keys(const QString& value) {
+    QString text = QString::fromStdString(wp::keymap::format(wp::keymap::parse(value.toStdString()).codes, ", "));
+    return text.isEmpty() ? texts().keys_none : text;
 }
 
 QString first_disc(const QString& folder) {
@@ -60,6 +69,7 @@ MainWindow::MainWindow(Project project, QWidget* parent)
     pages_ = new QStackedWidget(central);
     pages_->addWidget(make_game_page());
     pages_->addWidget(make_settings_page());
+    pages_->addWidget(make_controls_page());
     layout->addWidget(make_sidebar());
     layout->addWidget(pages_, 1);
     setCentralWidget(central);
@@ -94,8 +104,8 @@ QWidget* MainWindow::make_sidebar() {
     layout->addWidget(label("Recomp", "detail", sidebar));
     layout->addSpacing(24);
     auto* group = new QButtonGroup(sidebar);
-    const QString names[] = {texts().game, texts().settings};
-    for (int i = 0; i < 2; i++) {
+    const QString names[] = {texts().game, texts().settings, texts().controls};
+    for (int i = 0; i < 3; i++) {
         auto* button = new QPushButton(names[i], sidebar);
         button->setObjectName("nav");
         button->setCheckable(true);
@@ -204,6 +214,9 @@ QWidget* MainWindow::make_settings_page() {
     layout->addWidget(label(texts().settings_intro, "lead", page));
     QString group;
     for (const Option& option : options()) {
+        if (option.kind == Option::Kind::Keys) {
+            continue;
+        }
         if (option.group != group) {
             group = option.group;
             layout->addSpacing(18);
@@ -236,6 +249,75 @@ QWidget* MainWindow::make_settings_page() {
         }
         layout->addWidget(row);
     }
+    layout->addStretch(1);
+    scroll->setWidget(page);
+    return scroll;
+}
+
+QWidget* MainWindow::make_controls_page() {
+    const Texts& t = texts();
+    auto* scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    auto* page = new QWidget(scroll);
+    page->setObjectName("page");
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(48, 40, 48, 40);
+    layout->setSpacing(6);
+    auto* heading = new QHBoxLayout;
+    heading->addWidget(label(t.controls_heading, "heading", page), 1);
+    auto* reset = new QPushButton(t.controls_reset, page);
+    reset->setCursor(Qt::PointingHandCursor);
+    heading->addWidget(reset, 0, Qt::AlignVCenter);
+    layout->addLayout(heading);
+    layout->addWidget(label(t.controls_intro, "lead", page));
+    layout->addSpacing(18);
+    for (const Option& option : options()) {
+        if (option.kind != Option::Kind::Keys) {
+            continue;
+        }
+        auto* row = new QWidget(page);
+        row->setObjectName("row");
+        auto* row_layout = new QHBoxLayout(row);
+        row_layout->setContentsMargins(0, 6, 0, 6);
+        row_layout->setSpacing(8);
+        auto* text = new QVBoxLayout;
+        text->setSpacing(2);
+        text->addWidget(label(option.label, "value", row));
+        if (!option.detail.isEmpty()) {
+            text->addWidget(label(option.detail, "detail", row));
+        }
+        row_layout->addLayout(text, 1);
+        auto* binding = new KeyCaptureButton(row);
+        binding->setFixedWidth(300);
+        binding->set_binding(shown_keys(settings_.value(option)));
+        row_layout->addWidget(binding);
+        auto* clear = new QPushButton(t.keys_clear, row);
+        clear->setCursor(Qt::PointingHandCursor);
+        row_layout->addWidget(clear);
+        connect(binding, &KeyCaptureButton::captured, this, [this, option, binding](const QString& name) {
+            std::vector<int> codes = wp::keymap::parse(settings_.value(option).toStdString()).codes;
+            int code = wp::keymap::key_code(name.toStdString());
+            if (std::find(codes.begin(), codes.end(), code) == codes.end()) {
+                codes.push_back(code);
+            }
+            QString value = QString::fromStdString(wp::keymap::format(codes));
+            settings_.set(option, value);
+            binding->set_binding(shown_keys(value));
+        });
+        connect(clear, &QPushButton::clicked, this, [this, option, binding] {
+            settings_.set(option, QString());
+            binding->set_binding(shown_keys(QString()));
+        });
+        bindings_ << qMakePair(option, binding);
+        layout->addWidget(row);
+    }
+    connect(reset, &QPushButton::clicked, this, [this] {
+        for (const auto& [option, binding] : bindings_) {
+            settings_.set(option, option.fallback);
+            binding->set_binding(shown_keys(option.fallback));
+        }
+    });
     layout->addStretch(1);
     scroll->setWidget(page);
     return scroll;
@@ -349,6 +431,9 @@ void MainWindow::save_pages(const QString& prefix) {
     pages_->setCurrentIndex(1);
     QCoreApplication::processEvents();
     grab().save(prefix + "settings.png");
+    pages_->setCurrentIndex(2);
+    QCoreApplication::processEvents();
+    grab().save(prefix + "controls.png");
     pages_->setCurrentIndex(0);
     refresh();
 }

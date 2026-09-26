@@ -13,6 +13,8 @@
 
 #include "wp/game.h"
 #include "wp/gamepad.h"
+#include "wp/keymap.h"
+#include "wp/log.h"
 #include "wp/modules.h"
 #include "wp/settings.h"
 #include "wp/video.h"
@@ -20,21 +22,6 @@
 namespace wp::input {
 
 namespace {
-
-struct Binding {
-    int key;
-    uint32_t button;
-};
-
-constexpr Binding kBindings[] = {
-    {VK_LEFT, kButtonLeft},   {VK_RIGHT, kButtonRight}, {VK_DOWN, kButtonDown},        {VK_UP, kButtonUp},
-    {'S', kButtonLeft},       {'W', kButtonRight},      {'D', kButtonDown},            {'A', kButtonUp},
-    {VK_RETURN, kButtonA},    {VK_SPACE, kButtonA},     {VK_LBUTTON, kButtonA},        {VK_BACK, kButtonB},
-    {VK_RBUTTON, kButtonB},   {'1', kButtonOne},        {'2', kButtonTwo},             {VK_OEM_PLUS, kButtonPlus},
-    {VK_ADD, kButtonPlus},    {VK_OEM_MINUS, kButtonMinus}, {VK_SUBTRACT, kButtonMinus}, {'H', kButtonHome},
-    {VK_MBUTTON, kMotionShake}, {VK_LSHIFT, kMotionShake}, {'T', kMotionSwingUp},        {'G', kMotionSwingDown},
-    {'Q', kMotionTiltLeft},   {'E', kMotionTiltRight},  {'R', kMotionTiltUp},          {'F', kMotionTiltDown},
-};
 
 constexpr auto kWheelSwing = std::chrono::milliseconds(120);
 constexpr int64_t kNoticePulsePeriod = 500;
@@ -69,7 +56,20 @@ bool sideways_minigame() {
 }
 
 bool pressed(int key) {
+    if (key == keymap::kWheelUp || key == keymap::kWheelDown) {
+        int64_t last = (key == keymap::kWheelUp ? g_wheel_up : g_wheel_down).load();
+        return now_ms() - last < kWheelSwing.count();
+    }
     return (GetAsyncKeyState(key) & 0x8000) != 0;
+}
+
+bool any_pressed(const std::vector<int>& keys) {
+    for (int key : keys) {
+        if (pressed(key)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 struct ScriptEntry {
@@ -126,6 +126,20 @@ Sample scripted(const std::vector<ScriptEntry>& script, int milliseconds) {
 
 }
 
+const keymap::Bindings& bindings() {
+    static const keymap::Bindings value = [] {
+        std::vector<std::string> invalid;
+        keymap::Bindings result = keymap::load([](const std::string& key) { return settings::text(key.c_str(), nullptr); }, invalid);
+        for (const std::string& entry : invalid) {
+            std::fprintf(stderr, "settings: ignored key name %s", entry.c_str());
+            std::fputc(10, stderr);
+            log::write("input", "ignored key name %s", entry.c_str());
+        }
+        return result;
+    }();
+    return value;
+}
+
 void note_wheel(int delta) {
     if (delta > 0) {
         g_wheel_up = now_ms();
@@ -140,7 +154,7 @@ bool sideways_grip(bool read_toggle) {
     static bool flipped = false;
     static bool toggle_held = false;
     if (read_toggle) {
-        bool toggle = pressed(VK_TAB);
+        bool toggle = any_pressed(bindings().of(keymap::Action::Grip));
         if (toggle && !toggle_held) {
             flipped = !flipped;
         }
@@ -239,9 +253,10 @@ Sample device_sample(uint32_t channel) {
     if (window == nullptr) {
         return result;
     }
-    for (const Binding& binding : kBindings) {
-        if (pressed(binding.key)) {
-            result.buttons |= binding.button;
+    const keymap::Bindings& keys = bindings();
+    for (size_t i = 0; i < keymap::kActionCount; i++) {
+        if (keymap::action(i).buttons != 0 && any_pressed(keys.codes[i])) {
+            result.buttons |= keymap::action(i).buttons;
         }
     }
     bool sideways = sideways_grip(true);
@@ -257,12 +272,6 @@ Sample device_sample(uint32_t channel) {
         }
     }
     int64_t now = now_ms();
-    if (now - g_wheel_up.load() < kWheelSwing.count()) {
-        result.buttons |= kMotionSwingUp;
-    }
-    if (now - g_wheel_down.load() < kWheelSwing.count()) {
-        result.buttons |= kMotionSwingDown;
-    }
     static uint32_t logged_buttons = 0;
     if (log_input && result.buttons != logged_buttons) {
         logged_buttons = result.buttons;

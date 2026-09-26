@@ -39,7 +39,7 @@ The overall figure is the equal-weight average of the components below. They are
 
 ### Controls
 
-| Wii Remote | Keyboard and mouse | Gamepad, remote upright | Gamepad, remote sideways |
+| Wii Remote | Keyboard and mouse (default keys) | Gamepad, remote upright | Gamepad, remote sideways |
 | --- | --- | --- | --- |
 | Pointer | Mouse over the window | Gyroscope or right stick; R3 recenters | Same |
 | A | Enter, Space or left click | Bottom face button or R1 | Top face button or R1 |
@@ -53,6 +53,8 @@ The overall figure is the equal-weight average of the components below. They are
 | Swing up / down | Mouse wheel, or T / G | Move the gamepad sharply | Same |
 | Shake | Middle click or left Shift | Shake the gamepad | Same |
 | Swap upright and sideways | Tab | Tab | Tab |
+
+Every keyboard and mouse key can be changed in the launcher's Controls page or in the `[keys]` section of the settings file, as a list of names separated by commas, for example `a=Enter,Space,MouseLeft`: letters and digits, `F1` to `F24`, `Enter`, `Space`, `Backspace`, `Tab`, `Escape`, `Shift`, `LeftShift`, `RightShift`, `Ctrl`, `LeftCtrl`, `RightCtrl`, `Alt`, `LeftAlt`, `RightAlt`, `Up`, `Down`, `Left`, `Right`, `Plus`, `Minus`, `Num0` to `Num9`, `NumPlus`, `NumMinus`, `NumMultiply`, `NumDivide`, `NumPeriod`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Comma`, `Period`, `Semicolon`, `Slash`, `Backslash`, `Quote`, `Backquote`, `LeftBracket`, `RightBracket`, `CapsLock`, `Pause`, `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseX1`, `MouseX2`, `WheelUp` and `WheelDown` (a wheel step holds the action for 120 ms). Case does not matter; unknown names are ignored and reported on the console and in the `WP_LOG_FILE` log. F11 and F12 are reserved. An empty list leaves the action without a key.
 
 The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys and the gamepad buttons always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
 
@@ -96,10 +98,11 @@ To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `a
 
 ## Launcher
 
-`launcher/` is a small Qt 6 application (Windows now; written for Linux and macOS too) with two pages:
+`launcher/` is a small Qt 6 application (Windows now; written for Linux and macOS too) with three pages:
 
 - **Game**: when the game is installed, a Play button; otherwise Install. Install checks each tool (nodtool, Python 3.11+, CMake 3.20+, Ninja, and on Windows MinGW-w64 GCC 13+) and downloads the missing or incompatible ones from their official sites into `build/deps/toolchain/`, checking each file's SHA-256, then extracts your disc and runs every generation and build step, showing the log. Nothing from the game is downloaded. On Linux and macOS missing tools must come from the system's package manager.
 - **Settings**: every PC improvement from `games/wiiparty/settings.ini`, with a switch or a list.
+- **Controls**: the keyboard and mouse keys of each Wii Remote action; click a binding and press a key, click a mouse button or turn the wheel on it to add it, Clear removes them and Reset to defaults restores every action.
 
 Build it with Qt 6 (on Windows the MSYS2 `mingw-w64-x86_64-qt6-base` package; its MinGW build is separate from the game's compiler, and the needed DLLs are copied next to the launcher):
 
@@ -127,6 +130,7 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[system] pal60` | `1` | The console's own PAL60 setting (`IPL.E60`), so the PAL game runs at 60 Hz; 0 gives 50 Hz | `WP_PAL60` |
 | `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |
 | `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
+| `[keys] a`, `b`, `one`, `two`, `plus`, `minus`, `home`, `up`, `down`, `left`, `right`, `shake`, `swing_up`, `swing_down`, `tilt_left`, `tilt_right`, `tilt_up`, `tilt_down`, `grip` | The keys in the Controls table | Keyboard and mouse keys of each Wii Remote action, separated by commas (see below) | |
 
 ## Setup
 

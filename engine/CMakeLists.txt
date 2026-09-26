@@ -20,6 +20,7 @@ add_library(wp_engine STATIC
     src/input/bluetooth.cpp
     src/input/wiimote.cpp
     src/input/input.cpp
+    src/input/keymap.cpp
     src/platform/video.cpp
     src/platform/settings.cpp
     src/platform/ui_text.cpp

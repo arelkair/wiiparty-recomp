@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QMap>
 #include <QString>
 
 struct Texts {
@@ -89,6 +90,16 @@ struct Texts {
     QString hash_mismatch;
     QString project_missing;
     QString start_failed;
+    QString controls;
+    QString controls_heading;
+    QString controls_intro;
+    QString controls_reset;
+    QString keys_clear;
+    QString keys_none;
+    QString keys_press;
+    QString keys_reserved;
+    QMap<QString, QString> actions;
+    QMap<QString, QString> action_details;
 };
 
 const Texts& texts();
