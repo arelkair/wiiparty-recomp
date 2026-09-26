@@ -883,8 +883,8 @@ render::CopyFilter copy_filter(uint32_t control) {
     filter.coefficients[0] = weights[0] + weights[1];
     filter.coefficients[1] = weights[2] + weights[3] + weights[4];
     filter.coefficients[2] = weights[5] + weights[6];
-    static const bool filter_enabled = settings::flag("video.copy_filter", "WP_COPY_FILTER");
-    if (!filter_enabled) {
+    static const settings::LiveFlag filter_enabled("video.copy_filter", "WP_COPY_FILTER");
+    if (!filter_enabled()) {
         filter.coefficients[1] += filter.coefficients[0] + filter.coefficients[2];
         filter.coefficients[0] = 0;
         filter.coefficients[2] = 0;

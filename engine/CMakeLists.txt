@@ -28,6 +28,8 @@ add_library(wp_engine STATIC
     src/platform/screenshot.cpp
     src/platform/settings.cpp
     src/platform/ui_text.cpp
+    src/platform/options.cpp
+    src/platform/options_window.cpp
 )
 target_include_directories(wp_engine PUBLIC include)
 target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}")

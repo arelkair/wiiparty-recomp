@@ -40,5 +40,6 @@ Sample sample(uint32_t channel);
 bool wakes_remote(uint32_t channel);
 void note_wheel(int delta);
 const keymap::Bindings& bindings();
+void set_blocked(bool blocked);
 
 }

@@ -14,7 +14,7 @@ Texts english() {
     t.status_not_built = "The game has not been built yet. Build it from your own copy of the disc first.";
     t.status_no_disc = "No extracted disc was found. Choose your copy of Wii Party on the Build page.";
     t.play_button = "Play";
-    t.play_hint = "F11 switches full screen while playing. F10 saves a screenshot in the screenshots folder. F12 saves a capture of the frame for debugging.";
+    t.play_hint = "F1 opens the options menu while playing. F11 switches full screen. F10 saves a screenshot in the screenshots folder. F12 saves a capture of the frame for debugging.";
     t.build_heading = "Build";
     t.build_intro = "Translates the game from your own copy of the disc into a native program. Nothing is downloaded from the game, and nothing leaves your computer. The first build takes about 15 minutes on a 6-core processor.";
     t.tools = "Tools";
@@ -47,7 +47,7 @@ Texts english() {
     t.build_cancelled = "The build was cancelled.";
     t.missing_tool = "Missing tool: %1";
     t.settings_heading = "Settings";
-    t.settings_intro = "PC improvements, kept apart from the translated game. Changes apply the next time the game starts.";
+    t.settings_intro = "PC improvements, kept apart from the translated game. Changes apply the next time the game starts. F1 also opens these settings while playing, where most apply at once.";
     t.group_video = "Video";
     t.group_input = "Input";
     t.group_system = "System";
@@ -78,6 +78,8 @@ Texts english() {
     t.pal60_detail = "The console's own PAL60 setting. Off runs the game at 50 Hz.";
     t.skip_notices = "Skip the strap notice";
     t.skip_notices_detail = "Presses A on the Wii Remote strap notice at start, as a player would.";
+    t.options_menu = "In-game options menu";
+    t.options_menu_detail = "F1, or Start with Guide or Back on a gamepad, opens these settings over the game.";
     t.mute = "Mute";
     t.mute_detail = "Silences the game's sound.";
     t.group_saves = "Saves";
@@ -165,7 +167,7 @@ Texts spanish() {
     t.status_not_built = "El juego aún no está compilado. Compílalo primero a partir de tu propia copia del disco.";
     t.status_no_disc = "No se ha encontrado el disco extraído. Elige tu copia de Wii Party en la página Compilar.";
     t.play_button = "Jugar";
-    t.play_hint = "F11 cambia a pantalla completa durante la partida. F10 guarda una captura de pantalla en la carpeta screenshots. F12 guarda una captura del fotograma para depuración.";
+    t.play_hint = "F1 abre el menú de opciones durante la partida. F11 cambia a pantalla completa. F10 guarda una captura de pantalla en la carpeta screenshots. F12 guarda una captura del fotograma para depuración.";
     t.build_heading = "Compilar";
     t.build_intro = "Traduce el juego desde tu propia copia del disco a un programa nativo. No se descarga nada del juego y nada sale de tu ordenador. La primera compilación tarda unos 15 minutos con un procesador de 6 núcleos.";
     t.tools = "Herramientas";
@@ -198,7 +200,7 @@ Texts spanish() {
     t.build_cancelled = "La compilación se ha cancelado.";
     t.missing_tool = "Falta la herramienta: %1";
     t.settings_heading = "Opciones";
-    t.settings_intro = "Mejoras de PC, separadas del juego traducido. Los cambios se aplican la próxima vez que se abra el juego.";
+    t.settings_intro = "Mejoras de PC, separadas del juego traducido. Los cambios se aplican la próxima vez que se abra el juego. F1 también abre estas opciones durante la partida, donde casi todas se aplican al momento.";
     t.group_video = "Vídeo";
     t.group_input = "Entrada";
     t.group_system = "Sistema";
@@ -228,6 +230,8 @@ Texts spanish() {
     t.pal60_detail = "El ajuste PAL60 de la propia consola. Desactivado, el juego va a 50 Hz.";
     t.skip_notices = "Saltar el aviso de la correa";
     t.skip_notices_detail = "Pulsa A en el aviso de la correa del Wii Remote al empezar, como haría un jugador.";
+    t.options_menu = "Menú de opciones en el juego";
+    t.options_menu_detail = "F1, o Start con Guide o Back en un mando, abre estas opciones sobre el juego.";
     t.mute = "Silenciar";
     t.mute_detail = "Quita el sonido del juego.";
     t.group_saves = "Partidas";

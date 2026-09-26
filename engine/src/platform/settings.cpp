@@ -1,5 +1,6 @@
 #include "wp/settings.h"
 
+#include <atomic>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -32,6 +33,7 @@ const Option kBaseOptions[] = {
     {"system.language", "auto"},
     {"system.pal60", "1"},
     {"system.skip_notices", "1"},
+    {"system.options_menu", "1"},
     {"audio.mute", "0"},
     {"saves.backups", "5"},
 };
@@ -50,6 +52,7 @@ const std::vector<Option>& options() {
 std::mutex g_mutex;
 std::string g_path;
 std::map<std::string, std::string> g_values;
+std::atomic<uint32_t> g_revision{1};
 
 std::string fallback_of(const char* key) {
     for (const Option& option : options()) {
@@ -133,6 +136,7 @@ void load(const std::string& path) {
         }
     }
     write_file();
+    g_revision++;
 }
 
 bool flag(const char* key, const char* variable) {
@@ -152,6 +156,39 @@ void store(const char* key, const std::string& value) {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_values[key] = value;
     write_file();
+    g_revision++;
+}
+
+std::vector<std::string> keys() {
+    std::vector<std::string> result;
+    for (const Option& option : kBaseOptions) {
+        result.push_back(option.key);
+    }
+    return result;
+}
+
+uint32_t revision() {
+    return g_revision.load();
+}
+
+bool LiveFlag::operator()() const {
+    uint64_t current = revision();
+    uint64_t cached = cache_.load(std::memory_order_acquire);
+    if ((cached >> 32) != current) {
+        cached = (current << 32) | (flag(key_, variable_) ? 1u : 0u);
+        cache_.store(cached, std::memory_order_release);
+    }
+    return (cached & 1) != 0;
+}
+
+int LiveNumber::operator()() const {
+    uint64_t current = revision();
+    uint64_t cached = cache_.load(std::memory_order_acquire);
+    if ((cached >> 32) != current) {
+        cached = (current << 32) | static_cast<uint32_t>(number(key_, variable_));
+        cache_.store(cached, std::memory_order_release);
+    }
+    return static_cast<int>(static_cast<uint32_t>(cached));
 }
 
 }

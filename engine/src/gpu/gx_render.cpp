@@ -21,6 +21,7 @@
 #include "wp/game.h"
 #include "wp/gx_state.h"
 #include "wp/memory.h"
+#include "wp/options.h"
 #include "wp/settings.h"
 #include "wp/video.h"
 
@@ -54,6 +55,15 @@ Output vertex_main(uint id : SV_VertexID) {
 
 float4 pixel_main(Output input) : SV_Target {
     return float4(frame.Sample(frame_sampler, input.uv).rgb, 1);
+}
+)HLSL";
+
+const char* kOverlayShaderSource = R"HLSL(
+Texture2D overlay : register(t0);
+SamplerState overlay_sampler : register(s0);
+
+float4 pixel_main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    return overlay.Sample(overlay_sampler, uv);
 }
 )HLSL";
 
@@ -682,6 +692,15 @@ struct Device {
     ID3D11BlendState* clear_blend[16] = {};
     ID3D11DepthStencilState* clear_depth[2] = {};
     ID3D11RasterizerState* present_rasterizer = nullptr;
+    ID3D11PixelShader* overlay_pixel = nullptr;
+    ID3D11BlendState* overlay_blend = nullptr;
+    ID3D11Texture2D* overlay = nullptr;
+    ID3D11ShaderResourceView* overlay_view = nullptr;
+    uint32_t overlay_width = 0;
+    uint32_t overlay_height = 0;
+    uint64_t overlay_version = 0;
+    bool overlay_visible = false;
+    bool overlay_failed = false;
     ID3D11RasterizerState* rasterizer = nullptr;
     std::map<uint32_t, ID3D11BlendState*> blend_states;
     std::map<uint32_t, ID3D11DepthStencilState*> depth_states;
@@ -850,6 +869,11 @@ void prepare_texture_pack() {
     }
 }
 
+int requested_scale() {
+    static const settings::LiveNumber scale("video.scale", "WP_SCALE");
+    return std::clamp(scale(), 1, 6);
+}
+
 bool initialize() {
     if (g_device.ready) {
         return true;
@@ -857,7 +881,7 @@ bool initialize() {
     if (g_device.failed) {
         return false;
     }
-    g_scale = std::clamp(settings::number("video.scale", "WP_SCALE"), 1, 6);
+    g_scale = requested_scale();
     D3D_FEATURE_LEVEL level;
     HRESULT result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &g_device.device, &level,
                                        &g_device.context);
@@ -2069,6 +2093,130 @@ bool ensure_swapchain(HWND window, UINT width, UINT height) {
     return true;
 }
 
+void release_target() {
+    release(g_device.target_view);
+    release(g_device.target_resource);
+    release(g_device.target);
+    release(g_device.depth_view);
+    release(g_device.depth_resource);
+    release(g_device.depth);
+}
+
+void apply_scale() {
+    int scale = requested_scale();
+    if (scale == g_scale) {
+        return;
+    }
+    flush_pending();
+    ID3D11DeviceContext* context = g_device.context;
+    context->OMSetRenderTargets(0, nullptr, nullptr);
+    ID3D11ShaderResourceView* none[2] = {};
+    context->PSSetShaderResources(0, 2, none);
+    int previous = g_scale;
+    release_target();
+    g_scale = scale;
+    if (!create_target()) {
+        release_target();
+        g_scale = previous;
+        if (!create_target()) {
+            std::fputs("cannot recreate the EFB after a scale change\n", stderr);
+            release_target();
+            g_device.ready = false;
+            g_device.failed = true;
+            return;
+        }
+    }
+    float black[4] = {0, 0, 0, 0};
+    context->ClearRenderTargetView(g_device.target_view, black);
+    context->ClearDepthStencilView(g_device.depth_view, D3D11_CLEAR_DEPTH, 1.0f, 0);
+}
+
+bool create_overlay_pipeline() {
+    if (g_device.overlay_pixel && g_device.overlay_blend) {
+        return true;
+    }
+    if (g_device.overlay_failed) {
+        return false;
+    }
+    ID3DBlob* code = nullptr;
+    bool ok = compile(kOverlayShaderSource, "pixel_main", "ps_5_0", &code) &&
+              SUCCEEDED(g_device.device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &g_device.overlay_pixel));
+    release(code);
+    D3D11_BLEND_DESC blend{};
+    blend.RenderTarget[0].BlendEnable = TRUE;
+    blend.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blend.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+    blend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    ok = ok && SUCCEEDED(g_device.device->CreateBlendState(&blend, &g_device.overlay_blend));
+    if (!ok) {
+        std::fputs("cannot create the options menu overlay pipeline\n", stderr);
+        release(g_device.overlay_pixel);
+        release(g_device.overlay_blend);
+        g_device.overlay_failed = true;
+    }
+    return ok;
+}
+
+void upload_overlay(const options::Image& image) {
+    if (image.pixels.size() != static_cast<size_t>(image.width) * image.height || image.width == 0 || image.height == 0) {
+        return;
+    }
+    if (g_device.overlay && g_device.overlay_width == image.width && g_device.overlay_height == image.height) {
+        g_device.context->UpdateSubresource(g_device.overlay, 0, nullptr, image.pixels.data(), image.width * 4, 0);
+        return;
+    }
+    release(g_device.overlay_view);
+    release(g_device.overlay);
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = image.width;
+    description.Height = image.height;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA initial{image.pixels.data(), image.width * 4, 0};
+    if (FAILED(g_device.device->CreateTexture2D(&description, &initial, &g_device.overlay)) ||
+        FAILED(g_device.device->CreateShaderResourceView(g_device.overlay, nullptr, &g_device.overlay_view))) {
+        release(g_device.overlay_view);
+        release(g_device.overlay);
+        return;
+    }
+    g_device.overlay_width = image.width;
+    g_device.overlay_height = image.height;
+}
+
+void draw_overlay(const RECT& client) {
+    options::Image image;
+    if (options::take_overlay(g_device.overlay_version, image, g_device.overlay_visible) && !image.pixels.empty()) {
+        upload_overlay(image);
+    }
+    if (!g_device.overlay_visible || !g_device.overlay_view || !create_overlay_pipeline()) {
+        return;
+    }
+    options::Rect placed = options::place(client.right, client.bottom, static_cast<int>(g_device.overlay_width), static_cast<int>(g_device.overlay_height));
+    if (placed.width <= 0 || placed.height <= 0) {
+        return;
+    }
+    ID3D11DeviceContext* context = g_device.context;
+    D3D11_VIEWPORT viewport{static_cast<float>(placed.x), static_cast<float>(placed.y), static_cast<float>(placed.width), static_cast<float>(placed.height),
+                            0.0f, 1.0f};
+    context->RSSetViewports(1, &viewport);
+    context->OMSetBlendState(g_device.overlay_blend, nullptr, 0xFFFFFFFF);
+    context->PSSetShader(g_device.overlay_pixel, nullptr, 0);
+    context->PSSetShaderResources(0, 1, &g_device.overlay_view);
+    context->PSSetSamplers(0, 1, &g_device.present_sampler);
+    context->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    context->PSSetShaderResources(0, 1, &none);
+    context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+}
+
 bool present_frame(void* window_handle, double aspect) {
     if (!g_device.ready || !g_device.frame_view || !window_handle) {
         return false;
@@ -2105,7 +2253,9 @@ bool present_frame(void* window_handle, double aspect) {
     context->Draw(3, 0);
     ID3D11ShaderResourceView* none = nullptr;
     context->PSSetShaderResources(0, 1, &none);
+    draw_overlay(client);
     g_device.swapchain->Present(0, 0);
+    apply_scale();
     return true;
 }
 

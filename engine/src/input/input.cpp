@@ -28,14 +28,16 @@ constexpr int64_t kNoticePulsePeriod = 500;
 constexpr int64_t kNoticePulseLength = 100;
 std::atomic<int64_t> g_wheel_up{0};
 std::atomic<int64_t> g_wheel_down{0};
+std::atomic<bool> g_blocked{false};
+std::atomic<bool> g_release_wait[4] = {};
 
 int64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 bool sideways_minigame() {
-    static const bool automatic = settings::flag("input.auto_grip", "WP_AUTO_ORIENTATION");
-    if (!automatic) {
+    static const settings::LiveFlag automatic("input.auto_grip", "WP_AUTO_ORIENTATION");
+    if (!automatic()) {
         return false;
     }
     static int64_t next = 0;
@@ -187,7 +189,8 @@ bool wakes_remote(uint32_t channel) {
     if ((current.buttons & ~kMotionSideways) != 0) {
         return true;
     }
-    static const bool pointer_wakes = settings::flag("input.wake_on_mouse", "WP_RECONNECT_ON_POINTER");
+    static const settings::LiveFlag wake_on_mouse("input.wake_on_mouse", "WP_RECONNECT_ON_POINTER");
+    bool pointer_wakes = wake_on_mouse();
     static bool had_pointer = false;
     static float last_x = 0.0f;
     static float last_y = 0.0f;
@@ -301,16 +304,35 @@ Sample device_sample(uint32_t channel) {
 }
 
 bool skipping_notice() {
-    static const bool enabled = settings::flag("system.skip_notices", "WP_SKIP_NOTICES") && !std::getenv("WP_INPUT_SCRIPT") && !std::getenv("WP_INPUT_BUTTONS");
+    static const settings::LiveFlag setting("system.skip_notices", "WP_SKIP_NOTICES");
+    static const bool scripted_input = std::getenv("WP_INPUT_SCRIPT") || std::getenv("WP_INPUT_BUTTONS");
     const char* module = game::description().notice_module;
-    if (!enabled || !module || !module_loaded(module)) {
+    if (scripted_input || !setting() || !module || !module_loaded(module)) {
         return false;
     }
     return now_ms() % kNoticePulsePeriod < kNoticePulseLength;
 }
 
+void set_blocked(bool blocked) {
+    if (!blocked) {
+        for (std::atomic<bool>& wait : g_release_wait) {
+            wait = true;
+        }
+    }
+    g_blocked = blocked;
+}
+
 Sample sample(uint32_t channel) {
     Sample result = device_sample(channel);
+    uint32_t held = result.buttons & ~kMotionSideways;
+    bool waiting = channel < 4 && g_release_wait[channel].load();
+    if (g_blocked.load() || (waiting && held != 0)) {
+        result.buttons &= kMotionSideways;
+        return result;
+    }
+    if (waiting) {
+        g_release_wait[channel] = false;
+    }
     if (channel == 0 && skipping_notice()) {
         result.buttons |= kButtonA;
     }

@@ -54,8 +54,8 @@ std::mutex g_queue_mutex;
 std::deque<Frame> g_queue;
 uint32_t g_source_rate = 32000;
 bool muted() {
-    static const bool value = settings::flag("audio.mute", "WP_MUTE");
-    return value;
+    static const settings::LiveFlag value("audio.mute", "WP_MUTE");
+    return value();
 }
 std::FILE* g_dump = nullptr;
 uint32_t g_dump_frames = 0;
