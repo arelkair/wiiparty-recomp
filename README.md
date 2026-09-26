@@ -134,6 +134,7 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[input] auto_grip` | `1` | Hold the emulated remote sideways in the minigames that ask for it | `WP_AUTO_ORIENTATION` |
 | `[input] wake_on_mouse` | `1` | Moving the mouse reconnects a remote the game disconnected for inactivity | `WP_RECONNECT_ON_POINTER` |
 | `[input] hide_cursor` | `0` | Hide the Windows cursor over the game window (the game draws its own pointer) | `WP_HIDE_CURSOR` |
+| `[system] interface_language` | `en` | Language of the launcher and of the F10 menu: `en` or `es` | `WP_INTERFACE_LANGUAGE` |
 | `[system] language` | `auto` | Console language: `auto` follows Windows, or `en`, `de`, `fr`, `es`, `it`, `nl` | `WP_LANGUAGE` |
 | `[system] pal60` | `1` | The console's own PAL60 setting (`IPL.E60`), so the PAL game runs at 60 Hz; 0 gives 50 Hz | `WP_PAL60` |
 | `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |

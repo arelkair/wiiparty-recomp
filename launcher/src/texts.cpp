@@ -1,6 +1,5 @@
 #include "texts.h"
 
-#include <QLocale>
 
 namespace {
 
@@ -47,7 +46,7 @@ Texts english() {
     t.build_cancelled = "The build was cancelled.";
     t.missing_tool = "Missing tool: %1";
     t.settings_heading = "Settings";
-    t.settings_intro = "PC improvements, kept apart from the translated game. Changes apply the next time the game starts. F1 also opens these settings while playing, where most apply at once.";
+    t.settings_intro = "PC improvements, kept apart from the translated game. Changes apply the next time the game starts. F10 also opens these settings while playing, where most apply at once.";
     t.group_video = "Video";
     t.group_input = "Input";
     t.group_system = "System";
@@ -78,8 +77,10 @@ Texts english() {
     t.pal60_detail = "The console's own PAL60 setting. Off runs the game at 50 Hz.";
     t.skip_notices = "Skip the strap notice";
     t.skip_notices_detail = "Presses A on the Wii Remote strap notice at start, as a player would.";
-    t.options_menu = "In-game options menu";
-    t.options_menu_detail = "F1, or Start with Guide or Back on a gamepad, opens these settings over the game.";
+    t.options_menu = "In-game options menu (F10)";
+    t.interface_language = "Interface language";
+    t.interface_language_detail = "The language of this launcher and of the F10 menu.";
+    t.options_menu_detail = "F10, or Start with Guide or Back on a gamepad, opens these settings over the game.";
     t.mute = "Mute";
     t.mute_detail = "Silences the game's sound.";
     t.group_saves = "Saves";
@@ -200,7 +201,7 @@ Texts spanish() {
     t.build_cancelled = "La compilación se ha cancelado.";
     t.missing_tool = "Falta la herramienta: %1";
     t.settings_heading = "Opciones";
-    t.settings_intro = "Mejoras de PC, separadas del juego traducido. Los cambios se aplican la próxima vez que se abra el juego. F1 también abre estas opciones durante la partida, donde casi todas se aplican al momento.";
+    t.settings_intro = "Mejoras de PC, separadas del juego traducido. Los cambios se aplican la próxima vez que se abra el juego. F10 también abre estas opciones durante la partida, donde casi todas se aplican al momento.";
     t.group_video = "Vídeo";
     t.group_input = "Entrada";
     t.group_system = "Sistema";
@@ -230,8 +231,10 @@ Texts spanish() {
     t.pal60_detail = "El ajuste PAL60 de la propia consola. Desactivado, el juego va a 50 Hz.";
     t.skip_notices = "Saltar el aviso de la correa";
     t.skip_notices_detail = "Pulsa A en el aviso de la correa del Wii Remote al empezar, como haría un jugador.";
-    t.options_menu = "Menú de opciones en el juego";
-    t.options_menu_detail = "F1, o Start con Guide o Back en un mando, abre estas opciones sobre el juego.";
+    t.options_menu = "Menú de opciones en el juego (F10)";
+    t.interface_language = "Idioma de la interfaz";
+    t.interface_language_detail = "El idioma de este lanzador y del menú F10.";
+    t.options_menu_detail = "F10, o Start con Guide o Back en un mando, abre estas opciones sobre el juego.";
     t.mute = "Silenciar";
     t.mute_detail = "Quita el sonido del juego.";
     t.group_saves = "Partidas";
@@ -311,7 +314,13 @@ Texts spanish() {
 
 }
 
+bool g_spanish = false;
+
+void use_spanish(bool spanish) {
+    g_spanish = spanish;
+}
+
 const Texts& texts() {
-    static const Texts value = QLocale::system().language() == QLocale::Spanish ? spanish() : english();
+    static const Texts value = g_spanish ? spanish() : english();
     return value;
 }

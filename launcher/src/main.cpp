@@ -6,7 +6,9 @@
 #include <QMessageBox>
 
 #include "main_window.h"
+#include "options.h"
 #include "project.h"
+#include "settings_file.h"
 #include "texts.h"
 
 int main(int argc, char** argv) {
@@ -30,6 +32,8 @@ int main(int argc, char** argv) {
     QCommandLineOption install("install", "Install the game without interaction, write build/install.log and quit.");
     parser.addOption(install);
     parser.process(application);
+    Option interface_language{"system.interface_language", Option::Kind::Choice, "en", {}, {}, {}, {}};
+    use_spanish(SettingsFile(project.settings_file()).value(interface_language) == "es");
     MainWindow window(project);
     window.show();
     if (parser.isSet(screenshot)) {

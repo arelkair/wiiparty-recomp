@@ -69,6 +69,8 @@ struct Texts {
     QString wake_on_mouse_detail;
     QString hide_cursor;
     QString hide_cursor_detail;
+    QString interface_language;
+    QString interface_language_detail;
     QString language;
     QString language_detail;
     QString language_auto;
@@ -126,4 +128,5 @@ struct Texts {
     QMap<QString, QString> action_details;
 };
 
+void use_spanish(bool spanish);
 const Texts& texts();

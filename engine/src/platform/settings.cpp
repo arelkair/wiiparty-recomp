@@ -30,6 +30,7 @@ const Option kBaseOptions[] = {
     {"input.auto_grip", "1"},
     {"input.wake_on_mouse", "1"},
     {"input.hide_cursor", "0"},
+    {"system.interface_language", "en"},
     {"system.language", "auto"},
     {"system.pal60", "1"},
     {"system.skip_notices", "1"},

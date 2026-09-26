@@ -808,3 +808,10 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 ## Options menu on F10, screenshots on F9 (2026-09-26)
 
 - At the user's request the in-game options menu opens and closes with F10 instead of F1, and the screenshot action's default key moves from F10 to F9. F10 is a system key on Windows (it arrives as `WM_SYSKEYDOWN` and would enter the window's menu mode on release), so `engine/src/platform/video.cpp` handles both its down and up messages and swallows them. F10 joins F11 and F12 as reserved keys that cannot be bound to Wii Remote actions (`keymap::reserved`, the launcher's key capture). Texts in the engine, launcher, README and the key tests are updated; `ctest` passes. Not yet checked with a window.
+
+## Interface language, dark title bar, launcher closes on Play (2026-09-26)
+
+- New setting `system.interface_language` (`en` by default, `es`), at the user's request: English is the default for the launcher and the F10 menu, and Spanish is a choice, instead of following the Windows language. The F10 menu applies it at once (`apply_interface_language` in `engine/src/platform/video.cpp`); the launcher reads it at start and restarts itself when it is changed on its Settings page.
+- The game window's title bar follows the Windows light or dark app theme (`DwmSetWindowAttribute` with `DWMWA_USE_IMMERSIVE_DARK_MODE`, from `AppsUseLightTheme`, updated on `WM_SETTINGCHANGE` "ImmersiveColorSet"). PC-only, outside the recompiled code.
+- The launcher closes once Play has started the game, and its texts name F10 for the options menu.
+- Verified: build with no warnings, `ctest` passes, launcher pages captured in English by default and in Spanish with `interface_language=es`. The title bar colour and the F10 language switch need a window and were not checked here.

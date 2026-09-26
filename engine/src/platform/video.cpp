@@ -1,6 +1,9 @@
 #include "wp/video.h"
 
 #include <windows.h>
+#include <dwmapi.h>
+
+#include <cstring>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -79,6 +82,21 @@ bool hide_cursor() {
     return value();
 }
 
+constexpr DWORD kDwmUseImmersiveDarkMode = 20;
+
+void apply_title_bar_theme(HWND window) {
+    DWORD light = 1;
+    DWORD size = sizeof light;
+    RegGetValueA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &size);
+    BOOL dark = light == 0;
+    DwmSetWindowAttribute(window, kDwmUseImmersiveDarkMode, &dark, sizeof dark);
+}
+
+void apply_interface_language() {
+    bool spanish = settings::text("system.interface_language", "WP_INTERFACE_LANGUAGE") == "es";
+    ui::set_language(spanish ? ui::Language::Spanish : ui::Language::English);
+}
+
 WINDOWPLACEMENT g_placement{};
 bool g_fullscreen = false;
 
@@ -145,6 +163,10 @@ void note_key(WPARAM key, LPARAM lparam) {
 }
 
 void apply_option(HWND window, const std::string& key) {
+    if (key == "system.interface_language") {
+        apply_interface_language();
+        options::refresh_menu(window);
+    }
     if (key == "video.fullscreen") {
         bool enable = settings::flag("video.fullscreen", nullptr);
         if (enable != g_fullscreen) {
@@ -246,6 +268,11 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         return 0;
     }
+    case WM_SETTINGCHANGE:
+        if (lparam && std::strcmp(reinterpret_cast<const char*>(lparam), "ImmersiveColorSet") == 0) {
+            apply_title_bar_theme(window);
+        }
+        return DefWindowProc(window, message, wparam, lparam);
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT: {
@@ -313,6 +340,7 @@ void window_thread() {
                                 CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr,
                                 window_class.hInstance, nullptr);
     g_window = window;
+    apply_title_bar_theme(window);
     if (settings::flag("video.fullscreen", "WP_FULLSCREEN")) {
         set_fullscreen(window, true);
     }
@@ -329,7 +357,7 @@ void window_thread() {
 void start() {
     log::write("video", "build %s", WP_BUILD);
     g_aspect = nand::widescreen() ? kWideAspect : kStandardAspect;
-    ui::set_language(PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_SPANISH ? ui::Language::Spanish : ui::Language::English);
+    apply_interface_language();
     if (std::getenv("WP_HEADLESS")) {
         return;
     }

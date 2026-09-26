@@ -297,7 +297,13 @@ QWidget* MainWindow::make_settings_page() {
                 index = combo->count() - 1;
             }
             combo->setCurrentIndex(index < 0 ? 0 : index);
-            connect(combo, &QComboBox::currentIndexChanged, this, [this, option, combo](int) { settings_.set(option, combo->currentData().toString()); });
+            connect(combo, &QComboBox::currentIndexChanged, this, [this, option, combo](int) {
+                settings_.set(option, combo->currentData().toString());
+                if (option.key == "system.interface_language" && !runner_->running()) {
+                    QProcess::startDetached(QCoreApplication::applicationFilePath(), {});
+                    QCoreApplication::quit();
+                }
+            });
             row_layout->addWidget(combo);
         }
         layout->addWidget(row);
@@ -597,5 +603,7 @@ void MainWindow::save_pages(const QString& prefix) {
 void MainWindow::play() {
     if (!QProcess::startDetached(project_.executable(), {}, project_.root())) {
         status_->setText(texts().start_failed);
+        return;
     }
+    QCoreApplication::quit();
 }

@@ -25,6 +25,7 @@ QList<Option> build() {
         toggle("input.auto_grip", "1", t.group_input, t.auto_grip, t.auto_grip_detail),
         toggle("input.wake_on_mouse", "1", t.group_input, t.wake_on_mouse, t.wake_on_mouse_detail),
         toggle("input.hide_cursor", "0", t.group_input, t.hide_cursor, t.hide_cursor_detail),
+        Option{"system.interface_language", Option::Kind::Choice, "en", t.group_system, t.interface_language, t.interface_language_detail, {{"en", "English"}, {"es", "Español"}}},
         Option{"system.language", Option::Kind::Choice, "auto", t.group_system, t.language, t.language_detail, languages},
         toggle("system.pal60", "1", t.group_system, t.pal60, t.pal60_detail),
         toggle("system.skip_notices", "1", t.group_system, t.skip_notices, t.skip_notices_detail),

@@ -33,7 +33,7 @@ add_library(wp_engine STATIC
 )
 target_include_directories(wp_engine PUBLIC include)
 target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}")
-target_link_libraries(wp_engine PUBLIC wp_dolphin_dsp gdi32 user32 d3d11 d3dcompiler dxgi ole32 windowscodecs)
+target_link_libraries(wp_engine PUBLIC wp_dolphin_dsp gdi32 user32 d3d11 d3dcompiler dxgi ole32 windowscodecs dwmapi)
 if(WP_TRACE)
     target_compile_definitions(wp_engine PUBLIC WP_TRACE)
 endif()
