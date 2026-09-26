@@ -11,6 +11,7 @@ add_library(wp_engine STATIC
     src/gpu/gx.cpp
     src/gpu/gx_lighting.cpp
     src/gpu/gx_render.cpp
+    src/gpu/custom_textures.cpp
     src/audio/dsp.cpp
     src/audio/audio.cpp
     src/ios/ios.cpp
@@ -26,7 +27,7 @@ add_library(wp_engine STATIC
 )
 target_include_directories(wp_engine PUBLIC include)
 target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}")
-target_link_libraries(wp_engine PUBLIC wp_dolphin_dsp gdi32 user32 d3d11 d3dcompiler dxgi ole32)
+target_link_libraries(wp_engine PUBLIC wp_dolphin_dsp gdi32 user32 d3d11 d3dcompiler dxgi ole32 windowscodecs)
 if(WP_TRACE)
     target_compile_definitions(wp_engine PUBLIC WP_TRACE)
 endif()

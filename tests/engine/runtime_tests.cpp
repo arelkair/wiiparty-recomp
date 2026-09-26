@@ -1,10 +1,16 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <vector>
 
 #include "wp/cpu.h"
+#include "wp/custom_textures.h"
 #include "wp/function_table.h"
 #include "wp/ios.h"
 #include "wp/modules.h"
+#include "wp/video.h"
 
 namespace wp {
 const FunctionEntry g_function_table[1] = {};
@@ -212,6 +218,107 @@ void test_disc_drive() {
     CHECK(wp::rd32(output) == 0x53100);
 }
 
+
+void test_custom_texture_hash() {
+    using wp::gx::custom_textures::xxh64;
+    const char* sentence = "Nobody inspects the spammish repetition";
+    uint8_t sequence[256];
+    for (int i = 0; i < 256; i++) {
+        sequence[i] = static_cast<uint8_t>(i);
+    }
+    CHECK(xxh64("", 0) == 0xEF46DB3751D8E999ull);
+    CHECK(xxh64("a", 1) == 0xD24EC4F1A98C6E5Bull);
+    CHECK(xxh64("abc", 3) == 0x44BC2CF5AD770999ull);
+    CHECK(xxh64(sentence, std::strlen(sentence)) == 0xFBCEA83C8A378BF1ull);
+    CHECK(xxh64(sequence, sizeof sequence) == 0x1FACBE8406CD904Bull);
+    CHECK(xxh64("", 0, 0x9E3779B1) == 0xAC75FDA2929B17EFull);
+    CHECK(xxh64("abc", 3, 0x9E3779B1) == 0x1318DF30094A85FDull);
+    CHECK(xxh64(sentence, std::strlen(sentence), 0x9E3779B1) == 0x56DB22DD5B051147ull);
+    CHECK(xxh64(sequence, sizeof sequence, 0x9E3779B1) == 0xD48195F45908996Cull);
+}
+
+void test_custom_texture_names() {
+    namespace ct = wp::gx::custom_textures;
+    const uint8_t c4[] = {0x35, 0x74};
+    ct::PaletteRange range = ct::used_palette_range(c4, sizeof c4, 8);
+    CHECK(range.first == 3 && range.count == 5);
+    const uint8_t c8[] = {10, 200, 50};
+    range = ct::used_palette_range(c8, sizeof c8, 9);
+    CHECK(range.first == 10 && range.count == 191);
+    const uint8_t c14[] = {0x12, 0x34, 0x00, 0x05, 0xC0, 0x07};
+    range = ct::used_palette_range(c14, sizeof c14, 10);
+    CHECK(range.first == 5 && range.count == 0x1230);
+    range = ct::used_palette_range(c8, sizeof c8, 4);
+    CHECK(range.count == 0);
+
+    uint8_t data[32];
+    for (int i = 0; i < 32; i++) {
+        data[i] = static_cast<uint8_t>(i);
+    }
+    ct::TextureName plain = ct::name_texture(data, sizeof data, 4, 4, 4, false, nullptr);
+    CHECK(plain.full() == "tex1_4x4_cbf59c5116ff32b4_4");
+    CHECK(plain.wildcard() == "tex1_4x4_cbf59c5116ff32b4_$_4");
+    CHECK(ct::name_texture(data, sizeof data, 4, 4, 4, true, nullptr).full() == "tex1_4x4_m_cbf59c5116ff32b4_4");
+
+    uint8_t indices[32];
+    for (int i = 0; i < 32; i++) {
+        indices[i] = static_cast<uint8_t>(i % 4 + 2);
+    }
+    uint8_t tlut[512];
+    for (int i = 0; i < 512; i++) {
+        tlut[i] = static_cast<uint8_t>(i);
+    }
+    ct::TextureName palette = ct::name_texture(indices, sizeof indices, 8, 4, 9, false, tlut);
+    CHECK(palette.full() == "tex1_8x4_5e9da7e61227046a_6ac8c5a2eb076b8a_9");
+    CHECK(palette.wildcard() == "tex1_8x4_5e9da7e61227046a_$_9");
+    CHECK(ct::level_name(palette.full(), 0) == palette.full());
+    CHECK(ct::level_name(palette.full(), 2) == palette.full() + "_mip2");
+}
+
+void test_custom_texture_index() {
+    namespace ct = wp::gx::custom_textures;
+    ct::Index index;
+    ct::TextureName name{"tex1_8x4", "5e9da7e61227046a", "_6ac8c5a2eb076b8a", "9"};
+    CHECK(index.resolve(name).empty());
+    CHECK(index.add("pack/menus/TEX1_8x4_5E9DA7E61227046A_6AC8C5A2EB076B8A_9.PNG"));
+    CHECK(!index.add("pack/tex1_8x4_5e9da7e61227046a_6ac8c5a2eb076b8a_9.dds"));
+    CHECK(!index.add("pack/readme.png"));
+    CHECK(index.add("pack/tex1_4x4_0000000000000001_5_arb.png"));
+    CHECK(index.add("pack/tex1_4x4_0000000000000001_5_mip1.png"));
+    CHECK(index.size() == 3);
+    CHECK(index.resolve(name) == "tex1_8x4_5e9da7e61227046a_6ac8c5a2eb076b8a_9");
+    CHECK(index.find("tex1_4x4_0000000000000001_5") != nullptr);
+    CHECK(index.find(ct::level_name("tex1_4x4_0000000000000001_5", 1)) != nullptr);
+    CHECK(index.find(ct::level_name("tex1_4x4_0000000000000001_5", 2)) == nullptr);
+    CHECK(index.add("pack/tex1_8x4_5e9da7e61227046a_$_9.png"));
+    CHECK(index.resolve(name) == "tex1_8x4_5e9da7e61227046a_$_9");
+    name.texture = "0000000000000000";
+    CHECK(index.resolve(name).empty());
+
+    std::error_code error;
+    std::filesystem::path root = std::filesystem::temp_directory_path(error) / "wp_custom_textures_test";
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root / "SUPP01" / "menus", error);
+    std::ofstream(root / "SUPP01" / "menus" / "tex1_4x4_cbf59c5116ff32b4_4.png") << "x";
+    std::ofstream(root / "SUPP01" / "notes.txt") << "x";
+    ct::Index scanned;
+    CHECK(scanned.scan(root) == 1);
+    CHECK(scanned.find("tex1_4x4_cbf59c5116ff32b4_4") != nullptr);
+    CHECK(scanned.scan(root / "missing") == 0);
+
+    std::vector<uint32_t> pixels = {0xFF0000FFu, 0x8000FF00u, 0x00FF0000u, 0x12345678u, 0xFFFFFFFFu, 0x00000000u};
+    std::filesystem::path png = root / "round_trip.png";
+    wp::video::save_png_rgba(png.string().c_str(), pixels, 3, 2);
+    std::vector<uint32_t> decoded;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    CHECK(ct::decode_png(png, decoded, width, height));
+    CHECK(width == 3 && height == 2 && decoded == pixels);
+    CHECK(!ct::decode_png(root / "SUPP01" / "menus" / "tex1_4x4_cbf59c5116ff32b4_4.png", decoded, width, height));
+    CHECK(width == 3 && height == 2 && decoded == pixels);
+    std::filesystem::remove_all(root, error);
+}
+
 }
 
 int main() {
@@ -224,6 +331,9 @@ int main() {
     test_paired_singles();
     test_quantization();
     test_disc_drive();
+    test_custom_texture_hash();
+    test_custom_texture_names();
+    test_custom_texture_index();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");
