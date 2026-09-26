@@ -25,7 +25,7 @@ The overall figure is the equal-weight average of the components below. They are
 | Graphics (GX to Direct3D 11) | 85% | Menus, text, 3D models, lit Miis, integer TEV, indirect textures, fog, the hardware's blending rules, lines and points, vertex arrays in MEM2 EFB copies in every format including depth, the copy filter and gamma, and RGBA6 dithering; logic operations missing |
 | Input | 65% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons and as an accelerometer model (tilt, swing, shake) with the grip chosen per minigame; up to four gamepads (SDL3) as Wii Remotes 1-4 with gyroscope pointer, accelerometer, rumble and player lights, untested with a physical gamepad; no real Wii Remotes |
 | Audio | 83% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no stale audio blocks on busy board scenes or scene loads; windowed-sinc WASAPI output |
-| Game flow | 75% | A complete game of Board Game Island (17 rounds, final ranking, save) played by hand without faults; a first boot without a save works; other modes not played through |
+| Game flow | 80% | A complete game of Board Game Island (17 rounds, final ranking, save) played by hand without faults; a first boot without a save works; 62 minigames played by hand in Free Play, 57 without faults seen (`docs/MINIGAMES.md`); pair games and the other modes not played through |
 | PC features | 15% | Native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; launcher, options menu, ultrawide and online not started |
 
 ### Working
@@ -62,7 +62,7 @@ Gamepads: the first gamepad adds to the keyboard and mouse as Wii Remote 1, and 
 
 - Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked. The Mii faces that came out black or pale in House Party are fixed; other screens with Miis have not all been checked.
 - Some Miis are drawn with a different mouth (for example with lips) in a minigame than on the board or in the results.
-- Some minigames run below 50 fps (Hurdle Hover, and "Pica y trocea" and "Laberinto mareante" in the Spanish version) and a few show graphics faults; `docs/MINIGAMES.md` lists every minigame checked by hand.
+- A few minigames show graphics faults; `docs/MINIGAMES.md` lists every minigame checked by hand.
 - Some minigames may still be drawn incorrectly; not all have been checked.
 - Entering the main menu still causes one frame of about 60 ms, while the game decompresses about 40 files and draws its first menu frame (on a real Wii this frame is slower). Minigame sound has not been checked.
 

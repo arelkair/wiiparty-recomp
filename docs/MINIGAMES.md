@@ -10,9 +10,9 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Tiro a la lata | OK | |
 | Terror zombi | OK | |
 | Montaña de regalos | OK | Unlocked "Montaña de regalos+" in Challenges |
-| Obstáculos rodantes | Slow | 40-50 fps, drops within that range. The race end no longer crashes. After the vertex speed-up of 2026-09-26: 48-50 fps in a scripted run, to be confirmed by hand |
+| Obstáculos rodantes | OK | Was 40-50 fps and crashed at the race end; after the fixes of 2026-09-26 a steady 50 fps and no crash |
 | ¡A por la bandera! | OK | |
-| Pica y trocea | Slow | 42-50 fps, drops within that range |
+| Pica y trocea | OK | Was 42-50 fps; a steady 50 fps after the vertex speed-up of 2026-09-26 |
 | La pieza correcta | OK | |
 | ¡Decid patata! | OK | |
 | Salto de esquí | OK | |
@@ -25,7 +25,7 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Mii trilero | OK | |
 | Cronómetro mental | OK | |
 | Remates de volea | OK | |
-| Laberinto mareante | Slow | 39-41 fps |
+| Laberinto mareante | OK | Was 39-41 fps; 50 fps after the vertex speed-up of 2026-09-26 |
 | Mii puzle | OK | |
 | ¡Ovni a la vista! | OK | |
 | Helicóptero al rescate | OK | |
