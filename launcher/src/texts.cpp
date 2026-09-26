@@ -59,6 +59,10 @@ Texts english() {
     t.fullscreen_detail = "Starts in borderless full screen. F11 also switches it while playing.";
     t.copy_filter = "Anti-flicker filter";
     t.copy_filter_detail = "The soft vertical filter the game uses on the console. Turn it off for a sharper picture.";
+    t.custom_textures = "Custom textures";
+    t.custom_textures_detail = "Uses the replacement textures in games/wiiparty/textures/load, with Dolphin's file names.";
+    t.dump_textures = "Dump textures";
+    t.dump_textures_detail = "Saves each texture the game uses to games/wiiparty/textures/dump, for making texture packs.";
     t.gamepads = "Gamepads";
     t.gamepads_detail = "Up to four gamepads act as Wii Remotes 1 to 4.";
     t.auto_grip = "Automatic grip";
@@ -149,6 +153,10 @@ Texts spanish() {
     t.fullscreen_detail = "Empieza en pantalla completa sin bordes. F11 también la cambia durante la partida.";
     t.copy_filter = "Filtro anti-parpadeo";
     t.copy_filter_detail = "El suave filtro vertical que usa el juego en la consola. Desactívalo para una imagen más nítida.";
+    t.custom_textures = "Texturas personalizadas";
+    t.custom_textures_detail = "Usa las texturas de reemplazo de games/wiiparty/textures/load, con los nombres de archivo de Dolphin.";
+    t.dump_textures = "Volcar texturas";
+    t.dump_textures_detail = "Guarda cada textura que usa el juego en games/wiiparty/textures/dump, para crear packs de texturas.";
     t.gamepads = "Mandos";
     t.gamepads_detail = "Hasta cuatro mandos funcionan como los Wii Remote 1 a 4.";
     t.auto_grip = "Agarre automático";

@@ -2,6 +2,7 @@
 /games/*/extracted/
 /games/*/nand/
 /games/*/settings.ini
+/games/*/textures/
 /reference/
 *.iso
 *.wbfs

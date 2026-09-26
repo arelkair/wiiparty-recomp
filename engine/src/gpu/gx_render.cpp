@@ -10,10 +10,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "wp/custom_textures.h"
+#include "wp/game.h"
 #include "wp/memory.h"
 #include "wp/settings.h"
 #include "wp/video.h"
@@ -609,6 +614,22 @@ struct CachedTexture {
     uint32_t format = 0;
     uint32_t levels = 0;
     uint64_t verified_frame = ~0ull;
+    bool mipmaps = false;
+    bool custom = false;
+};
+
+struct CustomTexture {
+    ID3D11Texture2D* texture = nullptr;
+    ID3D11ShaderResourceView* view = nullptr;
+};
+
+struct TexturePack {
+    bool dump = false;
+    bool load = false;
+    std::filesystem::path dump_directory;
+    custom_textures::Index index;
+    std::unordered_set<std::string> dumped;
+    std::unordered_map<std::string, CustomTexture> loaded;
 };
 
 struct CopiedTexture {
@@ -685,6 +706,8 @@ struct PendingBatch {
 
 Device g_device;
 PendingBatch g_pending;
+TexturePack g_pack;
+uint32_t g_custom_maps = 0;
 
 void flush_pending();
 bool g_logged_palette = false;
@@ -803,6 +826,26 @@ bool create_pipeline() {
     return SUCCEEDED(g_device.device->CreateRasterizerState(&raster, &g_device.rasterizer));
 }
 
+void prepare_texture_pack() {
+    const char* directory = game::description().textures_directory;
+    if (!directory || !*directory) {
+        return;
+    }
+    std::filesystem::path base = std::filesystem::path(directory);
+    g_pack.dump = settings::flag("video.dump_textures", "WP_DUMP_TEXTURES");
+    g_pack.dump_directory = base / "dump";
+    if (settings::flag("video.custom_textures", "WP_CUSTOM_TEXTURES")) {
+        size_t count = g_pack.index.scan(base / "load");
+        g_pack.load = count > 0;
+        if (count > 0) {
+            std::fprintf(stderr, "custom textures: %zu files in %s/load\n", count, directory);
+        }
+    }
+    if (g_pack.dump) {
+        std::fprintf(stderr, "dumping textures to %s/dump\n", directory);
+    }
+}
+
 bool initialize() {
     if (g_device.ready) {
         return true;
@@ -823,6 +866,7 @@ bool initialize() {
         g_device.failed = true;
         return false;
     }
+    prepare_texture_pack();
     g_device.ready = true;
     return true;
 }
@@ -1061,7 +1105,78 @@ void note_texture(uint32_t map, uint32_t address, uint32_t width, uint32_t heigh
     std::fprintf(g_texture_notes, "map %u address %08x %ux%u format %u: %s\n", map, address, width, height, format, source);
 }
 
+ID3D11ShaderResourceView* custom_texture(const std::string& key, bool mipmaps) {
+    auto [found, inserted] = g_pack.loaded.try_emplace(key);
+    CustomTexture& custom = found->second;
+    if (!inserted) {
+        return custom.view;
+    }
+    const std::filesystem::path* path = g_pack.index.find(key);
+    std::vector<std::vector<uint32_t>> images(1);
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (!path || !custom_textures::decode_png(*path, images[0], width, height)) {
+        std::fprintf(stderr, "custom texture %s cannot be read, using the original\n", key.c_str());
+        return nullptr;
+    }
+    if (mipmaps) {
+        for (uint32_t level = 1; (width >> level) != 0 || (height >> level) != 0; level++) {
+            const std::filesystem::path* level_path = g_pack.index.find(custom_textures::level_name(key, level));
+            std::vector<uint32_t> pixels;
+            uint32_t level_width = 0;
+            uint32_t level_height = 0;
+            if (!level_path || !custom_textures::decode_png(*level_path, pixels, level_width, level_height) ||
+                level_width != std::max(width >> level, 1u) || level_height != std::max(height >> level, 1u)) {
+                break;
+            }
+            images.push_back(std::move(pixels));
+        }
+    }
+    bool generate = mipmaps && images.size() == 1 && (width > 1 || height > 1);
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = width;
+    description.Height = height;
+    description.MipLevels = generate ? 0 : static_cast<UINT>(images.size());
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    description.SampleDesc.Count = 1;
+    description.Usage = generate ? D3D11_USAGE_DEFAULT : D3D11_USAGE_IMMUTABLE;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE | (generate ? D3D11_BIND_RENDER_TARGET : 0);
+    description.MiscFlags = generate ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
+    std::vector<D3D11_SUBRESOURCE_DATA> initial(images.size());
+    for (size_t level = 0; level < images.size(); level++) {
+        initial[level] = {images[level].data(), std::max(width >> level, 1u) * 4, 0};
+    }
+    if (FAILED(g_device.device->CreateTexture2D(&description, generate ? nullptr : initial.data(), &custom.texture)) ||
+        FAILED(g_device.device->CreateShaderResourceView(custom.texture, nullptr, &custom.view))) {
+        release(custom.texture);
+        std::fprintf(stderr, "custom texture %s cannot be created (%ux%u), using the original\n", key.c_str(), width, height);
+        return nullptr;
+    }
+    if (generate) {
+        g_device.context->UpdateSubresource(custom.texture, 0, nullptr, images[0].data(), width * 4, 0);
+        g_device.context->GenerateMips(custom.view);
+    }
+    return custom.view;
+}
+
+void dump_texture(const custom_textures::TextureName& name, const std::vector<std::vector<uint32_t>>& pixels, uint32_t width, uint32_t height) {
+    std::string full = name.full();
+    if (!g_pack.dumped.insert(full).second) {
+        return;
+    }
+    std::error_code error;
+    std::filesystem::create_directories(g_pack.dump_directory, error);
+    for (uint32_t level = 0; level < pixels.size(); level++) {
+        std::filesystem::path path = g_pack.dump_directory / (custom_textures::level_name(full, level) + ".png");
+        if (!std::filesystem::exists(path, error)) {
+            video::save_png_rgba(path.string().c_str(), pixels[level], std::max(width >> level, 1u), std::max(height >> level, 1u));
+        }
+    }
+}
+
 ID3D11ShaderResourceView* texture_for(uint32_t map) {
+    g_custom_maps &= ~(1u << map);
     const uint32_t* bp = bp_registers();
     uint32_t image0_reg = map < 4 ? 0x88 + map : 0xA8 + (map - 4);
     uint32_t image3_reg = map < 4 ? 0x94 + map : 0xB4 + (map - 4);
@@ -1135,22 +1250,59 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         entries = format == 8 ? 16 : format == 9 ? 256 : 16384;
         key ^= (static_cast<uint64_t>(tlut_offset >> 9) << 54) ^ (static_cast<uint64_t>(tlut_format) << 52);
     }
+    bool mipmaps = ((mode0 >> 5) & 3) != 0;
     CachedTexture& entry = g_device.textures[key];
+    auto use = [&](CachedTexture& texture) {
+        if (texture.custom) {
+            g_custom_maps |= 1u << map;
+        }
+        return texture.view;
+    };
     if (entry.view && entry.verified_frame == g_frame && entry.width == width && entry.height == height && entry.format == format &&
-        entry.levels == levels) {
-        return entry.view;
+        entry.levels == levels && entry.mipmaps == mipmaps) {
+        return use(entry);
     }
     uint64_t hash = hash_bytes(source, total);
     if (tlut) {
         hash = (hash ^ hash_bytes(tlut, entries * 2)) * 1099511628211ull ^ tlut_format;
     }
-    if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format && entry.levels == levels) {
+    if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format && entry.levels == levels &&
+        entry.mipmaps == mipmaps) {
         entry.verified_frame = g_frame;
-        return entry.view;
+        return use(entry);
     }
     flush_pending();
     release(entry.view);
     release(entry.texture);
+    entry.custom = false;
+    auto finish = [&]() {
+        entry.hash = hash;
+        entry.width = width;
+        entry.height = height;
+        entry.format = format;
+        entry.levels = levels;
+        entry.mipmaps = mipmaps;
+        entry.verified_frame = g_frame;
+        return use(entry);
+    };
+    bool named = layout.supported && copied == g_device.copies.end() && (g_pack.dump || g_pack.load);
+    custom_textures::TextureName name;
+    ID3D11ShaderResourceView* custom = nullptr;
+    if (named) {
+        name = custom_textures::name_texture(source, size, width, height, format, mipmaps, tlut);
+        if (g_pack.load) {
+            std::string resolved = g_pack.index.resolve(name);
+            if (!resolved.empty()) {
+                custom = custom_texture(resolved, mipmaps);
+            }
+        }
+    }
+    if (custom && !g_pack.dump) {
+        custom->AddRef();
+        entry.view = custom;
+        entry.custom = true;
+        return finish();
+    }
     std::vector<std::vector<uint32_t>> pixels(levels);
     std::vector<D3D11_SUBRESOURCE_DATA> initial(levels);
     size_t offset = 0;
@@ -1160,6 +1312,15 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         pixels[level] = decode_texture(source + offset, level_width, level_height, format, tlut, tlut_format);
         initial[level] = {pixels[level].data(), level_width * 4, 0};
         offset += level_size(level);
+    }
+    if (named && g_pack.dump) {
+        dump_texture(name, pixels, width, height);
+    }
+    if (custom) {
+        custom->AddRef();
+        entry.view = custom;
+        entry.custom = true;
+        return finish();
     }
     D3D11_TEXTURE2D_DESC description{};
     description.Width = width;
@@ -1174,20 +1335,15 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         FAILED(g_device.device->CreateShaderResourceView(entry.texture, nullptr, &entry.view))) {
         return nullptr;
     }
-    entry.hash = hash;
-    entry.width = width;
-    entry.height = height;
-    entry.format = format;
-    entry.levels = levels;
-    entry.verified_frame = g_frame;
-    return entry.view;
+    return finish();
 }
 
 ID3D11SamplerState* sampler_for(uint32_t map) {
     const uint32_t* bp = bp_registers();
     uint32_t mode = bp[map < 4 ? 0x80 + map : 0xA0 + (map - 4)];
     uint32_t lod = bp[map < 4 ? 0x84 + map : 0xA4 + (map - 4)];
-    uint64_t key = (mode & 0x3FFFFF) | (static_cast<uint64_t>(lod & 0xFFFF) << 32);
+    bool custom = (g_custom_maps >> map) & 1;
+    uint64_t key = (mode & 0x3FFFFF) | (static_cast<uint64_t>(lod & 0xFFFF) << 32) | (static_cast<uint64_t>(custom) << 48);
     auto found = g_device.samplers.find(key);
     if (found != g_device.samplers.end()) {
         return found->second;
@@ -1214,7 +1370,7 @@ ID3D11SamplerState* sampler_for(uint32_t map) {
         uint32_t max_lod = (lod >> 8) & 0xFF;
         uint32_t min_lod = std::min(lod & 0xFF, max_lod);
         description.MinLOD = min_lod / 16.0f;
-        description.MaxLOD = max_lod / 16.0f;
+        description.MaxLOD = custom ? D3D11_FLOAT32_MAX : max_lod / 16.0f;
         description.MipLODBias = static_cast<int8_t>((mode >> 9) & 0xFF) / 32.0f;
     }
     ID3D11SamplerState* state = nullptr;

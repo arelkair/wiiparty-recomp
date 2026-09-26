@@ -119,6 +119,8 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[video] scale` | `1` | Internal resolution multiplier, 1 to 6 | `WP_SCALE` |
 | `[video] fullscreen` | `0` | Borderless full screen; F11 toggles it and saves the choice | `WP_FULLSCREEN` |
 | `[video] copy_filter` | `1` | The anti-flicker filter the game programs for its EFB copies (0 gives a sharper picture) | `WP_COPY_FILTER` |
+| `[video] custom_textures` | `1` | Use the replacement textures in `games/wiiparty/textures/load/` (see below) | `WP_CUSTOM_TEXTURES` |
+| `[video] dump_textures` | `0` | Save each texture the game reads from memory, once, to `games/wiiparty/textures/dump/` | `WP_DUMP_TEXTURES` |
 | `[input] gamepads` | `1` | Gamepads as Wii Remotes | `WP_GAMEPAD` |
 | `[input] auto_grip` | `1` | Hold the emulated remote sideways in the minigames that ask for it | `WP_AUTO_ORIENTATION` |
 | `[input] wake_on_mouse` | `1` | Moving the mouse reconnects a remote the game disconnected for inactivity | `WP_RECONNECT_ON_POINTER` |
@@ -127,6 +129,10 @@ Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, c
 | `[system] pal60` | `1` | The console's own PAL60 setting (`IPL.E60`), so the PAL game runs at 60 Hz; 0 gives 50 Hz | `WP_PAL60` |
 | `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |
 | `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
+
+### Custom textures
+
+Texture packs use Dolphin's names, so packs made for Wii Party (`SUPP01`) in Dolphin can be copied as they are into `games/wiiparty/textures/load/` (sub-folders are allowed; the whole `textures` folder is kept out of the repository). A file is named `tex1_{width}x{height}[_m]_{texture hash}[_{palette hash}]_{format}.png`: the size is the original one, `_m` marks a texture the game samples with mipmaps, the hashes are XXH64 of the texture data and of the part of the palette it uses (only for the C4, C8 and C14X2 formats; `_$` instead of the palette hash matches any palette), and `_mip1`, `_mip2`... hold further mipmap levels. The image can have any size; it replaces the original only in textures read from memory, never in EFB copies. With `dump_textures=1`, every such texture is written once to `games/wiiparty/textures/dump/` with the same name, as a starting point for a pack. Only PNG files are read (Dolphin's DDS files are not).
 
 ## Setup
 

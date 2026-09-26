@@ -17,6 +17,8 @@ QList<Option> build() {
         Option{"video.scale", Option::Kind::Choice, "1", t.group_video, t.scale, t.scale_detail, scales},
         toggle("video.fullscreen", "0", t.group_video, t.fullscreen, t.fullscreen_detail),
         toggle("video.copy_filter", "1", t.group_video, t.copy_filter, t.copy_filter_detail),
+        toggle("video.custom_textures", "1", t.group_video, t.custom_textures, t.custom_textures_detail),
+        toggle("video.dump_textures", "0", t.group_video, t.dump_textures, t.dump_textures_detail),
         toggle("input.gamepads", "1", t.group_input, t.gamepads, t.gamepads_detail),
         toggle("input.auto_grip", "1", t.group_input, t.auto_grip, t.auto_grip_detail),
         toggle("input.wake_on_mouse", "1", t.group_input, t.wake_on_mouse, t.wake_on_mouse_detail),

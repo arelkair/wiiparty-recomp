@@ -20,6 +20,8 @@ constexpr Option kOptions[] = {
     {"video.scale", "1"},
     {"video.fullscreen", "0"},
     {"video.copy_filter", "1"},
+    {"video.dump_textures", "0"},
+    {"video.custom_textures", "1"},
     {"input.gamepads", "1"},
     {"input.auto_grip", "1"},
     {"input.wake_on_mouse", "1"},
