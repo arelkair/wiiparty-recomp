@@ -12,7 +12,7 @@ Texts english() {
     t.play_heading = "Wii Party";
     t.status_ready = "Ready to play.";
     t.status_not_built = "The game has not been built yet. Build it from your own copy of the disc first.";
-    t.status_no_disc = "No extracted disc was found. Choose your copy of Wii Party on the Build page.";
+    t.status_no_disc = "The game is not installed yet. Choose your copy of Wii Party and press Install.";
     t.play_button = "Play";
     t.play_hint = "F10 opens the options menu while playing. F11 switches full screen. F9 saves a screenshot in the screenshots folder. F12 saves a capture of the frame for debugging.";
     t.build_heading = "Build";
@@ -165,7 +165,7 @@ Texts spanish() {
     t.settings = "Opciones";
     t.status_ready = "Listo para jugar.";
     t.status_not_built = "El juego aún no está compilado. Compílalo primero a partir de tu propia copia del disco.";
-    t.status_no_disc = "No se ha encontrado el disco extraído. Elige tu copia de Wii Party en la página Compilar.";
+    t.status_no_disc = "El juego aún no está instalado. Elige tu copia de Wii Party y pulsa Instalar.";
     t.play_button = "Jugar";
     t.play_hint = "F10 abre el menú de opciones durante la partida. F11 cambia a pantalla completa. F9 guarda una captura de pantalla en la carpeta screenshots. F12 guarda una captura del fotograma para depuración.";
     t.build_heading = "Compilar";
