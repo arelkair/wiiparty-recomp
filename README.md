@@ -117,7 +117,9 @@ cmake -S launcher -B build/launcher -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/launcher
 ```
 
-Run `build/launcher/wiiparty-launcher`. `--install` installs without interaction and writes `build/install.log`.
+Run `build/launcher/wiipartyrecomp-launcher`. `--install` installs without interaction and writes `build/install.log`.
+
+For a single executable with no DLLs (as in the releases), configure with the MSYS2 `mingw-w64-x86_64-qt6-static` package: `cmake -S launcher -B build/launcher-static -G Ninja -DCMAKE_BUILD_TYPE=Release -DWP_STATIC_QT=ON -DCMAKE_PREFIX_PATH=C:/msys64/mingw64/qt6-static`. It links Qt, FreeType, HarfBuzz and their dependencies statically and keeps only the `.ico` image plugin.
 
 ## Settings
 
