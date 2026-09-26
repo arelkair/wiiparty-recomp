@@ -11,6 +11,7 @@ add_library(wp_engine STATIC
     src/gpu/gx.cpp
     src/gpu/gx_lighting.cpp
     src/gpu/gx_render.cpp
+    src/gpu/gx_state.cpp
     src/audio/dsp.cpp
     src/audio/audio.cpp
     src/ios/ios.cpp

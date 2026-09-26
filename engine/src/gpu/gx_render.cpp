@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "wp/gx_state.h"
 #include "wp/memory.h"
 #include "wp/settings.h"
 #include "wp/video.h"
@@ -565,13 +566,15 @@ PixelOutput pixel_main(PixelInput p) {
     }
     PixelOutput output;
     output.blend = float4(result) / 255.0;
-    output.color = output.blend;
+    uint source = (header.w >> 2) & 3;
+    int4 written = source == 0 ? result : (source == 1 ? int4(0, 0, 0, 0) : (source == 2 ? int4(255, 255, 255, 255) : 255 - result));
+    output.color = float4(written) / 255.0;
     if ((header.z & 0x100) != 0) {
         output.color.a = float(header.z & 255) / 255.0;
     }
     if ((header.w & 1) != 0) {
-        output.color.rgb = float3(result.rgb >> 2) / 63.0;
-        output.color.a = float(((header.z & 0x100) != 0 ? int(header.z & 255) : result.a) >> 2) / 63.0;
+        output.color.rgb = float3(written.rgb >> 2) / 63.0;
+        output.color.a = float(((header.z & 0x100) != 0 ? int(header.z & 255) : written.a) >> 2) / 63.0;
     }
     return output;
 }
@@ -687,6 +690,7 @@ Device g_device;
 PendingBatch g_pending;
 
 void flush_pending();
+bool g_log_gx = std::getenv("WP_LOG_GX") != nullptr;
 bool g_logged_palette = false;
 bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
@@ -1223,51 +1227,51 @@ ID3D11SamplerState* sampler_for(uint32_t map) {
     return state;
 }
 
-D3D11_BLEND source_factor(uint32_t code) {
-    static const D3D11_BLEND kFactors[] = {D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_DEST_COLOR, D3D11_BLEND_INV_DEST_COLOR,
-                                           D3D11_BLEND_SRC_ALPHA, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_DEST_ALPHA};
-    return kFactors[code & 7];
-}
-
-D3D11_BLEND destination_factor(uint32_t code) {
-    static const D3D11_BLEND kFactors[] = {D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_SRC_COLOR, D3D11_BLEND_INV_SRC_COLOR,
-                                           D3D11_BLEND_SRC_ALPHA, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_DEST_ALPHA};
-    return kFactors[code & 7];
-}
-
-D3D11_BLEND alpha_variant(D3D11_BLEND factor) {
+D3D11_BLEND d3d_factor(BlendFactor factor) {
     switch (factor) {
-    case D3D11_BLEND_SRC_COLOR:
+    case BlendFactor::Zero:
+        return D3D11_BLEND_ZERO;
+    case BlendFactor::One:
+        return D3D11_BLEND_ONE;
+    case BlendFactor::SourceColor:
+        return D3D11_BLEND_SRC_COLOR;
+    case BlendFactor::InverseSourceColor:
+        return D3D11_BLEND_INV_SRC_COLOR;
+    case BlendFactor::SourceAlpha:
         return D3D11_BLEND_SRC_ALPHA;
-    case D3D11_BLEND_INV_SRC_COLOR:
+    case BlendFactor::InverseSourceAlpha:
         return D3D11_BLEND_INV_SRC_ALPHA;
-    case D3D11_BLEND_DEST_COLOR:
+    case BlendFactor::DestinationColor:
+        return D3D11_BLEND_DEST_COLOR;
+    case BlendFactor::InverseDestinationColor:
+        return D3D11_BLEND_INV_DEST_COLOR;
+    case BlendFactor::DestinationAlpha:
         return D3D11_BLEND_DEST_ALPHA;
-    case D3D11_BLEND_INV_DEST_COLOR:
+    case BlendFactor::InverseDestinationAlpha:
         return D3D11_BLEND_INV_DEST_ALPHA;
-    default:
-        return factor;
-    }
-}
-
-D3D11_BLEND dual_source(D3D11_BLEND factor) {
-    if (factor == D3D11_BLEND_SRC_ALPHA) {
+    case BlendFactor::TevColor:
+        return D3D11_BLEND_SRC1_COLOR;
+    case BlendFactor::TevAlpha:
         return D3D11_BLEND_SRC1_ALPHA;
-    }
-    if (factor == D3D11_BLEND_INV_SRC_ALPHA) {
+    case BlendFactor::InverseTevAlpha:
         return D3D11_BLEND_INV_SRC1_ALPHA;
     }
-    return factor;
+    return D3D11_BLEND_ONE;
 }
 
-D3D11_BLEND without_destination_alpha(D3D11_BLEND factor) {
-    if (factor == D3D11_BLEND_DEST_ALPHA) {
-        return D3D11_BLEND_ONE;
+D3D11_BLEND_OP d3d_operation(BlendOperation operation) {
+    switch (operation) {
+    case BlendOperation::Subtract:
+        return D3D11_BLEND_OP_SUBTRACT;
+    case BlendOperation::ReverseSubtract:
+        return D3D11_BLEND_OP_REV_SUBTRACT;
+    default:
+        return D3D11_BLEND_OP_ADD;
     }
-    if (factor == D3D11_BLEND_INV_DEST_ALPHA) {
-        return D3D11_BLEND_ZERO;
-    }
-    return factor;
+}
+
+BlendState blend_state_for(uint32_t word) {
+    return blend_state(word & 0xFFFF, ((word >> 16) & 1) != 0, ((word >> 17) & 1) != 0, ((word >> 18) & 1) == 0);
 }
 
 ID3D11BlendState* blend_for(uint32_t word) {
@@ -1276,46 +1280,25 @@ ID3D11BlendState* blend_for(uint32_t word) {
     if (found != g_device.blend_states.end()) {
         return found->second;
     }
-    bool has_alpha = (word >> 16) & 1;
-    bool fails = (word >> 18) & 1;
-    bool color_update = (word & (1u << 3)) != 0 && !fails;
-    bool alpha_update = (word & (1u << 4)) != 0 && has_alpha && !fails;
-    bool constant_alpha = ((word >> 17) & 1) && alpha_update;
+    BlendState blend = blend_state_for(word);
+    if (blend.logic_op && g_log_gx) {
+        std::fprintf(stderr, "GX logic op %s (%u), %s, blend mode %06x\n", logic_op_name(blend.logic_mode), blend.logic_mode,
+                     logic_op_exact(blend.logic_mode) ? "exact" : "approximated with blending", word);
+    }
     D3D11_BLEND_DESC description{};
     D3D11_RENDER_TARGET_BLEND_DESC& target = description.RenderTarget[0];
-    target.BlendEnable = (word & 1) != 0;
-    target.SrcBlend = D3D11_BLEND_ONE;
-    target.DestBlend = D3D11_BLEND_ZERO;
-    target.BlendOp = D3D11_BLEND_OP_ADD;
-    target.SrcBlendAlpha = D3D11_BLEND_ONE;
-    target.DestBlendAlpha = D3D11_BLEND_ZERO;
-    target.BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    if (target.BlendEnable) {
-        if (word & (1u << 11)) {
-            target.SrcBlend = D3D11_BLEND_ONE;
-            target.DestBlend = D3D11_BLEND_ONE;
-            target.BlendOp = D3D11_BLEND_OP_REV_SUBTRACT;
-            target.SrcBlendAlpha = D3D11_BLEND_ONE;
-            target.DestBlendAlpha = constant_alpha ? D3D11_BLEND_ZERO : D3D11_BLEND_ONE;
-            target.BlendOpAlpha = constant_alpha ? D3D11_BLEND_OP_ADD : D3D11_BLEND_OP_REV_SUBTRACT;
-        } else {
-            D3D11_BLEND source = source_factor((word >> 8) & 7);
-            D3D11_BLEND destination = destination_factor((word >> 5) & 7);
-            if (!has_alpha) {
-                source = without_destination_alpha(source);
-                destination = without_destination_alpha(destination);
-            }
-            target.SrcBlend = dual_source(source);
-            target.DestBlend = dual_source(destination);
-            target.SrcBlendAlpha = constant_alpha ? D3D11_BLEND_ONE : dual_source(alpha_variant(source));
-            target.DestBlendAlpha = constant_alpha ? D3D11_BLEND_ZERO : dual_source(alpha_variant(destination));
-        }
-    }
+    target.BlendEnable = blend.enable;
+    target.SrcBlend = d3d_factor(blend.source);
+    target.DestBlend = d3d_factor(blend.destination);
+    target.BlendOp = d3d_operation(blend.operation);
+    target.SrcBlendAlpha = d3d_factor(blend.source_alpha);
+    target.DestBlendAlpha = d3d_factor(blend.destination_alpha);
+    target.BlendOpAlpha = d3d_operation(blend.alpha_operation);
     UINT mask = 0;
-    if (color_update) {
+    if (blend.color_update) {
         mask |= D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE;
     }
-    if (alpha_update) {
+    if (blend.alpha_update) {
         mask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
     }
     target.RenderTargetWriteMask = static_cast<UINT8>(mask);
@@ -1406,7 +1389,8 @@ void fill_constants(Constants& constants) {
     constants.header[1] = bp[0xF3];
     constants.header[2] = bp[0x42];
     bool rgba6 = (bp[0x43] & 7) == 1;
-    constants.header[3] = (rgba6 ? 1u : 0u) | ((rgba6 && (bp[0x41] & 4) != 0) ? 2u : 0u);
+    constants.header[3] = (rgba6 ? 1u : 0u) | ((rgba6 && (bp[0x41] & 4) != 0) ? 2u : 0u) |
+                          (static_cast<uint32_t>(blend_state(bp[0x41], true, false, true).output) << 2);
     auto fog_float = [](uint32_t value) {
         uint32_t bits = (((value >> 19) & 1) << 31) | (((value >> 11) & 0xFF) << 23) | ((value & 0x7FF) << 12);
         float result;
