@@ -1,53 +1,82 @@
 # Contributing to Wii Party Recomp
 
-I appreciate your support!
+Thank you for helping improve the project! This document outlines the guidelines and technical requirements for contributing to this static recompilation ecosystem.
 
-## Before anything else
+---
 
-- Never upload Nintendo's data: `main.dol`, `.rel` files, ISO images, textures, models, sounds, fonts, videos or memory dumps of the game. This applies to commits, issues and pull requests.
-- `games/wiiparty/disc/`, `games/wiiparty/extracted/` and `reference/` are ignored by Git. Keep them that way.
-- Use your own legally obtained copy of Wii Party.
+## Intellectual Property & Asset Protection
+- **No Copyrighted Material:** Never upload, commit, or link to any copyrighted Nintendo data. This includes `main.dol`, `.rel` files, ISO/WBFS/RVZ images, textures, models, audio, fonts, videos, or memory dumps. This rule strictly applies to commits, issues, and pull requests.
+- **Git Boundaries:** The directories `games/wiiparty/disc/`, `games/wiiparty/extracted/`, and `reference/` are explicitly ignored by Git. Never alter these exclusions.
+- **Legal Source:** You must use your own legally obtained copy of Wii Party to develop, test, or verify code.
 
-## License
+---
 
-Contributions are licensed under GPL-3.0-or-later, like the rest of the project. By submitting a change you state that you have the right to submit it under that license.
+## Licensing & Third-Party Code
 
-## Third-party code
+### Project License
+All contributions are licensed under the **GNU General Public License, version 3 or later (GPL-3.0-or-later)**. By submitting a pull request, you certify that you possess the legal right to license your work under these terms.
 
-- Do not add code from other projects unless its license allows it. Check each file, not only the repository.
-- Keep the copyright notices and license terms of every file you add.
-- Record the origin in `THIRD_PARTY_NOTICES.md`: upstream path, revision, authors, license.
-- If the license or the origin is unclear, do not add the code.
-- Not accepted: code from InputEvelution/wp without a valid license, leaks, proprietary code, code of unknown origin.
+### Third-Party Ingestion Rules
+- **Granular Auditing:** Do not copy code from external projects unless its license is strictly compatible with GPL-3.0-or-later. Audit authors and individual files, not just the root repository license.
+- **Retain Copyrights:** Always preserve original copyright notices and license text inside any added file.
+- **Provenance Logging:** Record the precise origin in `THIRD_PARTY_NOTICES.md` (include the upstream path, commit/revision, authors, and exact license). Do not log this information in code comments.
+- **Strict Prohibitions:** Code from InputEvelution/wp without explicit authorization, leaks, proprietary code, or unverified source material is strictly forbidden. If provenance or licensing is ambiguous, do not add the code.
 
-## Code
+---
 
-- No comments in code files (`.c`, `.cpp`, `.h`, scripts). Documentation goes in `docs/DECOMP_PROGRESS.md`.
-- Build outside the source tree, in `build/`.
-- Do not commit generated code (`build/`), logs or temporary files.
-- Do not replace real behavior with a stub without recording the reason in `docs/DECOMP_PROGRESS.md`.
-- Separate recompiled code from PC-only changes.
+## Code Quality & Style Conventions
 
-## Build and test
+- **Zero Code Comments:** Absolutely no comments are allowed inside source code files (`.c`, `.cpp`, `.h`, or scripts). All technical notes, architectural rationale, and documentation must live inside `docs/DECOMP_PROGRESS.md`.
+- **Clean Workspace:** Never commit generated code (`build/`), execution logs, or temporary files.
+- **Isolation of Concerns:** Keep core recompiled game logic entirely separate from PC-specific enhancements (e.g., custom resolution or gamepad scaling inputs).
 
-```
+### Recompilation Fidelity
+- **No Arbitrary Stubs:** Do not replace original game or SDK logic with clean stubs for convenience.
+- **Allowed Substitutions:** Only hardware or console-specific dependencies (such as thread switching or cache operations) may be substituted. Every substitution must be explicitly justified and logged in `docs/DECOMP_PROGRESS.md`.
+
+---
+
+## Build, Test & Verification
+
+All development builds must happen outside the source tree within the `build/` directory:
+
+```bash
+# 1. Regenerate C++ code from the binary toolchain
 python recompiler/recomp.py
+
+# 2. Configure the build environment
 cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+# 3. Compile the native executable
 cmake --build build/out
+
+# 4. Execute the suite of core engine tests
 ctest --test-dir build/out
 ```
 
-The full setup is in `README.md`. A change that touches the runtime must also be run with the game. If it was not run, say so.
+> [!IMPORTANT]
+> Passing compilation or core unit tests does not guarantee correctness. Any change affecting the runtime must be manually verified by running the game binary (`build/out/wiiparty`). If a runtime test was not performed, you must state this clearly in your pull request description.
 
-## Reporting problems
+---
 
-Include the commit, the operating system, the command line and the console output. For crashes, include the report the program prints (call stack and registers). Do not attach game files.
+## Commits & Documentation
 
-## Commits
+### Git Commit Style
+- **Format:** Written in English, neutral tone, using the imperative mood, and ending with a period.
+- **Atomicity:** One logical change per commit.
+- **Example:** `Fix module function splitting.`
 
-- English, imperative mood, ending with a period. Example: `Fix module function splitting.`
-- One logical change per commit.
+### Progress Tracking
+You must update `docs/DECOMP_PROGRESS.md` immediately following any change that alters runtime behavior. State exactly what was verified and the methodology used. Never declare a feature as fully working if it has not been verified under test conditions.
 
-## Documentation
+---
 
-Update `docs/DECOMP_PROGRESS.md` after each change that affects behavior. State what was verified and how. Do not claim something works if it was not tested.
+## Reporting Issues
+
+When filing a bug or a crash report, please include:
+1. The exact commit hash of your branch.
+2. Your operating system version (e.g., Windows 11).
+3. The exact command-line arguments used.
+4. The complete console output. For crashes, attach the exact call stack and register dump printed by the program.
+
+*Reminder: Do not attach or upload any original game assets to the issue description.*

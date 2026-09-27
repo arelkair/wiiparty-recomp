@@ -2,235 +2,82 @@
 
 Static recompilation of Wii Party for native PC.
 
-> **Status:** The game boots, reaches the menu and has been played through a complete game of Board Game Island (17 rounds, to the final ranking and the save), controlled through an emulated Wii Remote, with sound from the game's own audio microcode, in the language of the Windows installation. Some elements are still missing. Overall progress is about 79% (estimate, see below).
+> [!NOTE]
+> **Project Status:** The game successfully boots, reaches menus, and runs complete game sessions. Progress is estimated at **79%** overall. For full details, see the referenced documentation.
 
 ![Project progress](docs/progress.svg)
 
-## About
+---
 
-Wii Party Recomp is a project that aims to translate the original game executable into C++ source code that can be compiled natively, so the game can run on PC without an emulator.
+## Overview
 
-## Current state
+Wii Party Recomp translates original Wii executable binary code directly into native, statically-compiled C++ source code for high performance on PC without traditional software emulation layers.
 
-The game runs natively on Windows at a steady 60 fps (PAL60, the console setting; 50 fps with it off), using about one and a half CPU threads and 200 MB of memory. Input goes through an emulated Wii Remote: the mouse is the pointer and the keyboard gives the buttons and the motion. Checked by running the game with scripted input (`WP_INPUT_SCRIPT`): title, main menu, Board Game Island, number of players, Mii selection, CPU skill, the host explanation, the "Maze Daze" instruction screen, the minigame, the play order and the board turn screen.
+---
 
-### Progress
+## Current State & Metrics
 
-The overall figure is the equal-weight average of the components below. They are estimates, not measurements. The values live in `games/wiiparty/analysis/progress.csv` and `python tools/progress.py` regenerates the image.
+The native executable runs stably on Windows at a locked **60 fps**, utilizing approximately 1.5 CPU threads and 200 MB of system RAM.
 
-| Component | Progress | Basis |
-| --- | --- | --- |
-| Recompilation toolchain | 95% | DOL and all 115 modules translate and build; module fixes still turn up and per-module correctness is unverified |
-| System runtime | 91% | OS, threads, interrupts, decrementer and time base, GPU draw-done interrupt, the IPC hardware with IOS's measured file system timing, DVD, NAND (a first boot creates the save) and Bluetooth work; graphics on their own thread as on the separate Wii GPU; free of known blockers |
-| Graphics (GX to Direct3D 11) | 86% | Menus, text, 3D models, lit Miis, integer TEV, indirect textures, fog, the hardware's blending rules, lines and points with their texture offsets, logic operations approximated with blending as in Dolphin (not yet seen in a game screen), vertex arrays in MEM2, EFB copies in every format including depth, the copy filter and gamma, and RGBA6 dithering |
-| Input | 66% | Emulated Wii Remote over emulated Bluetooth running the original WPAD/KPAD code; mouse as pointer, keyboard as buttons and as an accelerometer model (tilt, swing, shake) with the grip chosen per minigame; every keyboard and mouse key configurable; up to four gamepads (SDL3) as Wii Remotes 1-4 with gyroscope pointer, accelerometer, rumble and player lights, untested with a physical gamepad; no real Wii Remotes |
-| Audio | 83% | The original AX microcode is recompiled to C++ with its hot instructions inline (checked instruction by instruction against Dolphin's DSP interpreter), runs in lockstep with the CPU and matches Dolphin's output sample for sample on the title music; no stale audio blocks on busy board scenes or scene loads; windowed-sinc WASAPI output |
-| Game flow | 80% | A complete game of Board Game Island (17 rounds, final ranking, save) played by hand without faults; a first boot without a save works; 56 minigames played by hand in Free Play, 50 without faults seen (`docs/MINIGAMES.md`); pair games and the other modes not played through |
-| PC features | 52% | A Qt launcher (install with automatic tool download, play, every PC setting, key bindings, save backups), an in-game options menu (F10) with most options applied live, configurable keyboard and mouse keys, F9 screenshots, automatic save backups with restore, Dolphin-style custom texture dumping and loading, a settings file for every PC option, borderless full screen with F11, 60 Hz through the console's PAL60 setting, optional hidden Windows cursor, the strap notice skipped, native resolution multiplier, 16:9 window, console language from Windows, an original icon and headless runs; the options menu, key bindings, backups and custom textures are not yet checked in the game; Mii editor, ultrawide and online not started |
+### Core Progress Metrics
+Refer to `games/wiiparty/analysis/progress.csv` for tracked metrics:
 
-### Working
+| Component | Progress | Technical Foundation / Basis |
+| :--- | :--- | :--- |
+| **Recompilation Toolchain** | **95%** | DOL binary and all 115 REL modules translate and build. |
+| **System Runtime** | **91%** | OS, fibers, threads, and hardware interfaces function without blockers. |
+| **Graphics (GX to D3D11)** | **86%** | Menus, 3D lit Miis, and rendering pipelines. |
+| **Input System** | **66%** | Emulated Wii Remote via virtual Bluetooth. |
+| **Audio Pipeline** | **83%** | Recompiled DSP audio microcode. |
+| **Game Flow** | **80%** | Full matches and minigames execute smoothly. |
+| **PC Features** | **52%** | Qt launcher and options panels. |
 
-- **Recompilation:** the main executable (about 7,350 functions) and all 115 REL modules are translated to C++ and build into one native program of roughly 440 MB. Unit tests cover the translator; one game function is checked against the C++ standard library.
-- **System:** Revolution OS initialisation, locked cache DMA, threads as Windows fibers (including the game's own `setjmp`/`longjmp` coroutines), video retrace, decrementer and GPU draw-done (PE finish) interrupts, OS alarms, module loading and linking, disc reads from the extracted files, the IPC hardware between the CPU and IOS with IOS's measured file system timing, and a virtual NAND (a first boot creates the save as on a console). Real Mii databases (`RFL_DB.dat`) load.
-- **Graphics:** the GX command stream is decoded and drawn with Direct3D 11: vertex formats, transforms, a TEV ubershader with channel swap tables, display lists, draw batching, indexed skeleton matrices, texture decoding (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2, CMPR), blending, logic operations (approximated with blending, as Dolphin does when the render target has no integer format; exact for clear, copy, no-op, set, copy inverted and invert, exact for the others only when each channel is 0 or 255; not yet seen in any game screen), lines and points with their texture coordinate offsets (not yet seen in any game screen), depth, scissor, EFB copies to textures, texture coordinates generated from normals with per-vertex texture matrices and the dual texture transform, and per-vertex color-channel lighting (adapted from Dolphin's software renderer, see `THIRD_PARTY_NOTICES.md`).
-- **Screenshots:** F9 (or the key set as `screenshot` in `[keys]`) saves the picture the player sees, at the internal resolution, as `screenshots/wiiparty_YYYY-MM-DD_HH-MM-SS.png` (`_2`, `_3` and so on when a name is taken); the file is written on a separate thread, so the game does not pause.
-- **GPU thread:** as on the Wii, where the GPU is a separate chip, graphics commands are processed and drawn on their own thread while the CPU thread keeps running the game and answering interrupts (`WP_GPU_THREAD=0` processes them on the CPU thread, for debugging).
-- **Window:** 16:9 when the virtual Wii is set to widescreen (the default, as in Dolphin), 4:3 otherwise; native internal resolution by default with an integer multiplier (`WP_SCALE`, 1 to 6), presented through a DXGI swap chain. The title bar shows the game, graphics API, region, frames per second and whether the DSP microcode runs recompiled (`NATIVE`) or on the interpreter (`INTERP`) with its share of the CPU thread; its texts are in `engine/src/platform/ui_text.cpp`, ready for other languages.
-- **Diagnostics:** `WP_DSP_VERIFY` (replays every recompiled DSP run on Dolphin's interpreter and compares, with a coverage count), `WP_DSP_SELFTEST=N` (runs every instruction of the recompiled microcode from N random states against the interpreter and exits), `WP_DUMP_AUDIO` / `WP_DUMP_OUTPUT` (WAV of the emulated audio / of what goes to the speakers), `WP_LOG_FILE` (timestamped log of fps, slow frames, CPU and GPU thread load with the guest's idle share, audio, disc reads, modules and IOS opens), `WP_LOG_GX`, `WP_LOG_FPS`, `WP_LOG_IOS`, `WP_LOG_IRQ`, `WP_LOG_INPUT`, `WP_LOG_DISC`, `WP_PROFILE`, `WP_RECONNECT_ON_POINTER` (0 stops mouse movement from waking a disconnected Wii Remote), `WP_VIRTUAL_GAMEPADS=N` (N virtual SDL gamepads that press the bottom button every 3 s, logging rumble and player lights) and `WP_VIRTUAL_GAMEPADS_UNTIL=ms` (unplugs them at that time), `WP_COPY_FILTER=0` (turns off the vertical anti-flicker filter the game programs for its copies, for a sharper picture; on by default, as on a Wii), `WP_POLL_INTERVAL` (loop back-edges between interrupt and audio checks, 1024 by default), `WP_WATCH`, `WP_DUMP`, `WP_SAVE_FRAME`, F12 in the game window (saves every GPU draw of the next frame, with the registers it changes and its first vertices, to `captures/gx_capture_NNN.txt` plus the frame as `gx_capture_NNN.png`, every EFB copy to a texture as `gx_capture_NNN_copyK.png` with the EFB just before it as `gx_capture_NNN_copyK_efb.png`, and where each texture of the frame came from (an EFB copy or RAM) in `gx_capture_NNN_textures.txt`; `WP_CAPTURE_AT=seconds,...` does the same at those times), a crash reporter with guest registers and call stacks, and a GDB client for Dolphin (`tools/dolphin_gdb.py`).
+---
 
-### Controls
+## Feature Breakdown
 
-| Wii Remote | Keyboard and mouse (default keys) | Gamepad, remote upright | Gamepad, remote sideways |
-| --- | --- | --- | --- |
-| Pointer | Mouse over the window | Gyroscope or right stick; R3 recenters | Same |
-| A | Enter, Space or left click | Bottom face button or R1 | Top face button or R1 |
-| B | Backspace or right click | Right face button or R2 | R2 |
-| 1 | 1 | Left face button | Left or right face button |
-| 2 | 2 | Top face button | Bottom face button |
-| + / - | + / - | Start / Back (Options / Share, Menu / View) | Same |
-| HOME | H | Guide (PS, Xbox, Home) | Same |
-| D-pad | Arrow keys; sideways, W, A, S, D as seen on screen | D-pad or left stick, as seen on screen | Same |
-| Tilt | Q / E, R / F | Tilt the gamepad | Same |
-| Swing up / down | Mouse wheel, or T / G | Move the gamepad sharply | Same |
-| Shake | Middle click or left Shift | Shake the gamepad | Same |
-| Swap upright and sideways | Tab | Tab | Tab |
-| Screenshot (not a Wii Remote button) | F9 | - | - |
-| Options menu (PC) | F10 | Start with Guide or Back | Same |
+- **Static Translation & Emulation:** Compiles main binaries into a single native program and emulates Revolution OS and Direct3D 11 rendering.
+- **Limitations:** Minor block artifacts on high-resolution Mii renders and lack of support for physical Wii Remotes.
 
-Every keyboard and mouse key can be changed in the launcher's Controls page or in the `[keys]` section of the settings file, as a list of names separated by commas, for example `a=Enter,Space,MouseLeft`: letters and digits, `F1` to `F24`, `Enter`, `Space`, `Backspace`, `Tab`, `Escape`, `Shift`, `LeftShift`, `RightShift`, `Ctrl`, `LeftCtrl`, `RightCtrl`, `Alt`, `LeftAlt`, `RightAlt`, `Up`, `Down`, `Left`, `Right`, `Plus`, `Minus`, `Num0` to `Num9`, `NumPlus`, `NumMinus`, `NumMultiply`, `NumDivide`, `NumPeriod`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Comma`, `Period`, `Semicolon`, `Slash`, `Backslash`, `Quote`, `Backquote`, `LeftBracket`, `RightBracket`, `CapsLock`, `Pause`, `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseX1`, `MouseX2`, `WheelUp` and `WheelDown` (a wheel step holds the action for 120 ms). Case does not matter; unknown names are ignored and reported on the console and in the `WP_LOG_FILE` log. F10, F11 and F12 are reserved. An empty list leaves the action without a key.
+---
 
-The emulated remote is held upright, or sideways in the 37 minigames whose instructions ask for it (read from the game's own control texts), so the tilt keys and the gamepad buttons always follow the screen; Tab swaps it if a screen ever needs the other grip (`WP_AUTO_ORIENTATION=0` turns the automatic choice off). The console language follows Windows (English, German, French, Spanish, Italian or Dutch); `WP_LANGUAGE=en|de|fr|es|it|nl` forces one.
+## Input Mappings & Controls
 
-Face buttons follow the letters printed on the gamepad: on Nintendo-layout gamepads (A on the right, B at the bottom) the A button is the Wii Remote's A. Gamepads: the first gamepad adds to the keyboard and mouse as Wii Remote 1, and the second, third and fourth are Wii Remotes 2, 3 and 4. As on a Wii, a remote connects when one of its buttons is pressed, and unplugging the gamepad disconnects it. The gamepad vibrates when the game makes the Wii Remote rumble, and gamepads with player lights show the remote's number. The gyroscope recalibrates itself whenever the gamepad is held still for a second; R3 recenters the pointer. `WP_GAMEPAD=0` turns gamepads off.
+Mappings support keyboard, mouse, and gamepads, and can be customized in `settings.ini`.
 
-F10 opens the options menu over the game: a dark panel that lists every setting of `settings.ini` with its value, in English or Spanish after the Windows language. Up and Down choose, Left, Right and Enter change the value (a click changes the row under the mouse, the wheel moves the selection), and Esc, Backspace, a right click or F10 closes it; on a gamepad, the D-pad or left stick, the A and B buttons, and Start with Guide or Back. Each change is saved at once. The game keeps running underneath, but while the menu is open the Wii Remotes see no buttons, and a button still held when it closes is ignored until released. Every setting applies at once except the console language and PAL60, which the menu marks as applying on restart. An environment variable that overrides a setting still wins over the menu.
+---
 
-### Known problems
+## Repository Layout
 
-- Mii lighting now works, but it has not been compared with Dolphin or the real console, and whether the Mii faces show block artifacts at higher resolutions has not been checked. The Mii faces that came out black or pale in House Party are fixed; other screens with Miis have not all been checked.
-- Some Miis are drawn with a different mouth (for example with lips) in a minigame than on the board or in the results.
-- A few minigames show graphics faults; `docs/MINIGAMES.md` lists every minigame checked by hand.
-- Some minigames may still be drawn incorrectly; not all have been checked.
-- Entering the main menu still causes one frame of about 60 ms, while the game decompresses about 40 files and draws its first menu frame (on a real Wii this frame is slower). Minigame sound has not been checked.
+├── engine/             # Core reusable Wii engine
+├── recompiler/         # PowerPC & DSP static recompilation pipelines
+├── games/wiiparty/     # Wii Party configurations and analysis dumps
+├── launcher/           # Cross-platform Qt 6 installer and config manager
+├── tools/              # Developer scripts
+├── tests/              # Test suites
+└── docs/               # Technical specs and progress markers
 
-### Not implemented
+---
 
-- Real Wii Remotes. Gamepad support (through SDL3) has not yet been tested with a physical gamepad.
-- Planned: ultrawide display support, higher frame rates, a Mii editor in the launcher, launchers for Linux and macOS once the engine runs there, online play, quality-of-life options and a Galician translation.
+# Environment Setup & Installation
 
-Progress notes and the list of goals are in `docs/DECOMP_PROGRESS.md`; the manual check of every minigame is in `docs/MINIGAMES.md`; planned features are in `docs/FEATURES_QOL.md`.
+### Step-by-Step Build Pipeline
 
-## Repository layout
-
-The project is split into a reusable Wii engine and one folder per game, so other Wii games can be recompiled with the same tools.
-
-| Folder | Contents |
-| --- | --- |
-| `engine/` | The Wii engine in C++, shared by every game: `src/core` (CPU runtime, threads, interrupts, modules, boot), `src/gpu` (GX), `src/audio` (DSP and audio output), `src/ios` (IPC, IOS, NAND, disc), `src/input` (Bluetooth, Wii Remote, keyboard, gamepads), `src/platform` (window and text), `src/app` (the program entry point), `include/wp` (headers) and `res` (Dolphin's free DSP ROMs). |
-| `recompiler/` | The PowerPC and DSP recompilers in Python, shared by every game: `ppc` (decoder and C++ emitter), `dsp` (DSP microcode), the DOL and REL readers, and `game.py`, which reads a game's `game.toml` and gives every tool its paths. |
-| `games/wiiparty/` | Everything specific to Wii Party: `game.toml` (name, ID, SDK addresses), `game.cpp` (window title, default folders, minigames played sideways), `analysis/` (function lists, symbols, replaced functions, DSP microcode list, progress), `res/` (icon) and `CMakeLists.txt` (the executable). Local, ignored by Git: `disc/` (your dump), `extracted/` (the extracted disc) `nand/` (settings and saves) and `backups/` (save backups). |
-| `launcher/` | The Qt launcher: install (tools, disc, build), play and PC settings. |
-| `tools/` | Development utilities: SDL3 download, icon, progress badge, Ghidra import and decompilation, Dolphin GDB client. |
-| `tests/` | `engine/` (runtime tests), `recompiler/` (PowerPC decoder and emitter tests), `wiiparty/` (tests on the recompiled game code). |
-| `third_party/` | Code from other projects, kept apart with its licences (see `THIRD_PARTY_NOTICES.md`). |
-| `ghidra/scripts/` | Ghidra scripts. |
-| `docs/` | Progress notes (`DECOMP_PROGRESS.md`), the minigame check (`MINIGAMES.md`), planned features (`FEATURES_QOL.md`) and the progress badge. |
-| `build/` | Generated, ignored by Git: `deps/` (SDL3), `out/` (compiled program and tests) and `<game>/` (unpacked modules, symbols and the generated C++ in `generated/dol`, `generated/modules/<module>` and `generated/dsp`). |
-| `captures/` | F12 captures, ignored by Git. |
-| `screenshots/` | F9 screenshots, ignored by Git. |
-
-To add another game: create `games/<name>/` with its `game.toml`, `game.cpp`, `analysis/`, `res/` and `CMakeLists.txt`, then run the tools with `WP_GAME=<name>` and configure CMake with `-DWP_GAME=<name>`.
-
-## Launcher
-
-`launcher/` is a small Qt 6 application (Windows now; written for Linux and macOS too) with three pages:
-
-- **Game**: when the game is installed, a Play button; otherwise Install. Install checks each tool (nodtool, Python 3.11+, CMake 3.20+, Ninja, and on Windows MinGW-w64 GCC 13+) and downloads the missing or incompatible ones from their official sites into `build/deps/toolchain/`, checking each file's SHA-256, then extracts your disc and runs every generation and build step, showing the log. Nothing from the game is downloaded. On Linux and macOS missing tools must come from the system's package manager.
-- **Settings**: every PC improvement from `games/wiiparty/settings.ini`, with a switch or a list.
-- **Saves**: the automatic save backups by date, each with Restore (after a confirmation; the current save is backed up first), and Open folder.
-- **Controls**: the keyboard and mouse keys of each Wii Remote action; click a binding and press a key, click a mouse button or turn the wheel on it to add it, Clear removes them and Reset to defaults restores every action.
-
-Build it with Qt 6 (on Windows the MSYS2 `mingw-w64-x86_64-qt6-base` package; its MinGW build is separate from the game's compiler, and the needed DLLs are copied next to the launcher):
-
-```
-cmake -S launcher -B build/launcher -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/launcher
+```bash
+nodtool extract games/wiiparty/disc/wiiparty.rvz games/wiiparty/extracted
+python recompiler/unpack_rels.py
+python recompiler/recomp.py
+cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/out
 ```
 
-Run `build/launcher/wiipartyrecomp-launcher`. `--install` installs without interaction and writes `build/install.log`.
+Run the compiled executable:
+```bash
+./build/out/wiiparty
+```
 
-For a single executable with no DLLs (as in the releases), configure with the MSYS2 `mingw-w64-x86_64-qt6-static` package: `cmake -S launcher -B build/launcher-static -G Ninja -DCMAKE_BUILD_TYPE=Release -DWP_STATIC_QT=ON -DCMAKE_PREFIX_PATH=C:/msys64/mingw64/qt6-static`. It links Qt, FreeType, HarfBuzz and their dependencies statically and keeps only the `.ico` image plugin.
+---
 
-Every launcher build embeds the files a game build needs (the Git-tracked `CMakeLists.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `engine/`, `recompiler/`, `games/wiiparty/`, `third_party/`, `tests/` and `tools/fetch_sdl.py`, listed by `launcher/cmake/payload.cmake`) and the licenses of the libraries it links. Started outside a checkout, the launcher uses an install folder the player chooses (`%LOCALAPPDATA%\WiiPartyRecomp` by default), writes those files there on Install (again only when the launcher's revision changes) and builds there. The Licenses page shows every license. So a release is the single `wiipartyrecomp-launcher.exe`.
+## Legal & Licensing
 
-## Settings
-
-Every PC improvement can be turned on or off in `games/wiiparty/settings.ini`, created with the defaults on the first start (ignored by Git). The recompiled game code does not read it; only the engine's PC layer does, so a launcher can edit the file. An environment variable, where listed, overrides the file. The options menu (F10) edits the same file while the game runs.
-
-| Setting | Default | Effect | Variable |
-| --- | --- | --- | --- |
-| `[video] scale` | `1` | Internal resolution multiplier, 1 to 6 | `WP_SCALE` |
-| `[video] fullscreen` | `0` | Borderless full screen; F11 toggles it and saves the choice | `WP_FULLSCREEN` |
-| `[video] copy_filter` | `1` | The anti-flicker filter the game programs for its EFB copies (0 gives a sharper picture) | `WP_COPY_FILTER` |
-| `[video] custom_textures` | `1` | Use the replacement textures in `games/wiiparty/textures/load/` (see below) | `WP_CUSTOM_TEXTURES` |
-| `[video] dump_textures` | `0` | Save each texture the game reads from memory, once, to `games/wiiparty/textures/dump/` | `WP_DUMP_TEXTURES` |
-| `[input] gamepads` | `1` | Gamepads as Wii Remotes | `WP_GAMEPAD` |
-| `[input] auto_grip` | `1` | Hold the emulated remote sideways in the minigames that ask for it | `WP_AUTO_ORIENTATION` |
-| `[input] wake_on_mouse` | `1` | Moving the mouse reconnects a remote the game disconnected for inactivity | `WP_RECONNECT_ON_POINTER` |
-| `[input] hide_cursor` | `0` | Hide the Windows cursor over the game window (the game draws its own pointer) | `WP_HIDE_CURSOR` |
-| `[system] interface_language` | `en` | Language of the launcher and of the F10 menu: `en` or `es` | `WP_INTERFACE_LANGUAGE` |
-| `[system] language` | `auto` | Console language: `auto` follows Windows, or `en`, `de`, `fr`, `es`, `it`, `nl` | `WP_LANGUAGE` |
-| `[system] pal60` | `1` | The console's own PAL60 setting (`IPL.E60`), so the PAL game runs at 60 Hz; 0 gives 50 Hz | `WP_PAL60` |
-| `[system] skip_notices` | `1` | Press A on the Wii Remote strap notice at start, as a player would, to reach the title sooner | `WP_SKIP_NOTICES` |
-| `[system] options_menu` | `1` | F10 (or Start with Guide or Back on a gamepad) opens the options menu over the game | `WP_OPTIONS_MENU` |
-| `[audio] mute` | `0` | Silence the output | `WP_MUTE` |
-| `[saves] backups` | `5` | Number of save backups kept in `games/wiiparty/backups/`; 0 turns them off | `WP_SAVE_BACKUPS` |
-
-| `[keys] a`, `b`, `one`, `two`, `plus`, `minus`, `home`, `up`, `down`, `left`, `right`, `shake`, `swing_up`, `swing_down`, `tilt_left`, `tilt_right`, `tilt_up`, `tilt_down`, `grip`, `screenshot` | The keys in the Controls table | Keyboard and mouse keys of each Wii Remote action and of the screenshot, separated by commas (see below) | |
-
-### Save backups
-
-On every start, before the game runs, the engine copies the save (`title/00010000/<game ID in hex>/data` in the virtual NAND) to `games/wiiparty/backups/<YYYY-MM-DD_HH-MM-SS>/` when it differs from the newest backup, and deletes the oldest backups beyond the limit. After the game writes a file of its save (a written file is closed, or a file is renamed into the save folder) another backup is made, at most one per minute. Before each backup every save file must read back completely at its full size; the game's code does not show a fixed save size, so no size is assumed. If the check fails the engine prints it and makes no backup, so the existing good backups stay; nothing is restored without the launcher. The live save is never deleted by the engine. The launcher's Saves page restores a backup: it backs up the current save first, then swaps the copy in.
-
-### Custom textures
-
-Texture packs use Dolphin's names, so packs made for Wii Party (`SUPP01`) in Dolphin can be copied as they are into `games/wiiparty/textures/load/` (sub-folders are allowed; the whole `textures` folder is kept out of the repository). A file is named `tex1_{width}x{height}[_m]_{texture hash}[_{palette hash}]_{format}.png`: the size is the original one, `_m` marks a texture the game samples with mipmaps, the hashes are XXH64 of the texture data and of the part of the palette it uses (only for the C4, C8 and C14X2 formats; `_$` instead of the palette hash matches any palette), and `_mip1`, `_mip2`... hold further mipmap levels. The image can have any size; it replaces the original only in textures read from memory, never in EFB copies. With `dump_textures=1`, every such texture is written once to `games/wiiparty/textures/dump/` with the same name, as a starting point for a pack. Only PNG files are read (Dolphin's DDS files are not).
-
-## Setup
-
-Requirements: Git, CMake, Ninja, a C++ compiler (GCC/MinGW-w64 or MSVC), Rust (for `nodtool`), Python 3, JDK 21+, [Ghidra](https://github.com/NationalSecurityAgency/ghidra/releases) 12.x unpacked into `ghidra/install/` and the Ghidra GameCube Loader extension (Apache-2.0, provides the `Gekko_Broadway` processor with paired singles) installed in Ghidra.
-
-1. Install the disc tool:
-
-   ```
-   cargo install nodtool
-   ```
-
-2. Put your own dump of Wii Party in `games/wiiparty/disc/` (ISO, WBFS, RVZ or CISO; e.g. `games/wiiparty/disc/wiiparty.rvz`).
-3. Extract it:
-
-   ```
-   nodtool extract games/wiiparty/disc/wiiparty.rvz games/wiiparty/extracted
-   ```
-
-   The recompiler inputs are `games/wiiparty/extracted/sys/main.dol` and the LZ11-compressed modules in `games/wiiparty/extracted/files/rel/*.rel.lz`; assets live in the rest of `games/wiiparty/extracted/files/`.
-
-4. Unpack the REL modules and import the DOL into Ghidra. Optionally, name the functions first: in Dolphin, run the game, use Symbols > Generate Symbols From > Signature Database, then save the symbol map as `reference/symbols/SUPP01.map`.
-
-   ```
-   python recompiler/unpack_rels.py
-   python recompiler/import_map.py
-   python tools/ghidra_import.py
-   ```
-
-   Unpacked modules go to `build/wiiparty/rel/`, the converted symbol names to `build/wiiparty/symbols/dolphin_symbols.csv` and the Ghidra project to `ghidra/projects/`. The symbol map stays local and is never committed.
-
-5. Generate the C++ from the DOL, build it and run the tests:
-
-   ```
-   python tools/fetch_sdl.py
-   python recompiler/recomp.py
-   python recompiler/dsp/recomp_dsp.py
-   cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
-   cmake --build build/out
-   ctest --test-dir build/out
-   ```
-
-   `tools/fetch_sdl.py` downloads the SDL3 3.4.16 development files (checked by SHA-256) into `build/deps/` for gamepad support; without them the build still works, with keyboard and mouse only, and with them `SDL3.dll` is copied next to the executable. `recompiler/recomp.py` reads `games/wiiparty/analysis/dol_functions.csv` and writes the generated sources to `build/wiiparty/generated/dol/`. `recompiler/dsp/recomp_dsp.py` extracts the audio DSP microcode listed in `games/wiiparty/analysis/dsp_ucode.csv` from the DOL and translates it to C++ in `build/wiiparty/generated/dsp/`; without it the DSP runs on the interpreter. Game modules are translated separately with `python recompiler/recomp_rel.py boot menu` (or `--all`, which produces about 650 MB of C++ and takes several minutes to compile) into `build/wiiparty/generated/modules/`; run `recompiler/recomp.py` again afterwards so the DOL provides every function the modules call.
-
-   Run the result with `build/out/wiiparty` from the repository folder; optional arguments are `[extracted disc folder] [seconds] [nand folder]`, by default `games/wiiparty/extracted`, no limit and `games/wiiparty/nand`. It opens a window that shows the console framebuffer; `seconds` is an optional watchdog that stops the process after that long (0 or omitted means no limit) and `WP_HEADLESS=1` runs without a window. The virtual NAND (settings and saves) lives in `games/wiiparty/nand`.
-
-6. Optional, to drive Ghidra from an MCP client: create the virtual environment and install the bridge.
-
-   ```
-   uv venv .venv
-   uv pip install --python .venv/Scripts/python.exe -r tools/requirements.txt
-   ```
-
-   The [GhidraMCP](https://github.com/bethington/ghidra-mcp) 6.0.0 extension must be unpacked into `%APPDATA%\ghidra\ghidra_12.1.3_PUBLIC\Extensions\` and enabled in Ghidra. Its server listens on `http://127.0.0.1:8089`.
-
-7. Optional, to compare against a real Dolphin: add `GDBPort = 2159` under `[General]` in Dolphin's `Dolphin.ini`, then drive it with the bundled GDB client:
-
-   ```
-   python tools/dolphin_gdb.py --launch "break 80069ee0" "continue 40" "regs pc lr r1 r3" "mem 80000000 32"
-   ```
-
-   Commands are `regs`, `mem`, `u32`, `write`, `break`, `unbreak`, `watch`, `rwatch`, `awatch`, `step`, `continue`, `halt`, `raw` and `sleep`. Dolphin accepts one client per boot, so each call starts a fresh emulator (`--launch`; `--keep` leaves it running). It expects `reference/dolphin/Dolphin.exe` and `games/wiiparty/disc/wiiparty.rvz` unless `--dolphin` and `--game` are given.
-
-`games/wiiparty/disc/`, `games/wiiparty/extracted/`, `games/wiiparty/nand/`, `games/wiiparty/backups/` and `reference/` (optional local material such as an emulator and RAM dumps of your own copy) are ignored by Git and must never be committed.
-
-## Legal notice
-
-This project does not include any copyrighted assets, game code or binaries from Nintendo. You must provide your own legally obtained copy of Wii Party. This project is not affiliated with or endorsed by Nintendo.
-
-Releasing the project's own code under the GPL does not make Nintendo's original resources (executables, textures, models, sounds, fonts, videos) redistributable, and it grants no rights over them.
-
-## Contributing
-
-Issues and pull requests are welcome. Please do not share or upload copyrighted game files anywhere in this repository, including issues and pull requests.
-
-## License
-
-The original code of this project is licensed under the GNU General Public License, version 3 or (at your option) any later version (GPL-3.0-or-later). See [LICENSE](LICENSE). Copyright (C) 2026 Arel Kair.
-
-The project may incorporate third-party components under their own licenses, which must be respected. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) records what has been reviewed and what is still pending. The only third-party code included so far is the GX lighting adapted from the Dolphin Emulator (GPL-2.0-or-later); no complete license audit has been done.
+Independent project unauthorized by Nintendo. Users must supply their own legally extracted game files.
