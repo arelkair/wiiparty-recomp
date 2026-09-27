@@ -83,4 +83,4 @@ Run the compiled executable:
 
 ## Legal & Licensing
 
-Independent project unauthorized by Nintendo. Users must supply their own legally extracted game files.
+Independent project not affiliated with or endorsed by Nintendo. Users must supply their own legally obtained game files.
