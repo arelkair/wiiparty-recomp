@@ -1,0 +1,22 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Wii Party",
+  "system": "Wii",
+  "type": "recomp",
+  "original": {
+    "region": "PAL"
+  },
+  "project": "Wii Party Recomp",
+  "status": "playable",
+  "targets": [
+    "Windows"
+  ],
+  "approach": "Static recompilation, custom Direct3D 11 renderer",
+  "maintainers": [
+    {
+      "name": "arelkair",
+      "link": "https://github.com/arelkair"
+    }
+  ],
+  "notes": "Native C++ static recompilation of Wii Party for Windows. The project currently reaches the title screen, main menu and Board Game Island, with core game logic running. A custom HLE runtime reimplements relevant Wii SDK functionality, while a custom Direct3D 11 renderer handles GX graphics. Audio, input, graphics compatibility and other platform-specific functionality remain under development."
+}
