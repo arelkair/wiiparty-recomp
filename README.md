@@ -49,6 +49,7 @@ Mappings support keyboard, mouse, and gamepads, and can be customized in `settin
 
 ## Repository Layout
 
+```
 ├── engine/             # Core reusable Wii engine
 ├── recompiler/         # PowerPC & DSP static recompilation pipelines
 ├── games/wiiparty/     # Wii Party configurations and analysis dumps
@@ -56,8 +57,10 @@ Mappings support keyboard, mouse, and gamepads, and can be customized in `settin
 ├── tools/              # Developer scripts
 ├── tests/              # Test suites
 └── docs/               # Technical specs and progress markers
+```
 
 ---
+
 
 # Environment Setup & Installation
 
