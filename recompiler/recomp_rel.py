@@ -299,7 +299,10 @@ def write_table():
     lines += ["", "const ModuleDescriptor* const g_module_table[] = {"]
     lines += [f"    &g_descriptor_{n}," for n in names]
     lines += ["    nullptr,", "};", "", f"const size_t g_module_count = {len(names)};", "", "}"]
-    (OUTPUT / "modules_table.cpp").write_text("\n".join(lines) + "\n")
+    table = OUTPUT / "modules_table.cpp"
+    text = "\n".join(lines) + "\n"
+    if not table.exists() or table.read_text() != text:
+        table.write_text(text)
 
 
 def merge_dol_targets(targets):
@@ -308,7 +311,9 @@ def merge_dol_targets(targets):
         known = {int(line, 16) for line in DOL_TARGETS.read_text().split() if line != "address"}
     known |= targets
     DOL_TARGETS.parent.mkdir(parents=True, exist_ok=True)
-    DOL_TARGETS.write_text("address\n" + "\n".join(f"0x{a:08x}" for a in sorted(known)) + "\n")
+    text = "address\n" + "\n".join(f"0x{a:08x}" for a in sorted(known)) + "\n"
+    if not DOL_TARGETS.exists() or DOL_TARGETS.read_text() != text:
+        DOL_TARGETS.write_text(text)
 
 
 def generate(name, dol_entries):

@@ -28,6 +28,7 @@ const Option kBaseOptions[] = {
     {"video.custom_textures", "1"},
     {"input.gamepads", "1"},
     {"input.auto_grip", "1"},
+    {"input.joycon_pairs", "1"},
     {"input.wake_on_mouse", "1"},
     {"input.hide_cursor", "0"},
     {"system.interface_language", "en"},

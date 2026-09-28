@@ -19,7 +19,9 @@ def main():
             print(f"{source.name}: {error}", file=sys.stderr)
             failures += 1
             continue
-        (TARGET / source.with_suffix("").name).write_bytes(data)
+        target = TARGET / source.with_suffix("").name
+        if not target.exists() or target.read_bytes() != data:
+            target.write_bytes(data)
     return 1 if failures else 0
 
 

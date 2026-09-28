@@ -90,6 +90,12 @@ private:
 
 }
 
+std::string sha256_of_bytes(std::string_view data) {
+    Sha256 hash;
+    hash.update(reinterpret_cast<const unsigned char*>(data.data()), data.size());
+    return hash.finish();
+}
+
 std::string sha256_of(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {

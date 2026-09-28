@@ -19,8 +19,10 @@ constexpr uint32_t kBi2Size = 0x2000;
 constexpr uint32_t kBusClock = 243000000;
 constexpr uint32_t kCpuClock = 729000000;
 constexpr uint32_t kPalVideoMode = 1;
+constexpr uint32_t kNtscVideoMode = 0;
 constexpr uint32_t kVideoControlRegister = 0xCC002002;
 constexpr uint16_t kVideoControlPal = 0x0101;
+constexpr uint16_t kVideoControlNtsc = 0x0001;
 constexpr uint32_t kVideoInterruptRegisters[] = {0xCC002030, 0xCC002034};
 constexpr uint16_t kVideoInterruptEnabled = 0x1001;
 constexpr uint32_t kHeaderSize = 0x20;
@@ -63,8 +65,10 @@ bool init_boot_memory(const std::string& extracted_directory) {
     wr32(0x80000034, fst_address);
     wr32(0x80000038, fst_address);
     wr32(0x8000003C, static_cast<uint32_t>(fst.size()));
-    wr32(0x800000CC, kPalVideoMode);
-    wr16(kVideoControlRegister, kVideoControlPal);
+    char region = static_cast<char>(header[3]);
+    bool ntsc = region == 'E' || region == 'J' || region == 'K' || region == 'W';
+    wr32(0x800000CC, ntsc ? kNtscVideoMode : kPalVideoMode);
+    wr16(kVideoControlRegister, ntsc ? kVideoControlNtsc : kVideoControlPal);
     for (uint32_t address : kVideoInterruptRegisters) {
         wr16(address, kVideoInterruptEnabled);
     }

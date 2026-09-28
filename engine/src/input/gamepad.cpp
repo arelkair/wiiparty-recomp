@@ -285,6 +285,9 @@ void drive_virtual(std::array<Virtual, kSlots>& virtuals) {
 
 void worker() {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_JOY_CONS, "1");
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_COMBINE_JOY_CONS, settings::flag("input.joycon_pairs", "WP_JOYCON_PAIRS") ? "1" : "0");
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_VERTICAL_JOY_CONS, "0");
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         log::write("input", "SDL gamepad support unavailable: %s", SDL_GetError());
         return;

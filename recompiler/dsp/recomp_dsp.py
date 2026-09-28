@@ -19,6 +19,11 @@ EXCEPTION_VECTORS = [2 * i for i in range(1, 8)]
 SR_ACCESS = re.compile(r"(read|write)_reg\(s, 0x13[,)]")
 
 
+def write_if_changed(path, text):
+    if not path.exists() or path.read_text(encoding="utf-8") != text:
+        path.write_text(text, encoding="utf-8")
+
+
 def checksum(data):
     value = 0
     for byte in data:
@@ -378,7 +383,7 @@ def main():
             code, inlined, total, deferred = emit_function(function, words, tables)
             body += code
             body += ["", "}", ""]
-            (out_dir / f"{row['name']}.cpp").write_text("\n".join(body), encoding="utf-8")
+            write_if_changed(out_dir / f"{row['name']}.cpp", "\n".join(body))
             entries.append((row["name"], crc, function))
             print(f"{row['name']}: {len(words)} words, checksum {crc:08x}, {inlined} of {total} instructions inline, {deferred} with deferred flags")
     registry = [
@@ -393,7 +398,7 @@ def main():
     for _, crc, function in entries:
         registry.append(f"    {{0x{crc:08x}u, &generated::{function}}},")
     registry += ["};", "", "const size_t g_translated_code_count = sizeof(g_translated_code) / sizeof(g_translated_code[0]);", "", "}", ""]
-    (out_dir / "registry.cpp").write_text("\n".join(registry), encoding="utf-8")
+    write_if_changed(out_dir / "registry.cpp", "\n".join(registry))
 
 
 if __name__ == "__main__":

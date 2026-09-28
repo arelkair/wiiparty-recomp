@@ -175,6 +175,24 @@ uint8_t pal60() {
     return settings::flag("system.pal60", "WP_PAL60") ? 1 : 0;
 }
 
+struct Area {
+    std::vector<uint8_t> area;
+    std::vector<uint8_t> code;
+};
+
+Area console_area() {
+    switch (static_cast<char>(rd8(kGameIdAddress + 3))) {
+    case 'E':
+        return {{'U', 'S', 'A', 0}, {'L', 'U', 0, 0}};
+    case 'J':
+        return {{'J', 'P', 'N', 0}, {'L', 'J', 0, 0}};
+    case 'K':
+        return {{'K', 'O', 'R', 0}, {'L', 'K', 'H', 0}};
+    default:
+        return {{'E', 'U', 'R', 0}, {'L', 'E', 'H', 0}};
+    }
+}
+
 uint8_t console_language() {
     struct Name {
         const char* code;
@@ -235,8 +253,9 @@ std::vector<uint8_t> default_sysconf() {
     add_item(items, kTypeLong, "IPL.FRC", {0, 0, 0, 0x28});
     add_item(items, kTypeSmallArray, "IPL.IDL", {0, 1});
     add_item(items, kTypeByte, "IPL.SND", {1});
-    add_item(items, kTypeSmallArray, "IPL.AREA", {'E', 'U', 'R', 0});
-    add_item(items, kTypeSmallArray, "IPL.CODE", {'L', 'E', 'H', 0});
+    Area area = console_area();
+    add_item(items, kTypeSmallArray, "IPL.AREA", area.area);
+    add_item(items, kTypeSmallArray, "IPL.CODE", area.code);
     add_item(items, kTypeLong, "NET.WCFG", {0, 0, 0, 1});
     add_item(items, kTypeLong, "NET.CTPC", {0, 0, 0, 0});
     add_item(items, kTypeByte, "WWW.RST", {0});
@@ -314,6 +333,20 @@ void set_byte_item(std::vector<uint8_t>& data, size_t count, const char* name, u
     }
 }
 
+void set_array_item(std::vector<uint8_t>& data, size_t count, const char* name, const std::vector<uint8_t>& value, std::FILE* file) {
+    size_t length = std::strlen(name);
+    for (size_t i = 1; i + length + 1 + value.size() <= count; i++) {
+        if (data[i - 1] == ((kTypeSmallArray << 5) | (length - 1)) && std::memcmp(&data[i], name, length) == 0) {
+            size_t start = i + length + 1;
+            if (data[i + length] + 1u == value.size() && std::memcmp(&data[start], value.data(), value.size()) != 0) {
+                std::fseek(file, static_cast<long>(start), SEEK_SET);
+                std::fwrite(value.data(), 1, value.size(), file);
+            }
+            return;
+        }
+    }
+}
+
 void apply_settings(const fs::path& path) {
     std::FILE* file = std::fopen(path.string().c_str(), "r+b");
     if (!file) {
@@ -323,6 +356,9 @@ void apply_settings(const fs::path& path) {
     size_t count = std::fread(data.data(), 1, data.size(), file);
     set_byte_item(data, count, "IPL.LNG", console_language(), file);
     set_byte_item(data, count, "IPL.E60", pal60(), file);
+    Area area = console_area();
+    set_array_item(data, count, "IPL.AREA", area.area, file);
+    set_array_item(data, count, "IPL.CODE", area.code, file);
     std::fclose(file);
 }
 

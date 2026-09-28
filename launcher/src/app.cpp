@@ -5,11 +5,15 @@
 #include <cmath>
 #include <ctime>
 #include <fstream>
+#include <memory>
 
 #include "embedded.h"
 #include "keys.h"
 #include "payload.h"
 #include "prefs.h"
+#include "sha256.h"
+#include "shortcut.h"
+#include "wp/screenshot.h"
 #include "subprocess.h"
 #include "texts.h"
 #include "wp/keymap.h"
@@ -27,6 +31,56 @@ using ui::Kind;
 using ui::px;
 
 namespace {
+
+struct Background {
+    std::mutex mutex;
+    Release release;
+    Release current;
+    bool found = false;
+    std::atomic<bool> estimating{false};
+    std::atomic<int> minutes{0};
+    std::atomic<bool> full{false};
+};
+
+const char* region_name(const std::string& id) {
+    const Texts& t = texts();
+    char region = id.size() >= 4 ? id[3] : 'P';
+    return region == 'E' ? t.region_usa : region == 'J' ? t.region_japan : region == 'K' ? t.region_korea : t.region_pal;
+}
+
+std::string read_disc_id(const std::filesystem::path& extracted) {
+    std::ifstream file(extracted / "sys" / "boot.bin", std::ios::binary);
+    char id[6] = {};
+    file.read(id, sizeof(id));
+    return file ? std::string(id, sizeof(id)) : std::string();
+}
+
+std::string tail_of(const std::filesystem::path& path, size_t lines) {
+    std::ifstream file(path, std::ios::binary);
+    std::vector<std::string> kept;
+    for (std::string line; std::getline(file, line);) {
+        kept.push_back(line);
+        if (kept.size() > lines) {
+            kept.erase(kept.begin());
+        }
+    }
+    std::string text;
+    for (const std::string& line : kept) {
+        text += line + "\n";
+    }
+    return text.empty() ? "(none)\n" : text;
+}
+
+std::string folder_url(const std::filesystem::path& folder) {
+    std::string url = "file:///" + utf8_of(folder.lexically_normal());
+    std::replace(url.begin(), url.end(), '\\', '/');
+    return url;
+}
+
+Background& background() {
+    static Background* state = new Background;
+    return *state;
+}
 
 constexpr float kSidebarWidth = 232.0f;
 constexpr float kPagePaddingX = 48.0f;
@@ -203,11 +257,142 @@ App::App(SDL_Window* window, Project project, bool install_mode)
     if (disc_.empty()) {
         disc_ = first_disc(project_.game_folder() / "disc");
     }
+    remove_old_launcher();
+    if (pref("seen_version").empty()) {
+        set_pref("seen_version", WP_LAUNCHER_VERSION);
+    }
+    start_update_check();
+    start_estimate();
     wake_main_loop();
+}
+
+App::~App() {
+    if (download_thread_.joinable()) {
+        download_thread_.join();
+    }
+}
+
+void App::start_update_check() {
+    if (pref("check_updates") == "0") {
+        return;
+    }
+    std::thread([] {
+        Release release;
+        Release current;
+        std::string error;
+        bool listed = latest_release(release, current, WP_LAUNCHER_VERSION, error);
+        std::lock_guard<std::mutex> lock(background().mutex);
+        background().current = current;
+        if (listed && newer_version(release.version, WP_LAUNCHER_VERSION)) {
+            background().release = release;
+            background().found = true;
+        }
+        wake_main_loop();
+    }).detach();
+}
+
+void App::start_estimate() {
+    if (!project_.outdated() || background().estimating.exchange(true)) {
+        return;
+    }
+    std::filesystem::path root = project_.root;
+    int jobs = compile_jobs();
+    std::thread([root, jobs] {
+        std::string message;
+        if (stage_payload(root, message)) {
+            PayloadChanges changes = payload_changes(root);
+            background().full = changes.full_rebuild;
+            background().minutes = changes.full_rebuild ? std::max(5, (120 + jobs - 1) / std::max(jobs, 1)) : 2;
+        }
+        background().estimating = false;
+        wake_main_loop();
+    }).detach();
+}
+
+void App::update_launcher() {
+    Release release;
+    {
+        std::lock_guard<std::mutex> lock(background().mutex);
+        release = background().release;
+    }
+    if (download_thread_.joinable()) {
+        download_thread_.join();
+    }
+    launcher_state_ = 1;
+    launcher_error_.clear();
+    download_thread_ = std::thread([this, release] {
+        std::filesystem::path target = launcher_path();
+        target += ".download";
+        std::string error;
+        bool ok = download(release.url, target, error);
+        if (ok && sha256_of(target) != release.sha256) {
+            error = texts().hash_mismatch;
+            ok = false;
+        }
+        if (ok) {
+            ok = replace_launcher(target, error);
+        }
+        if (!ok) {
+            std::error_code ignored;
+            std::filesystem::remove(target, ignored);
+            std::lock_guard<std::mutex> lock(background().mutex);
+            launcher_error_ = error;
+        }
+        launcher_state_ = ok ? 3 : 2;
+        wake_main_loop();
+    });
+}
+
+void App::launcher_update_card(float width) {
+    Release release;
+    std::string failure;
+    {
+        std::lock_guard<std::mutex> lock(background().mutex);
+        if (!background().found || launcher_state_ == 3) {
+            return;
+        }
+        release = background().release;
+        failure = launcher_error_;
+    }
+    const ui::Palette& p = ui::palette();
+    const Texts& t = texts();
+    std::string title = format(t.launcher_update_title, "v" + release.version);
+    bool failed = launcher_state_ == 2;
+    std::string detail = failed ? format(t.launcher_update_failed, failure) : std::string(t.launcher_update_detail);
+    Card card(width);
+    ImVec2 top = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(top + ImVec2(px(20), px(18)));
+    ImGui::BeginGroup();
+    ui::text(title.c_str(), Font::Semibold, ui::size::kBody, p.text);
+    float text_width = width - px(release.page.empty() ? 230 : 420);
+    if (!failed && !release.summary.empty()) {
+        ui::gap(4);
+        ui::text(release.summary.c_str(), Font::Regular, ui::size::kDetail, p.text, text_width);
+    }
+    ui::gap(4);
+    ui::text(detail.c_str(), Font::Regular, ui::size::kDetail, failed ? p.danger : p.secondary, text_width);
+    ImGui::EndGroup();
+    float bottom = ImGui::GetItemRectMax().y + px(18);
+    ImGui::SetCursorScreenPos(ImVec2(top.x + width - px(20) - px(180), top.y + std::round((bottom - top.y - px(36)) * 0.5f)));
+    bool downloading = launcher_state_ == 1;
+    if (ui::button(downloading ? t.launcher_downloading : t.launcher_update, Kind::Secondary, 180.0f, !downloading && !runner_.running())) {
+        update_launcher();
+    }
+    if (!release.page.empty()) {
+        ImGui::SetCursorScreenPos(ImVec2(top.x + width - px(20) - px(180) - px(8) - px(170), top.y + std::round((bottom - top.y - px(36)) * 0.5f)));
+        if (ui::button(t.release_notes, Kind::Ghost, 170.0f)) {
+            SDL_OpenURL(release.page.c_str());
+        }
+    }
+    ImGui::SetCursorScreenPos(ImVec2(top.x, bottom));
+    ImGui::Dummy(ImVec2(width, 0));
+    card.end();
+    ui::gap(20);
 }
 
 void App::use_root(const std::filesystem::path& root) {
     project_.root = root;
+    disc_line_.clear();
     std::error_code error;
     std::filesystem::create_directories(project_.game_folder(), error);
     std::filesystem::current_path(root, error);
@@ -367,6 +552,11 @@ void App::frame() {
             picked_disc_.clear();
             result_.clear();
         }
+        if (!picked_added_disc_.empty()) {
+            add_disc_ = picked_added_disc_;
+            picked_added_disc_.clear();
+            install(true);
+        }
         if (!picked_folder_.empty()) {
             std::filesystem::path folder = path_from(picked_folder_);
             if (folder.filename() != kInstallFolderName) {
@@ -386,6 +576,9 @@ void App::frame() {
         finish_install();
     }
     was_running_ = running;
+    if (launcher_state_ == 3) {
+        quit_ = true;
+    }
     if (install_mode_ && !started_) {
         started_ = true;
         install();
@@ -409,6 +602,7 @@ void App::frame() {
     ImGui::SetCursorScreenPos(viewport->Pos + ImVec2(px(kSidebarWidth), 0));
     page(viewport->Size.x - px(kSidebarWidth), height);
     restore_modal();
+    repair_modal();
     ImGui::End();
 }
 
@@ -422,7 +616,7 @@ void App::sidebar(float height) {
     ImGui::SetCursorScreenPos(origin + ImVec2(px(76), px(51)));
     ui::text("Recomp", Font::Regular, ui::size::kDetail, p.secondary);
     const Texts& t = texts();
-    const char* names[] = {t.game, t.settings, t.saves, t.controls, t.licenses};
+    const char* names[] = {t.game, t.settings, t.saves, t.controls, t.page_textures, t.licenses};
     float top = px(100);
     float step = px(36) + px(2);
     ImGuiID indicator = ImHashStr("nav-indicator");
@@ -448,7 +642,7 @@ void App::page(float width, float height) {
     ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(kPagePaddingX), px(kPagePaddingTop) + std::round((1.0f - shown) * px(10))));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ui::palette().background);
-    bool scrolls = page_ == Page::Settings || page_ == Page::Saves || page_ == Page::Controls;
+    bool scrolls = page_ == Page::Settings || page_ == Page::Saves || page_ == Page::Controls || page_ == Page::Textures;
     ImGui::BeginChild(static_cast<int>(page_) + 100, ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding,
                       scrolls ? ImGuiWindowFlags_None : ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     float content = std::min(width - px(kPagePaddingX) * 2, px(kContentMaxWidth));
@@ -465,6 +659,9 @@ void App::page(float width, float height) {
         break;
     case Page::Controls:
         controls_page(content);
+        break;
+    case Page::Textures:
+        textures_page(content);
         break;
     case Page::Licenses:
         licenses_page(content, available);
@@ -494,6 +691,12 @@ void App::heading(const char* title, const char* intro, float width) {
 }
 
 void App::game_page(float width, float height) {
+    if (!progress_view_) {
+        float before = ImGui::GetCursorScreenPos().y;
+        launcher_update_card(width);
+        whats_new_card(width);
+        height -= ImGui::GetCursorScreenPos().y - before;
+    }
     if (progress_view_) {
         progress_panel(width, height);
     } else if (project_.built() && project_.extracted()) {
@@ -507,7 +710,7 @@ void App::play_panel(float width, float height) {
     const ui::Palette& p = ui::palette();
     const Texts& t = texts();
     ImVec2 start = ImGui::GetCursorScreenPos();
-    float hero = px(72 + 28 + 48 + 6 + 20 + 32 + 48) + (project_.outdated() ? px(36 + 96) : 0.0f);
+    float hero = px(72 + 28 + 48 + 6 + 20 + 24 + 32 + 48) + (project_.outdated() ? px(36 + 96) : 0.0f);
     ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + std::max(0.0f, std::round((height - px(40) - hero) * 0.42f))));
     ui::die(ImGui::GetCursorScreenPos(), px(72));
     ImGui::Dummy(ImVec2(px(72), px(72)));
@@ -515,7 +718,17 @@ void App::play_panel(float width, float height) {
     ui::text("Wii Party", Font::Semibold, ui::size::kDisplay, p.text);
     ui::gap(6);
     ui::text(t.status_ready, Font::Regular, ui::size::kLead, p.secondary);
-    ui::gap(32);
+    if (disc_line_.empty()) {
+        std::string id = project_.disc_id();
+        disc_line_ = id + "  ·  " + region_name(id);
+        std::vector<std::string> languages = project_.disc_languages();
+        for (size_t i = 0; i < languages.size(); i++) {
+            disc_line_ += (i == 0 ? "  ·  " : ", ") + languages[i];
+        }
+    }
+    ui::gap(6);
+    ui::text(disc_line_.c_str(), Font::Regular, ui::size::kDetail, p.tertiary, width);
+    ui::gap(26);
     if (ui::button(t.play, Kind::Primary, 180.0f, true, 48.0f)) {
         play();
     }
@@ -532,6 +745,11 @@ void App::play_panel(float width, float height) {
         ui::text(t.update_title, Font::Semibold, ui::size::kBody, p.text);
         ui::gap(4);
         ui::text(t.update_detail, Font::Regular, ui::size::kDetail, p.secondary, width - px(180));
+        if (background().minutes > 0) {
+            ui::gap(4);
+            std::string estimate = format(background().full ? t.update_full : t.update_quick, std::to_string(background().minutes.load()));
+            ui::text(estimate.c_str(), Font::Regular, ui::size::kDetail, p.secondary, width - px(180));
+        }
         ImGui::EndGroup();
         float bottom = ImGui::GetItemRectMax().y + px(18);
         ImGui::SetCursorScreenPos(ImVec2(top.x + width - px(20) - px(110), top.y + std::round((bottom - top.y - px(36)) * 0.5f)));
@@ -654,7 +872,7 @@ void App::progress_panel(float width, float height) {
     float footer = px(36) + px(24);
     float top = ImGui::GetCursorScreenPos().y;
     float room = start.y + height - footer - top;
-    float steps_height = show_details_ ? std::max(px(120), room * 0.42f) : room;
+    float steps_height = std::min(show_details_ ? std::max(px(120), room * 0.42f) : room, px(30) * static_cast<float>(view.titles.size()) + px(16));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(8), px(8)));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, p.surface);
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(14));
@@ -708,6 +926,13 @@ void App::progress_panel(float width, float height) {
         show_details_ = !show_details_;
     }
     if (running) {
+        std::error_code error;
+        if (project_.packaged && std::filesystem::exists(project_.installed_executable(), error)) {
+            ImGui::SetCursorScreenPos(ImVec2(start.x + width - px(120) - px(10) - px(230), start.y + height - px(36)));
+            if (ui::button(t.play_current, Kind::Secondary, 230.0f)) {
+                play();
+            }
+        }
         ImGui::SetCursorScreenPos(ImVec2(start.x + width - px(120), start.y + height - px(36)));
         if (ui::button(t.cancel, Kind::Secondary, 120.0f)) {
             runner_.cancel();
@@ -779,6 +1004,109 @@ void App::settings_page(float width) {
         card.end();
         ui::gap(28);
     }
+    versions_section(width);
+    ui::text(t.group_launcher, Font::Semibold, ui::size::kDetail, p.secondary);
+    ui::gap(10);
+    Card card(width);
+    ImGui::PushID("launcher");
+    row(width, t.check_updates, t.check_updates_detail, 42.0f, 24.0f, [&] {
+        bool on = pref("check_updates") != "0";
+        if (ui::toggle("toggle", on)) {
+            set_pref("check_updates", on ? "0" : "1");
+        }
+    });
+    inset_separator(width);
+    row(width, t.shortcut_label, t.shortcut_detail, 230.0f, 36.0f, [&] {
+        ImVec2 at = ImGui::GetCursorScreenPos();
+        if (ui::button(t.shortcut_launcher, Kind::Secondary, 110.0f)) {
+            std::string error;
+            launcher_message_failed_ = !create_desktop_shortcut(launcher_path(), launcher_path().parent_path(), "Wii Party Recomp", error);
+            launcher_message_ = launcher_message_failed_ ? format(t.shortcut_failed, error) : std::string(t.shortcut_done);
+        }
+        ImGui::SetCursorScreenPos(ImVec2(at.x + px(120), at.y));
+        std::error_code missing;
+        if (ui::button(t.shortcut_game, Kind::Secondary, 110.0f, std::filesystem::exists(project_.executable(), missing))) {
+            std::string error;
+            launcher_message_failed_ = !create_desktop_shortcut(std::filesystem::absolute(project_.executable(), missing), std::filesystem::absolute(project_.root, missing), "Wii Party", error);
+            launcher_message_ = launcher_message_failed_ ? format(t.shortcut_failed, error) : std::string(t.shortcut_done);
+        }
+    });
+    inset_separator(width);
+    row(width, t.screenshots_label, t.screenshots_detail, 140.0f, 36.0f, [&] {
+        if (ui::button(t.open_folder, Kind::Secondary, 140.0f)) {
+            std::filesystem::path folder = project_.root / wp::screenshot::kFolder;
+            std::error_code error;
+            std::filesystem::create_directories(folder, error);
+            std::string url = "file:///" + utf8_of(folder.lexically_normal());
+            std::replace(url.begin(), url.end(), '\\', '/');
+            SDL_OpenURL(url.c_str());
+        }
+    });
+    inset_separator(width);
+    row(width, t.report_label, t.report_detail, 140.0f, 36.0f, [&] {
+        if (ui::button(t.report_create, Kind::Secondary, 140.0f)) {
+            create_report();
+        }
+    });
+    if (project_.built() && project_.extracted()) {
+        inset_separator(width);
+        row(width, t.repair_label, t.repair_detail, 110.0f, 36.0f, [&] {
+            if (ui::button(t.repair, Kind::Secondary, 110.0f, !runner_.running())) {
+                repair_confirm_ = true;
+            }
+        });
+    }
+    ImGui::PopID();
+    card.end();
+    if (!launcher_message_.empty()) {
+        ui::gap(10);
+        ui::text(launcher_message_.c_str(), Font::Regular, ui::size::kDetail, launcher_message_failed_ ? p.danger : p.secondary, width);
+    }
+    ui::gap(28);
+}
+
+void App::repair() {
+    std::error_code error;
+    std::filesystem::remove_all(project_.root / "build" / "out", error);
+    std::filesystem::remove_all(project_.root / "build" / kGame, error);
+    set_page(Page::Game);
+    install();
+}
+
+void App::repair_modal() {
+    const ui::Palette& p = ui::palette();
+    const Texts& t = texts();
+    if (repair_confirm_ && !ImGui::IsPopupOpen("repair")) {
+        ImGui::OpenPopup("repair");
+    }
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(px(440), 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(24), px(22)));
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, px(16));
+    if (ImGui::BeginPopupModal("repair", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
+        float inner = px(440) - px(48);
+        int jobs = compile_jobs();
+        std::string minutes = std::to_string(std::max(5, (120 + jobs - 1) / std::max(jobs, 1)));
+        ui::text(t.repair_title, Font::Semibold, 17.0f, p.text);
+        ui::gap(8);
+        ui::text(format(t.repair_question, minutes).c_str(), Font::Regular, ui::size::kBody, p.secondary, inner);
+        ui::gap(24);
+        ImVec2 at = ImGui::GetCursorScreenPos();
+        ImGui::SetCursorScreenPos(ImVec2(at.x + inner - px(110) - px(10) - px(110), at.y));
+        if (ui::button(t.cancel, Kind::Ghost, 110.0f)) {
+            repair_confirm_ = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetCursorScreenPos(ImVec2(at.x + inner - px(110), at.y));
+        if (ui::button(t.repair, Kind::Primary, 110.0f)) {
+            repair_confirm_ = false;
+            ImGui::CloseCurrentPopup();
+            repair();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopStyleVar(2);
 }
 
 void App::refresh_backups() {
@@ -906,6 +1234,7 @@ void App::controls_page(float width) {
         }
     }
     ImGui::SetCursorScreenPos(after);
+    gamepads_section(width);
     Card card(width);
     for (size_t i = 0; i < wp::keymap::kActionCount; i++) {
         if (i > 0) {
@@ -994,6 +1323,258 @@ void App::choose_disc() {
         this, window_, filters, 1, start.c_str(), false);
 }
 
+void App::add_on_start(const std::string& disc) {
+    started_ = true;
+    std::lock_guard<std::mutex> lock(picked_mutex_);
+    picked_added_disc_ = disc;
+}
+
+void App::choose_added_disc() {
+    static const SDL_DialogFileFilter filter[] = {{nullptr, "iso;wbfs;rvz;ciso;wia;gcm"}};
+    static std::string name;
+    name = texts().disc_filter;
+    SDL_DialogFileFilter filters[] = {{name.c_str(), filter[0].pattern}};
+    std::string start = disc_.empty() ? utf8_of(project_.game_folder()) : utf8_of(path_from(disc_).parent_path());
+    SDL_ShowOpenFileDialog(
+        [](void* self, const char* const* files, int) {
+            if (files && files[0]) {
+                App* app = static_cast<App*>(self);
+                std::lock_guard<std::mutex> lock(app->picked_mutex_);
+                app->picked_added_disc_ = files[0];
+            }
+            wake_main_loop();
+        },
+        this, window_, filters, 1, start.c_str(), false);
+}
+
+void App::switch_version(const std::string& id) {
+    if (runner_.running()) {
+        return;
+    }
+    versions_failed_ = !project_.switch_version(id);
+    versions_message_ = versions_failed_ ? texts().version_switch_failed : "";
+    disc_line_.clear();
+    std::error_code error;
+    if (!versions_failed_ && (!project_.packaged || !std::filesystem::exists(project_.installed_executable(), error))) {
+        set_page(Page::Game);
+        install();
+    }
+}
+
+void App::versions_section(float width) {
+    if (!project_.extracted()) {
+        return;
+    }
+    const ui::Palette& p = ui::palette();
+    const Texts& t = texts();
+    ui::text(t.versions_title, Font::Semibold, ui::size::kDetail, p.secondary);
+    ui::gap(10);
+    Card card(width);
+    std::string active = project_.disc_id();
+    std::string active_label = active + "  ·  " + region_name(active);
+    row(width, active_label.c_str(), t.versions_detail, 110.0f, 20.0f, [&] {
+        ui::text(t.version_active, Font::Semibold, ui::size::kDetail, p.secondary);
+    });
+    for (const std::string& id : project_.stored_versions()) {
+        inset_separator(width);
+        std::string label = id + "  ·  " + region_name(id);
+        std::error_code error;
+        bool built = std::filesystem::exists(project_.versions_folder() / id / "bin", error);
+        ImGui::PushID(id.c_str());
+        row(width, label.c_str(), built ? "" : t.version_needs_build, 110.0f, 36.0f, [&] {
+            if (ui::button(t.version_use, Kind::Secondary, 110.0f, !runner_.running())) {
+                switch_version(id);
+            }
+        });
+        ImGui::PopID();
+    }
+    inset_separator(width);
+    row(width, t.version_add, t.version_add_detail, 110.0f, 36.0f, [&] {
+        if (ui::button(t.choose, Kind::Secondary, 110.0f, !runner_.running())) {
+            choose_added_disc();
+        }
+    });
+    card.end();
+    if (!versions_message_.empty()) {
+        ui::gap(10);
+        ui::text(versions_message_.c_str(), Font::Regular, ui::size::kDetail, versions_failed_ ? p.danger : p.secondary, width);
+    }
+    ui::gap(28);
+}
+
+void App::gamepads_section(float width) {
+    const ui::Palette& p = ui::palette();
+    const Texts& t = texts();
+    ui::text(t.gamepads_title, Font::Semibold, ui::size::kDetail, p.secondary);
+    ui::gap(10);
+    Card card(width);
+    int count = 0;
+    SDL_JoystickID* pads = SDL_GetGamepads(&count);
+    if (count == 0) {
+        row(width, t.gamepads_none, "", 0.0f, 0.0f, [] {});
+    }
+    for (int i = 0; i < count && i < 4; i++) {
+        if (i > 0) {
+            inset_separator(width);
+        }
+        const char* name = SDL_GetGamepadNameForID(pads[i]);
+        std::string slot = format(t.gamepad_slot, std::to_string(i + 1));
+        ImGui::PushID(i);
+        row(width, name ? name : "?", "", 120.0f, 20.0f, [&] {
+            ui::text(slot.c_str(), Font::Semibold, ui::size::kDetail, p.secondary);
+        });
+        ImGui::PopID();
+    }
+    SDL_free(pads);
+    card.end();
+    ui::gap(28);
+}
+
+void App::whats_new_card(float width) {
+    Release current;
+    {
+        std::lock_guard<std::mutex> lock(background().mutex);
+        current = background().current;
+    }
+    if (current.summary.empty() || pref("seen_version") == WP_LAUNCHER_VERSION) {
+        return;
+    }
+    const ui::Palette& p = ui::palette();
+    const Texts& t = texts();
+    std::string title = format(t.whats_new_title, current.version);
+    Card card(width);
+    ImVec2 top = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(top + ImVec2(px(20), px(18)));
+    ImGui::BeginGroup();
+    ui::text(title.c_str(), Font::Semibold, ui::size::kBody, p.text);
+    ui::gap(4);
+    ui::text(current.summary.c_str(), Font::Regular, ui::size::kDetail, p.secondary, width - px(330));
+    ImGui::EndGroup();
+    float bottom = ImGui::GetItemRectMax().y + px(18);
+    float middle = top.y + std::round((bottom - top.y - px(36)) * 0.5f);
+    ImGui::SetCursorScreenPos(ImVec2(top.x + width - px(20) - px(110), middle));
+    if (ui::button(t.dismiss, Kind::Secondary, 110.0f)) {
+        set_pref("seen_version", WP_LAUNCHER_VERSION);
+    }
+    ImGui::SetCursorScreenPos(ImVec2(top.x + width - px(20) - px(110) - px(8) - px(170), middle));
+    if (ui::button(t.release_notes, Kind::Ghost, 170.0f)) {
+        SDL_OpenURL(current.page.c_str());
+    }
+    ImGui::SetCursorScreenPos(ImVec2(top.x, bottom));
+    ImGui::Dummy(ImVec2(width, 0));
+    card.end();
+    ui::gap(20);
+}
+
+void App::create_report() {
+    const Texts& t = texts();
+    std::error_code error;
+    std::filesystem::path folder = project_.root / "reports";
+    std::filesystem::create_directories(folder, error);
+    std::time_t now = std::time(nullptr);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", std::localtime(&now));
+    std::filesystem::path path = folder / (std::string("report-") + stamp + ".txt");
+    std::ofstream out(path, std::ios::binary);
+    std::string id = project_.disc_id();
+    out << "Wii Party Recomp report\n\n";
+    out << "Launcher: " << WP_LAUNCHER_VERSION << " (build " << WP_LAUNCHER_BUILD << "), files " << payload_revision() << "\n";
+    out << "Platform: " << SDL_GetPlatform() << ", " << SDL_GetNumLogicalCPUCores() << " logical cores, " << SDL_GetSystemRAM() << " MB RAM\n";
+    out << "Disc: " << (id.empty() ? "(not extracted)" : id + " " + region_name(id)) << "\n";
+    for (const std::string& stored : project_.stored_versions()) {
+        out << "Other disc version: " << stored << "\n";
+    }
+    out << "Install folder: " << utf8_of(project_.root) << "\n";
+    out << "Game built: " << (project_.built() ? "yes" : "no") << "\n";
+    int count = 0;
+    SDL_JoystickID* pads = SDL_GetGamepads(&count);
+    for (int i = 0; i < count; i++) {
+        const char* name = SDL_GetGamepadNameForID(pads[i]);
+        out << "Gamepad " << i + 1 << ": " << (name ? name : "?") << "\n";
+    }
+    SDL_free(pads);
+    out << "\n--- settings ---\n" << tail_of(project_.game_folder() / "settings.ini", 400);
+    out << "\n--- last install (end) ---\n" << tail_of(project_.root / "build" / "install.log", 200);
+    out << "\n--- last game session (end) ---\n" << tail_of(project_.root / "logs" / "game.log", 400);
+    out.close();
+    launcher_message_failed_ = !out;
+    launcher_message_ = format(t.report_done, utf8_of(path.filename()));
+    SDL_OpenURL(folder_url(folder).c_str());
+    SDL_OpenURL("https://github.com/arelkair/wiiparty-recomp/issues/new");
+}
+
+void App::textures_page(float width) {
+    const ui::Palette& p = ui::palette();
+    const Texts& t = texts();
+    std::filesystem::path load = project_.game_folder() / "textures" / "load";
+    std::filesystem::path off = project_.game_folder() / "textures" / "disabled";
+    ImVec2 top = ImGui::GetCursorScreenPos();
+    heading(t.page_textures, t.textures_intro, width - px(150));
+    ImVec2 after = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(ImVec2(top.x + width - px(140), top.y));
+    if (ui::button(t.open_folder, Kind::Secondary, 140.0f)) {
+        std::error_code error;
+        std::filesystem::create_directories(load, error);
+        SDL_OpenURL(folder_url(load).c_str());
+        packs_dirty_ = true;
+    }
+    ImGui::SetCursorScreenPos(after);
+    if (packs_dirty_) {
+        packs_dirty_ = false;
+        packs_.clear();
+        std::error_code error;
+        for (const auto& [folder, enabled] : {std::pair{load, true}, std::pair{off, false}}) {
+            for (const auto& entry : std::filesystem::directory_iterator(folder, error)) {
+                if (!entry.is_directory(error)) {
+                    continue;
+                }
+                TexturePack pack;
+                pack.name = utf8_of(entry.path().filename());
+                pack.enabled = enabled;
+                for (auto it = std::filesystem::recursive_directory_iterator(entry.path(), error); !error && it != std::filesystem::recursive_directory_iterator();
+                     it.increment(error)) {
+                    if (it->is_regular_file(error)) {
+                        pack.files++;
+                        pack.bytes += it->file_size(error);
+                    }
+                }
+                packs_.push_back(pack);
+            }
+        }
+        std::sort(packs_.begin(), packs_.end(), [](const TexturePack& a, const TexturePack& b) { return a.name < b.name; });
+    }
+    if (value("video.custom_textures") == "0") {
+        ui::text(t.textures_off, Font::Regular, ui::size::kDetail, p.secondary, width);
+        ui::gap(14);
+    }
+    Card card(width);
+    if (packs_.empty()) {
+        row(width, t.textures_empty, "", 0.0f, 0.0f, [] {});
+    }
+    for (size_t i = 0; i < packs_.size(); i++) {
+        if (i > 0) {
+            inset_separator(width);
+        }
+        TexturePack& pack = packs_[i];
+        char size[32];
+        std::snprintf(size, sizeof(size), "%.1f MB", static_cast<double>(pack.bytes) / (1024.0 * 1024.0));
+        std::string detail = format(t.textures_files, std::to_string(pack.files), size);
+        ImGui::PushID(static_cast<int>(i));
+        row(width, pack.name.c_str(), detail.c_str(), 42.0f, 24.0f, [&] {
+            if (ui::toggle("toggle", pack.enabled)) {
+                std::error_code error;
+                std::filesystem::path from = (pack.enabled ? load : off) / path_from(pack.name);
+                std::filesystem::path to = (pack.enabled ? off : load) / path_from(pack.name);
+                std::filesystem::create_directories(to.parent_path(), error);
+                std::filesystem::rename(from, to, error);
+                packs_dirty_ = true;
+            }
+        });
+        ImGui::PopID();
+    }
+    card.end();
+}
+
 void App::choose_folder() {
     std::string start = utf8_of(project_.root.parent_path());
     SDL_ShowOpenFolderDialog(
@@ -1008,13 +1589,16 @@ void App::choose_folder() {
         this, window_, start.c_str(), false);
 }
 
-void App::install() {
+void App::install(bool adding) {
     const Texts& t = texts();
     if (runner_.running()) {
         return;
     }
     if (!project_.extracted() && disc_.empty()) {
         result_ = t.choose_disc_first;
+        return;
+    }
+    if (adding && add_disc_.empty()) {
         return;
     }
     if (project_.root.native().size() > kLongestRoot) {
@@ -1025,6 +1609,9 @@ void App::install() {
     if (free >= 0.0 && free < project_.needed_gigabytes()) {
         result_ = format(t.space_short, gigabytes(project_.needed_gigabytes()), gigabytes(free));
         return;
+    }
+    while (background().estimating) {
+        SDL_Delay(20);
     }
     log_.clear();
     result_.clear();
@@ -1059,14 +1646,74 @@ void App::install() {
         step.weight = weight;
         steps.push_back(step);
     };
-    program(t.step_extract, "nodtool", {"extract", disc_, std::string("games/") + kGame + "/extracted"}, 2.0f);
-    steps.back().skip = [project] { return project.extracted(); };
+    std::string disc = adding ? add_disc_ : disc_;
+    Step verify;
+    verify.title = t.step_verify_disc;
+    verify.skip = [project, adding] { return !adding && project.extracted(); };
+    verify.action = [disc](std::string& message) {
+        std::string output = capture("nodtool", {"--no-color", "verify", disc});
+        if (output.find("\xE2\x9D\x8C") != std::string::npos) {
+            message = texts().disc_damaged;
+            return false;
+        }
+        size_t found = output.find("Redump: ");
+        if (found == std::string::npos) {
+            message = texts().disc_unknown;
+        } else {
+            size_t end = output.find_first_of("\r\n", found);
+            message = format(texts().disc_verified, output.substr(found + 8, end == std::string::npos ? std::string::npos : end - found - 8));
+        }
+        return true;
+    };
+    steps.push_back(verify);
+    std::string incoming = std::string("games/") + kGame + "/versions/incoming";
+    program(t.step_extract, "nodtool", {"extract", disc, adding ? incoming : std::string("games/") + kGame + "/extracted"}, 2.0f);
+    steps.back().skip = [project, adding] { return !adding && project.extracted(); };
+    if (adding) {
+        std::error_code stale;
+        std::filesystem::remove_all(project_.versions_folder() / "incoming", stale);
+        Step change;
+        change.title = t.step_switch_version;
+        change.action = [project](std::string& message) {
+            std::filesystem::path incoming_folder = project.versions_folder() / "incoming";
+            std::string id = read_disc_id(incoming_folder);
+            std::error_code error;
+            if (id.size() != 6 || id == project.disc_id()) {
+                std::filesystem::remove_all(incoming_folder, error);
+                message = texts().version_already;
+                return id.size() == 6;
+            }
+            std::filesystem::path target = project.versions_folder() / id;
+            if (std::filesystem::exists(target / "extracted", error)) {
+                std::filesystem::remove_all(incoming_folder, error);
+            } else {
+                std::filesystem::create_directories(target, error);
+                std::filesystem::rename(incoming_folder, target / "extracted", error);
+            }
+            if (!project.switch_version(id)) {
+                message = texts().version_switch_failed;
+                return false;
+            }
+            return true;
+        };
+        steps.push_back(change);
+    }
     program(t.step_sdl, python, {"tools/fetch_sdl.py"}, 1.0f);
     program(t.step_unpack, python, {"recompiler/unpack_rels.py"}, 1.0f);
     program(t.step_dol, python, {"recompiler/recomp.py"}, 1.0f);
     program(t.step_modules, python, {"recompiler/recomp_rel.py", "--all"}, 3.0f);
     program(t.step_links, python, {"recompiler/recomp.py"}, 1.0f);
+    program(t.step_module_calls, python, {"recompiler/recomp_rel.py", "--all"}, 3.0f);
     program(t.step_dsp, python, {"recompiler/dsp/recomp_dsp.py"}, 1.0f);
+    auto translated = std::make_shared<int>(-1);
+    for (size_t i = steps.size() - 6; i < steps.size(); i++) {
+        steps[i].skip = [project, translated] {
+            if (*translated < 0) {
+                *translated = project.translation_current() ? 1 : 0;
+            }
+            return *translated == 1;
+        };
+    }
     program(t.step_configure, "cmake", {"-S", ".", "-B", "build/out", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", std::string("-DWP_GAME=") + kGame}, 1.0f);
     program(t.step_compile, "cmake", {"--build", "build/out", "--parallel", std::to_string(jobs), "--target", kGame}, 24.0f);
     progress_view_ = true;
@@ -1087,6 +1734,16 @@ void App::finish_install() {
         std::filesystem::remove(project_.root / "build" / "out" / "runtime_tests.exe", error);
         progress_view_ = false;
         result_ = t.build_finished;
+        background().minutes = 0;
+        disc_line_.clear();
+        project_.store_translation_stamp();
+        if (project_.packaged) {
+            std::string message;
+            swap_pending_ = !project_.install_game(message);
+            if (swap_pending_) {
+                result_ = t.swap_pending;
+            }
+        }
     } else {
         show_details_ = outcome_ == Outcome::Failure;
         result_ = outcome_ == Outcome::Cancelled ? t.build_cancelled : t.build_failed;
@@ -1104,10 +1761,20 @@ void App::finish_install() {
 }
 
 void App::play() {
+    bool building = runner_.running();
+    std::error_code logs;
+    std::filesystem::create_directories(project_.root / "logs", logs);
+    SDL_setenv_unsafe("WP_LOG_FILE", utf8_of(std::filesystem::absolute(project_.root / "logs" / "game.log", logs)).c_str(), 1);
+    if (swap_pending_ && !building) {
+        std::string error;
+        swap_pending_ = !project_.install_game(error);
+    }
     if (!start_detached(utf8_of(project_.executable()), project_.root)) {
         result_ = texts().start_failed;
         outcome_ = Outcome::Failure;
         return;
     }
-    quit_ = true;
+    if (!building) {
+        quit_ = true;
+    }
 }

@@ -3,7 +3,7 @@
 Static recompilation of Wii Party for native PC.
 
 > [!NOTE]
-> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **82%** overall.
+> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **83%** overall.
 
 ![Project progress](docs/progress.svg)
 
@@ -28,12 +28,12 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 | Component | Progress | Basis |
 | :--- | :--- | :--- |
 | **Recompilation Toolchain** | **95%** | The DOL and all 115 REL modules translate and build. |
-| **System Runtime** | **91%** | OS, threads, interrupts, IPC, DVD, NAND and Bluetooth work, with no known blockers. |
+| **System Runtime** | **92%** | OS, threads, interrupts, IPC, DVD, NAND and Bluetooth work, with no known blockers. |
 | **Graphics (GX to D3D11)** | **90%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies; no known fault in any minigame. |
 | **Audio Pipeline** | **83%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music. |
 | **Game Flow** | **90%** | A full 17-round Board Game Island game; every Free Play minigame played by hand, all 79 without faults. |
 | **Input System** | **66%** | Emulated Wii Remote over emulated Bluetooth; keyboard, mouse and up to four gamepads. |
-| **PC Features** | **56%** | Single-file launcher, in-game options menu (F10), key bindings, save backups, custom textures. |
+| **PC Features** | **66%** | Single-file launcher, in-game options menu (F10), key bindings, save backups, custom textures. |
 
 ### Known Limitations
 

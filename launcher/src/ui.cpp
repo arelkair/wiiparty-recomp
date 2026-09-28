@@ -491,9 +491,10 @@ void die(ImVec2 origin, float value) {
     ImDrawList* list = ImGui::GetWindowDrawList();
     float radius = value * 0.215f;
     ImVec2 end = origin + ImVec2(value, value);
-    list->AddRectFilled(origin, end, IM_COL32(224, 40, 125, 255), radius);
-    list->AddRectFilledMultiColor(origin + ImVec2(radius * 0.3f, radius * 0.3f), ImVec2(end.x - radius * 0.3f, origin.y + value * 0.45f), IM_COL32(255, 255, 255, 38),
-                                  IM_COL32(255, 255, 255, 38), IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 0));
+    int first = list->VtxBuffer.Size;
+    list->AddRectFilled(origin, end, IM_COL32(255, 255, 255, 255), radius);
+    ImGui::ShadeVertsLinearColorGradientKeepAlpha(list, first, list->VtxBuffer.Size, origin, ImVec2(origin.x, end.y), IM_COL32(255, 111, 180, 255),
+                                                  IM_COL32(212, 20, 111, 255));
     ImVec2 center = origin + ImVec2(value * 0.5f, value * 0.5f);
     float angle = 14.0f * 3.14159265f / 180.0f;
     float cosine = std::cos(angle);

@@ -13,7 +13,7 @@ set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
-foreach(WP_SDL_OFF SDL_AUDIO SDL_CAMERA SDL_HAPTIC SDL_HIDAPI SDL_SENSOR SDL_POWER SDL_TRAY SDL_GPU SDL_RENDER_GPU SDL_VULKAN SDL_RENDER_VULKAN SDL_RENDER_D3D SDL_RENDER_D3D12)
+foreach(WP_SDL_OFF SDL_AUDIO SDL_CAMERA SDL_HAPTIC SDL_SENSOR SDL_POWER SDL_TRAY SDL_GPU SDL_RENDER_GPU SDL_VULKAN SDL_RENDER_VULKAN SDL_RENDER_D3D SDL_RENDER_D3D12)
     set(${WP_SDL_OFF} OFF CACHE BOOL "" FORCE)
 endforeach()
 
@@ -56,6 +56,8 @@ add_executable(launcher WIN32
     src/sha256.cpp
     src/texts.cpp
     src/toolchain.cpp
+    src/updater.cpp
+    src/shortcut.cpp
     ${WP_ENGINE}/src/platform/settings.cpp
     ${WP_ENGINE}/src/platform/options.cpp
     ${WP_ENGINE}/src/platform/ui_text.cpp
@@ -72,6 +74,6 @@ target_link_libraries(launcher PRIVATE imgui)
 
 if(WIN32)
     target_sources(launcher PRIVATE res/launcher.rc)
-    target_link_libraries(launcher PRIVATE dwmapi)
+    target_link_libraries(launcher PRIVATE dwmapi winhttp ole32 uuid shell32)
     target_link_options(launcher PRIVATE -static $<$<CONFIG:Release>:-s>)
 endif()

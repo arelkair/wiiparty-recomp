@@ -50,9 +50,12 @@ bool save_picture(SDL_Renderer* renderer, const std::string& path) {
 int main(int argc, char** argv) {
     bool install_mode = false;
     std::string screenshot_prefix;
+    std::string added_disc;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--install") == 0) {
             install_mode = true;
+        } else if (std::strcmp(argv[i], "--add-disc") == 0 && i + 1 < argc) {
+            added_disc = argv[++i];
         } else if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
             screenshot_prefix = argv[++i];
         }
@@ -60,7 +63,7 @@ int main(int argc, char** argv) {
     SDL_SetAppMetadata("Wii Party Recomp", WP_LAUNCHER_VERSION, "io.github.arelkair.wiipartyrecomp");
     SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON, "1");
     SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON_SMALL, "1");
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wii Party Recomp", SDL_GetError(), nullptr);
         return 1;
     }
@@ -89,7 +92,10 @@ int main(int argc, char** argv) {
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
 
-    App app(window, locate_project(), install_mode);
+    App app(window, locate_project(), install_mode || !added_disc.empty());
+    if (!added_disc.empty()) {
+        app.add_on_start(added_disc);
+    }
     app.apply_theme();
     SDL_ShowWindow(window);
 
