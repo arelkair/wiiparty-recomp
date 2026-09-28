@@ -204,28 +204,28 @@ struct VertexInput {
     float4 position : POSITION;
     float4 c0 : COLOR0;
     float4 c1 : COLOR1;
-    float2 uv0 : TEXCOORD0;
-    float2 uv1 : TEXCOORD1;
-    float2 uv2 : TEXCOORD2;
-    float2 uv3 : TEXCOORD3;
-    float2 uv4 : TEXCOORD4;
-    float2 uv5 : TEXCOORD5;
-    float2 uv6 : TEXCOORD6;
-    float2 uv7 : TEXCOORD7;
+    float3 uv0 : TEXCOORD0;
+    float3 uv1 : TEXCOORD1;
+    float3 uv2 : TEXCOORD2;
+    float3 uv3 : TEXCOORD3;
+    float3 uv4 : TEXCOORD4;
+    float3 uv5 : TEXCOORD5;
+    float3 uv6 : TEXCOORD6;
+    float3 uv7 : TEXCOORD7;
 };
 
 struct PixelInput {
     float4 position : SV_Position;
     float4 c0 : COLOR0;
     float4 c1 : COLOR1;
-    float2 uv0 : TEXCOORD0;
-    float2 uv1 : TEXCOORD1;
-    float2 uv2 : TEXCOORD2;
-    float2 uv3 : TEXCOORD3;
-    float2 uv4 : TEXCOORD4;
-    float2 uv5 : TEXCOORD5;
-    float2 uv6 : TEXCOORD6;
-    float2 uv7 : TEXCOORD7;
+    float3 uv0 : TEXCOORD0;
+    float3 uv1 : TEXCOORD1;
+    float3 uv2 : TEXCOORD2;
+    float3 uv3 : TEXCOORD3;
+    float3 uv4 : TEXCOORD4;
+    float3 uv5 : TEXCOORD5;
+    float3 uv6 : TEXCOORD6;
+    float3 uv7 : TEXCOORD7;
 };
 
 PixelInput vertex_main(VertexInput input) {
@@ -244,16 +244,20 @@ PixelInput vertex_main(VertexInput input) {
     return output;
 }
 
+float2 projected(float3 uv) {
+    return uv.z == 0.0 ? clamp(uv.xy / 2.0, -1.0, 1.0) : uv.xy / uv.z;
+}
+
 float2 select_uv(PixelInput p, uint i) {
     switch (i) {
-    case 0: return p.uv0;
-    case 1: return p.uv1;
-    case 2: return p.uv2;
-    case 3: return p.uv3;
-    case 4: return p.uv4;
-    case 5: return p.uv5;
-    case 6: return p.uv6;
-    default: return p.uv7;
+    case 0: return projected(p.uv0);
+    case 1: return projected(p.uv1);
+    case 2: return projected(p.uv2);
+    case 3: return projected(p.uv3);
+    case 4: return projected(p.uv4);
+    case 5: return projected(p.uv5);
+    case 6: return projected(p.uv6);
+    default: return projected(p.uv7);
     }
 }
 
@@ -407,8 +411,8 @@ struct PixelOutput {
 };
 
 PixelOutput pixel_main(PixelInput p) {
-    float2 gradient_x[8] = {ddx(p.uv0), ddx(p.uv1), ddx(p.uv2), ddx(p.uv3), ddx(p.uv4), ddx(p.uv5), ddx(p.uv6), ddx(p.uv7)};
-    float2 gradient_y[8] = {ddy(p.uv0), ddy(p.uv1), ddy(p.uv2), ddy(p.uv3), ddy(p.uv4), ddy(p.uv5), ddy(p.uv6), ddy(p.uv7)};
+    float2 gradient_x[8] = {ddx(projected(p.uv0)), ddx(projected(p.uv1)), ddx(projected(p.uv2)), ddx(projected(p.uv3)), ddx(projected(p.uv4)), ddx(projected(p.uv5)), ddx(projected(p.uv6)), ddx(projected(p.uv7))};
+    float2 gradient_y[8] = {ddy(projected(p.uv0)), ddy(projected(p.uv1)), ddy(projected(p.uv2)), ddy(projected(p.uv3)), ddy(projected(p.uv4)), ddy(projected(p.uv5)), ddy(projected(p.uv6)), ddy(projected(p.uv7))};
     int4 k[4] = {quantized(konst[0]), quantized(konst[1]), quantized(konst[2]), quantized(konst[3])};
     int4 r[4] = {quantized(initial[0]), quantized(initial[1]), quantized(initial[2]), quantized(initial[3])};
     int4 c0 = quantized(p.c0);
@@ -676,6 +680,10 @@ struct Device {
     ID3D11RenderTargetView* frame_target = nullptr;
     ID3D11Texture2D* frame = nullptr;
     ID3D11ShaderResourceView* frame_view = nullptr;
+    ID3D11Texture2D* write_back = nullptr;
+    ID3D11ShaderResourceView* write_back_view = nullptr;
+    ID3D11RenderTargetView* write_back_target = nullptr;
+    ID3D11Texture2D* write_back_staging = nullptr;
     uint32_t frame_width = 0;
     uint32_t frame_height = 0;
     IDXGISwapChain1* swapchain = nullptr;
@@ -819,7 +827,7 @@ bool create_pipeline() {
             {"COLOR", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
         for (UINT i = 0; i < 8; i++) {
-            elements.push_back({"TEXCOORD", i, DXGI_FORMAT_R32G32_FLOAT, 0, 48 + 8 * i, D3D11_INPUT_PER_VERTEX_DATA, 0});
+            elements.push_back({"TEXCOORD", i, DXGI_FORMAT_R32G32B32_FLOAT, 0, 48 + 12 * i, D3D11_INPUT_PER_VERTEX_DATA, 0});
         }
         ok = SUCCEEDED(g_device.device->CreateInputLayout(elements.data(), static_cast<UINT>(elements.size()), vertex_code->GetBufferPointer(),
                                                          vertex_code->GetBufferSize(), &g_device.layout));
@@ -1908,7 +1916,113 @@ bool create_copy_texture(ID3D11Texture2D*& texture, ID3D11ShaderResourceView*& v
            SUCCEEDED(g_device.device->CreateRenderTargetView(texture, nullptr, &target));
 }
 
-void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha,
+uint32_t copy_texture_format(uint32_t format) {
+    static constexpr uint32_t kFormats[13] = {0, 1, 2, 3, 4, 5, 6, 1, 1, 1, 1, 3, 3};
+    return kFormats[format];
+}
+
+uint32_t scale_bits(uint32_t value, int bits) {
+    return (value * ((1u << bits) - 1) + 127) / 255;
+}
+
+void encode_texel(uint8_t* block, uint32_t format, uint32_t index, const uint8_t* rgba) {
+    uint32_t r = rgba[0];
+    uint32_t g = rgba[1];
+    uint32_t b = rgba[2];
+    uint32_t a = rgba[3];
+    auto put16 = [&](uint32_t offset, uint32_t value) {
+        block[offset] = static_cast<uint8_t>(value >> 8);
+        block[offset + 1] = static_cast<uint8_t>(value);
+    };
+    switch (format) {
+    case 0: {
+        uint8_t& byte = block[index / 2];
+        uint32_t nibble = scale_bits(r, 4);
+        byte = (index & 1) ? static_cast<uint8_t>((byte & 0xF0) | nibble) : static_cast<uint8_t>((byte & 0x0F) | (nibble << 4));
+        break;
+    }
+    case 1:
+        block[index] = static_cast<uint8_t>(r);
+        break;
+    case 2:
+        block[index] = static_cast<uint8_t>((scale_bits(a, 4) << 4) | scale_bits(r, 4));
+        break;
+    case 3:
+        block[index * 2] = static_cast<uint8_t>(a);
+        block[index * 2 + 1] = static_cast<uint8_t>(r);
+        break;
+    case 4:
+        put16(index * 2, (scale_bits(r, 5) << 11) | (scale_bits(g, 6) << 5) | scale_bits(b, 5));
+        break;
+    case 5: {
+        uint32_t alpha = scale_bits(a, 3);
+        put16(index * 2, alpha == 7 ? 0x8000 | (scale_bits(r, 5) << 10) | (scale_bits(g, 5) << 5) | scale_bits(b, 5)
+                                    : (alpha << 12) | (scale_bits(r, 4) << 8) | (scale_bits(g, 4) << 4) | scale_bits(b, 4));
+        break;
+    }
+    default:
+        block[index * 2] = static_cast<uint8_t>(a);
+        block[index * 2 + 1] = static_cast<uint8_t>(r);
+        block[32 + index * 2] = static_cast<uint8_t>(g);
+        block[32 + index * 2 + 1] = static_cast<uint8_t>(b);
+        break;
+    }
+}
+
+bool write_copy_to_ram(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
+                       bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
+    if (!g_device.write_back) {
+        if (!create_copy_texture(g_device.write_back, g_device.write_back_view, g_device.write_back_target, kEfbWidth, kEfbHeight)) {
+            return false;
+        }
+        D3D11_TEXTURE2D_DESC description{};
+        g_device.write_back->GetDesc(&description);
+        description.BindFlags = 0;
+        description.Usage = D3D11_USAGE_STAGING;
+        description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &g_device.write_back_staging))) {
+            return false;
+        }
+    }
+    uint32_t texture_format = copy_texture_format(format);
+    Layout layout = layout_for(texture_format);
+    uint32_t blocks_x = (logical_width + layout.block_width - 1) / layout.block_width;
+    uint32_t blocks_y = (logical_height + layout.block_height - 1) / layout.block_height;
+    uint32_t row_bytes = stride * 32;
+    uint32_t bytes = block_bytes(texture_format);
+    if (blocks_x * bytes > row_bytes || !guest_range_valid(address, static_cast<size_t>(blocks_y - 1) * row_bytes + blocks_x * bytes)) {
+        return false;
+    }
+    if (!run_copy(g_device.write_back_target, logical_width, logical_height, x, y, width, height, format, intensity, alpha, depth, filter)) {
+        return false;
+    }
+    D3D11_BOX box{0, 0, 0, logical_width, logical_height, 1};
+    g_device.context->CopySubresourceRegion(g_device.write_back_staging, 0, 0, 0, 0, g_device.write_back, 0, &box);
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    if (FAILED(g_device.context->Map(g_device.write_back_staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+        return false;
+    }
+    const uint8_t* pixels = static_cast<const uint8_t*>(mapped.pData);
+    uint8_t block[64];
+    for (uint32_t by = 0; by < blocks_y; by++) {
+        uint8_t* row = host(address + by * row_bytes);
+        for (uint32_t bx = 0; bx < blocks_x; bx++) {
+            std::memset(block, 0, sizeof block);
+            for (uint32_t ty = 0; ty < layout.block_height; ty++) {
+                uint32_t py = std::min(by * layout.block_height + ty, logical_height - 1);
+                for (uint32_t tx = 0; tx < layout.block_width; tx++) {
+                    uint32_t px = std::min(bx * layout.block_width + tx, logical_width - 1);
+                    encode_texel(block, texture_format, ty * layout.block_width + tx, pixels + static_cast<size_t>(py) * mapped.RowPitch + px * 4);
+                }
+            }
+            std::memcpy(row + bx * bytes, block, bytes);
+        }
+    }
+    g_device.context->Unmap(g_device.write_back_staging, 0);
+    return true;
+}
+
+void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha,
                      const CopyFilter& filter) {
     if (!initialize()) {
         return;
@@ -1956,6 +2070,7 @@ void copy_to_texture(uint32_t address, int x, int y, int width, int height, bool
         return;
     }
     entry.view = entry.converted_view;
+    write_copy_to_ram(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter);
     entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
     entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
     dump_copy(entry);

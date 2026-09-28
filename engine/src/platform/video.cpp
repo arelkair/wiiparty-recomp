@@ -481,13 +481,14 @@ void present_on_gpu(HWND window, double aspect) {
     }
     static int frames = 0;
     const char* save = std::getenv("WP_SAVE_FRAME");
-    if (save && ++frames % 100 == 0) {
+    static const int every = std::getenv("WP_SAVE_EVERY") ? std::atoi(std::getenv("WP_SAVE_EVERY")) : 100;
+    if (save && ++frames % every == 0) {
         std::vector<uint32_t> pixels;
         uint32_t width = 0;
         uint32_t height = 0;
         if (gx::render::read_frame(pixels, width, height)) {
             char path[512];
-            std::snprintf(path, sizeof path, save, frames / 100);
+            std::snprintf(path, sizeof path, save, frames / every);
             save_png(path, pixels, width, height);
         }
     }

@@ -556,6 +556,8 @@ void test_gx_line_point_offsets() {
     ScreenVertex vertex{};
     vertex.uv[0][0] = 0.5f;
     vertex.uv[2][1] = 0.25f;
+    vertex.uv[0][2] = 1.0f;
+    vertex.uv[2][2] = 1.0f;
     offset_texture_coordinates(vertex, 5, 0.125f, 0.5f);
     CHECK(vertex.uv[0][0] == 0.625f && vertex.uv[0][1] == 0.5f);
     CHECK(vertex.uv[1][0] == 0.0f && vertex.uv[1][1] == 0.0f);

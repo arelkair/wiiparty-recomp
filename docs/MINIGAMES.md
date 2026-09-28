@@ -33,12 +33,12 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Bolas de choque | OK | |
 | Tópate al topo | OK | |
 | La estrella de la pista | OK | |
-| ¡Puños fuera! | Graphics | The water looks wrong: light at the start, then dark. 50 fps |
-| Carrera galáctica | Graphics | Blue or dark blue texture errors on the space background for about one second. 50 fps |
-| Fotos perrunas | To check | In the results, some photos (for example the bottom-left player's) are black with interference. Possibly a CPU player's bad photo rather than a rendering fault |
+| ¡Puños fuera! | OK | Water fixed on 2026-09-28 (projective texture coordinates divided per pixel) |
+| Carrera galáctica | OK | Confirmed by the user on 2026-09-28 after the texture fixes; was: Blue or dark blue texture errors on the space background for about one second. 50 fps |
+| Fotos perrunas | OK | Black photos with interference fixed on 2026-09-28 (EFB copies written to RAM) |
 | Paso a paso | OK | |
 | Saltos selváticos | OK | Mii faces fixed on 2026-09-28 (texture cache invalidation) |
-| Bebés llorones | Input | After switching windows at the end, clicks were no longer detected |
+| Bebés llorones | OK | Confirmed by the user on 2026-09-28; was: After switching windows at the end, clicks were no longer detected |
 | Como pez en el agua | OK | |
 | Mii a la carta | OK | |
 | Pirotecnia al azar | OK | |
@@ -105,7 +105,7 @@ Played by the user on 2026-09-28 with build 2609-002 (v0.1.1-alpha): 22 pair min
 
 ## Summary
 
-Every minigame in every Free Play list (4 players, 1 vs 3, 1 vs 1 and pairs) has been played by hand: 79 entries, 75 without faults. Open faults: graphics in ¡Puños fuera! and Carrera galáctica; input in Bebés llorones; Fotos perrunas to check.
+Every minigame in every Free Play list (4 players, 1 vs 3, 1 vs 1 and pairs) has been played by hand: 79 entries, all 79 without faults (confirmed by the user on 2026-09-28).
 
 Every game mode has also been entered and tried by hand (not full games) without faults (2026-09-28).
 

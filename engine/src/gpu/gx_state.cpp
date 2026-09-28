@@ -173,8 +173,8 @@ bool line_offset_negative_side(float dx, float dy, bool tall) {
 void offset_texture_coordinates(ScreenVertex& vertex, uint32_t coordinates, float s, float t) {
     for (uint32_t i = 0; i < 8; i++) {
         if (coordinates & (1u << i)) {
-            vertex.uv[i][0] += s;
-            vertex.uv[i][1] += t;
+            vertex.uv[i][0] += s * vertex.uv[i][2];
+            vertex.uv[i][1] += t * vertex.uv[i][2];
         }
     }
 }

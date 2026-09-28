@@ -854,3 +854,18 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Fix: the "already checked" mark is now an epoch that advances at every frame and at every write of BP `0x66`, as TMEM is reloaded from RAM on hardware after an invalidation. `gx.cpp` calls the new `render::invalidate_textures()`.
 - Result: the CPU Miis in the lineup show their own faces (for example Julie blonde with red lips, Haru with a female face). The lineup still runs at 60 fps with about 70% guest idle time. The user confirmed ¡Canastas!, Las puertas del pánico, Saltos selváticos, Bote a bote and the guest Miis. Free Play: 75 of 79 entries without faults.
 - Also recorded from the user's tests: every game mode was entered and tried (not full games) without faults, and the + and - scrolling sound matches Dolphin.
+
+## Projective texture coordinates divided per pixel (2026-09-28)
+
+- ¡Puños fuera!: the water is drawn with a copy of the underwater scene (`EFB copy` 320x240 RGB565) projected onto a large plane with a projective texture matrix (`XF 0x1042`, STQ). `generate_texture_coordinates` in `engine/src/gpu/gx.cpp` divided s and t by q at each vertex, so the plane, whose vertices lie far behind the camera, got wildly wrong coordinates (values above 100) and showed clamped edge streaks instead of the seabed. The hardware interpolates s, t and q and divides at each pixel.
+- Change: `ScreenVertex::uv` holds s, t and q; the input layout passes three floats per coordinate and the pixel shader divides (`projected()`, with the old q = 0 rule kept on the CPU side); line and point offsets are scaled by q; the capture log prints q. `runtime_tests` updated for the three-component coordinate.
+- Result: the water shows the corals and seabed like the game's own preview picture; 60 fps.
+- Carrera galáctica: its background flashes were not seen in a scripted run saved every 10 frames through the whole race (about 1000 frames checked for sudden colour changes). Probably fixed by this change or the texture cache fix; the user confirmed it plays without flashes.
+
+## EFB copies written to guest RAM (2026-09-28)
+
+- Fotos perrunas: each photo is an EFB copy (320x240 RGB565) to its own buffer. In the results the game changes part of that memory afterwards, so `texture_for` rejected the GPU copy ("hash changed") and read RAM, which never held the photo: a black picture with cyan lines for a moment. On hardware the copy is written to RAM.
+- Change: `copy_to_texture` now also renders the copy at 1x into a scratch target, reads it back and encodes it into guest RAM in the texture format the copy produces (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8; R8/G8/B8/A8 as I8, RG8/GB8 as IA8), in 4x4, 8x4 or 8x8 blocks with the destination stride from BP `0x4D`. The guest hash is taken after the write, so an unchanged buffer still uses the full-resolution GPU copy, and a buffer the game changes afterwards is decoded from the real data. `gx.cpp` passes the stride.
+- Result: the photos appear correctly through the whole result sequence (frames saved every 20 frames). Fotos perrunas and ¡Puños fuera! stay at about 60 fps; no measurable change in GPU thread time.
+- Developer option: `WP_SAVE_EVERY` sets how often `WP_SAVE_FRAME` saves a frame (default every 100 frames).
+- Bebés llorones (clicks lost after switching windows) could not be reproduced without a window; the input code has changed since the report (focus handling, reconnect on pointer), and the user confirmed it now works. The user also confirmed ¡Puños fuera! and Fotos perrunas: all 79 Free Play entries play without faults.

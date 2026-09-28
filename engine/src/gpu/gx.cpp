@@ -453,7 +453,7 @@ void transform_position(const Vertex& vertex, float* eye) {
     }
 }
 
-void generate_texture_coordinates(const Vertex& vertex, float out[8][2]) {
+void generate_texture_coordinates(const Vertex& vertex, float out[8][3]) {
     uint32_t count = g_bp[0x00] & 15;
     bool dual = (g_xf[0x1012] & 1) != 0;
     for (uint32_t i = 0; i < count && i < kTexCoordCount; i++) {
@@ -509,12 +509,11 @@ void generate_texture_coordinates(const Vertex& vertex, float out[8][2]) {
         if (coord[2] == 0.0f) {
             coord[0] = std::clamp(coord[0] / 2.0f, -1.0f, 1.0f);
             coord[1] = std::clamp(coord[1] / 2.0f, -1.0f, 1.0f);
-        } else {
-            coord[0] /= coord[2];
-            coord[1] /= coord[2];
+            coord[2] = 1.0f;
         }
         out[i][0] = coord[0];
         out[i][1] = coord[1];
+        out[i][2] = coord[2];
     }
 }
 
@@ -728,7 +727,7 @@ void capture_draw(uint8_t command, uint32_t count, size_t triangles, const Layou
             }
         }
         for (uint32_t t = 0; t < texgens && t < kTexCoordCount; t++) {
-            std::fprintf(g_capture, " uv%u=(%g %g) mtx%u=%u", t, s.uv[t][0], s.uv[t][1], t, v.texture_matrix[t]);
+            std::fprintf(g_capture, " uv%u=(%g %g %g) mtx%u=%u", t, s.uv[t][0], s.uv[t][1], s.uv[t][2], t, v.texture_matrix[t]);
         }
         std::fputc(10, g_capture);
     }
@@ -959,7 +958,7 @@ void execute_copy(uint32_t value) {
         uint32_t address = kRamBase | ((g_bp[0x4B] & 0xFFFFFF) << 5);
         uint32_t coded = (value >> 3) & 15;
         uint32_t format = coded / 2 + (coded & 1) * 8;
-        render::copy_to_texture(address, x, y, width, height, (value & (1u << 9)) != 0, format, (value & (1u << 15)) != 0, (g_bp[0x43] & 7) == kPixelFormatZ24,
+        render::copy_to_texture(address, g_bp[0x4D] & 0x3FF, x, y, width, height, (value & (1u << 9)) != 0, format, (value & (1u << 15)) != 0, (g_bp[0x43] & 7) == kPixelFormatZ24,
                                 (g_bp[0x43] & 7) == kPixelFormatRgba6Z24, copy_filter(value));
     }
     if (value & kCopyClear) {
