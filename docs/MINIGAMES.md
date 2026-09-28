@@ -37,7 +37,7 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Carrera galáctica | Graphics | Blue or dark blue texture errors on the space background for about one second. 50 fps |
 | Fotos perrunas | To check | In the results, some photos (for example the bottom-left player's) are black with interference. Possibly a CPU player's bad photo rather than a rendering fault |
 | Paso a paso | OK | |
-| Saltos selváticos | Graphics | Every Mii's face looks completely different (other eyes) in this minigame |
+| Saltos selváticos | OK | Mii faces fixed on 2026-09-28 (texture cache invalidation) |
 | Bebés llorones | Input | After switching windows at the end, clicks were no longer detected |
 | Como pez en el agua | OK | |
 | Mii a la carta | OK | |
@@ -66,7 +66,7 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Sintonízate | OK | |
 | ¡A por la bandera! | OK | |
 | ¡Árbol va! | OK | |
-| Bote a bote | Graphics | The Miis had a different facial expression during play |
+| Bote a bote | OK | Mii faces fixed on 2026-09-28 (texture cache invalidation) |
 | Laberinto inclinable | OK | |
 | Pizza a domicilio | OK | |
 | Tiradores de élite | OK | |
@@ -81,14 +81,14 @@ Played by the user on 2026-09-28 with build 2609-002 (v0.1.1-alpha): 22 pair min
 | Minigame | Result | Notes |
 | --- | --- | --- |
 | Lluvia de frutas | OK | |
-| ¡Canastas! | Mii face | Plays correctly; the Mii icons at the top show different faces (the user's Mii has lips it does not have) |
+| ¡Canastas! | OK | Mii icons fixed on 2026-09-28 (texture cache invalidation) |
 | ¡Explotad los globos! | OK | |
 | Ensamblaje robótico | OK | |
 | El puente movedizo | OK | |
 | La bici voladora | OK | |
 | Río abajo | OK | |
 | Ovejas descarriadas | OK | |
-| Las puertas del pánico | Mii face | Plays correctly; the user's Mii has lips in game |
+| Las puertas del pánico | OK | Mii face fixed on 2026-09-28 (texture cache invalidation) |
 | La casa encantada | OK | |
 | Pesca sincronizada | OK | |
 | Huida en vagoneta | OK | |
@@ -105,12 +105,14 @@ Played by the user on 2026-09-28 with build 2609-002 (v0.1.1-alpha): 22 pair min
 
 ## Summary
 
-Every minigame in every Free Play list (4 players, 1 vs 3, 1 vs 1 and pairs) has been played by hand: 79 entries, 71 without faults. Open faults: graphics in ¡Puños fuera!, Carrera galáctica, Saltos selváticos and Bote a bote; Mii faces in ¡Canastas! and Las puertas del pánico; input in Bebés llorones; Fotos perrunas to check.
+Every minigame in every Free Play list (4 players, 1 vs 3, 1 vs 1 and pairs) has been played by hand: 79 entries, 75 without faults. Open faults: graphics in ¡Puños fuera! and Carrera galáctica; input in Bebés llorones; Fotos perrunas to check.
+
+Every game mode has also been entered and tried by hand (not full games) without faults (2026-09-28).
 
 ## Other observations
 
 - Moving the game window feels laggy.
 
-- Some menu sounds may not match the original: in the Free Play 4-player minigame list, the + and - buttons (scrolling) seem to play the same click as many other buttons (such as Start), while the user believes they should sound different. Reported again on 2026-09-28. Not yet compared with Dolphin.
-- Mii faces: the user's Mii shows lips it does not have, in the HUD icons of ¡Canastas! and in game in Las puertas del pánico; Saltos selváticos and Bote a bote also change faces. Probably one shared fault in how Mii face parts (mouth, eyes, eyebrows) are chosen or drawn. Some female guest Miis look masculine. Abby, described by Mii wikis as blonde with blue eyes and slim eyebrows, showed brown hair and marked eyebrows in the Mii selection. Not yet compared with Dolphin.
+- Menu sounds: the + and - scrolling sound in the Free Play minigame list matches Dolphin (checked by the user on 2026-09-28).
+- Mii faces: the user's Mii shows lips it does not have, in the HUD icons of ¡Canastas! and in game in Las puertas del pánico; Saltos selváticos and Bote a bote also change faces. Probably one shared fault in how Mii face parts (mouth, eyes, eyebrows) are chosen or drawn. Some female guest Miis look masculine. Abby, described by Mii wikis as blonde with blue eyes and slim eyebrows, showed brown hair and marked eyebrows in the Mii selection. Dolphin shows every face correctly (checked by the user on 2026-09-28); the large 3D faces in the Mii selection are also right in our build. Cause found on 2026-09-28: the texture cache ignored the game's texture memory invalidation within a frame, so faces made in the same frame reused the parts (eyes, eyebrows, mouth) of another Mii. Fixed and confirmed by the user in these minigames.
 - The cursor leaves a trail, also in menus. Whether the game draws it is not yet known.

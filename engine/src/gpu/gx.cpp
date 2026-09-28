@@ -40,6 +40,7 @@ constexpr uint8_t kCommandDrawMask = 0x80;
 constexpr uint32_t kBpMask = 0xFE;
 constexpr uint32_t kBpCopyExecute = 0x52;
 constexpr uint32_t kBpLoadTlut = 0x65;
+constexpr uint32_t kBpInvalidateTexture = 0x66;
 constexpr uint32_t kCpFifoBaseLow = 0xCC000020;
 constexpr uint32_t kCpFifoBaseHigh = 0xCC000022;
 constexpr uint32_t kPiFifoBase = 0xCC00300C;
@@ -990,6 +991,8 @@ void load_bp(uint32_t word) {
         g_finish_pending = true;
     } else if (reg == kBpCopyExecute) {
         execute_copy(g_bp[reg]);
+    } else if (reg == kBpInvalidateTexture) {
+        render::invalidate_textures();
     } else if (reg == kBpLoadTlut) {
         uint32_t address = kRamBase | ((g_bp[0x64] & 0xFFFFFF) << 5);
         render::load_tlut(address, (g_bp[reg] & 0x3FF) << 9, ((g_bp[reg] >> 10) & 0x7FF) << 5);

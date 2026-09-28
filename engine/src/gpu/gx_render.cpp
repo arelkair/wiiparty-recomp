@@ -626,7 +626,7 @@ struct CachedTexture {
     uint32_t height = 0;
     uint32_t format = 0;
     uint32_t levels = 0;
-    uint64_t verified_frame = ~0ull;
+    uint64_t verified_epoch = ~0ull;
     bool mipmaps = false;
     bool custom = false;
 };
@@ -736,6 +736,7 @@ bool g_log_gx = std::getenv("WP_LOG_GX") != nullptr;
 bool g_logged_palette = false;
 bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
+uint64_t g_texture_epoch = 0;
 uint8_t g_tlut[kTlutSize];
 int g_scale = 1;
 uint32_t g_vertex_cursor = kVertexCapacity;
@@ -1286,7 +1287,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         }
         return texture.view;
     };
-    if (entry.view && entry.verified_frame == g_frame && entry.width == width && entry.height == height && entry.format == format &&
+    if (entry.view && entry.verified_epoch == g_texture_epoch && entry.width == width && entry.height == height && entry.format == format &&
         entry.levels == levels && entry.mipmaps == mipmaps) {
         return use(entry);
     }
@@ -1296,7 +1297,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     }
     if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format && entry.levels == levels &&
         entry.mipmaps == mipmaps) {
-        entry.verified_frame = g_frame;
+        entry.verified_epoch = g_texture_epoch;
         return use(entry);
     }
     flush_pending();
@@ -1310,7 +1311,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         entry.format = format;
         entry.levels = levels;
         entry.mipmaps = mipmaps;
-        entry.verified_frame = g_frame;
+        entry.verified_epoch = g_texture_epoch;
         return use(entry);
     };
     bool named = layout.supported && copied == g_device.copies.end() && (g_pack.dump || g_pack.load);
@@ -1793,6 +1794,10 @@ bool guest_range_valid(uint32_t address, size_t size) {
     return static_cast<size_t>(address & kAddressMask) + size <= kPhysicalSize;
 }
 
+void invalidate_textures() {
+    g_texture_epoch++;
+}
+
 void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes) {
     tmem_offset &= kTlutMask;
     bytes = std::min(bytes, kTlutSize - tmem_offset);
@@ -1962,6 +1967,7 @@ void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const 
     }
     flush_pending();
     g_frame++;
+    g_texture_epoch++;
     x = std::max(0, x);
     y = std::max(0, y);
     width = std::min(width, kEfbWidth - x);
