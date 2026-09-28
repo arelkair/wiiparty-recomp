@@ -4,19 +4,31 @@
   "system": "Wii",
   "type": "recomp",
   "original": {
-    "region": "PAL"
+    "region": "Europe",
+    "serial": "SUPP01"
   },
   "project": "Wii Party Recomp",
   "status": "playable",
   "targets": [
     "Windows"
   ],
-  "approach": "Static recompilation, custom Direct3D 11 renderer",
+  "approach": "Static recompilation of the PowerPC code to C++, with the game and SDK code running translated over reimplemented hardware (Direct3D 11 GPU, recompiled DSP audio, Bluetooth, IOS)",
   "maintainers": [
     {
       "name": "arelkair",
       "link": "https://github.com/arelkair"
     }
   ],
-  "notes": "Native C++ static recompilation of Wii Party for Windows. The project currently reaches the title screen, main menu and Board Game Island, with core game logic running. A custom HLE runtime reimplements relevant Wii SDK functionality, while a custom Direct3D 11 renderer handles GX graphics. Audio, input, graphics compatibility and other platform-specific functionality remain under development."
+  "help": [
+    "Testing on macOS",
+    "Testing on Linux",
+    "Testing the install on different PCs",
+    "Checking minigames and reporting faults"
+  ],
+  "tags": [
+    "wii",
+    "powerpc",
+    "static-recompilation"
+  ],
+  "notes": "Alpha (v0.1.1). The main executable and all 115 code modules are translated to C++ and build into one native Windows program; the game's own audio microcode is recompiled too. A full game of Board Game Island plays from start to finish, and 50 of 56 Free Play minigames checked by hand show no faults. Runs at 60 fps (PAL60) at up to 6x resolution with keyboard, mouse and up to four gamepads. A single-file launcher builds the game from the user's own disc in about 10 minutes. Next: the pair minigames and remaining modes, graphics faults in a few minigames, then Linux."
 }
