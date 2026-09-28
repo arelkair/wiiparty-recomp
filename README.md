@@ -3,47 +3,105 @@
 Static recompilation of Wii Party for native PC.
 
 > [!NOTE]
-> **Project Status:** The game successfully boots, reaches menus, and runs complete game sessions. Progress is estimated at **79%** overall. For full details, see the referenced documentation.
+> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and Free Play minigames. Progress is estimated at **80%** overall.
 
 ![Project progress](docs/progress.svg)
+
+**[Download the latest release](https://github.com/arelkair/wiiparty-recomp/releases/latest)** · Windows 10 and 11 (64-bit)
 
 ---
 
 ## Overview
 
-Wii Party Recomp translates original Wii executable binary code directly into native, statically-compiled C++ source code for high performance on PC without traditional software emulation layers.
+Wii Party Recomp translates the game's PowerPC code into C++ and compiles it into a native Windows program. The game and Nintendo SDK code run translated; only what depends on the console hardware is replaced, and the hardware itself (GPU, DSP audio, Bluetooth, IOS, disc and NAND) is reimplemented underneath. The game's own audio microcode is recompiled too.
+
+No game files are distributed. The launcher builds the game on your PC from your own copy of the disc.
 
 ---
 
 ## Current State & Metrics
 
-The native executable runs stably on Windows at a locked **60 fps**, utilizing approximately 1.5 CPU threads and 200 MB of system RAM.
+The game runs at a locked **60 fps** (PAL60) at up to 6x the console's resolution, using about 1.5 CPU threads and 200 MB of RAM.
 
-### Core Progress Metrics
-Refer to `games/wiiparty/analysis/progress.csv` for tracked metrics:
+Tracked in `games/wiiparty/analysis/progress.csv`:
 
-| Component | Progress | Technical Foundation / Basis |
+| Component | Progress | Basis |
 | :--- | :--- | :--- |
-| **Recompilation Toolchain** | **95%** | DOL binary and all 115 REL modules translate and build. |
-| **System Runtime** | **91%** | OS, fibers, threads, and hardware interfaces function without blockers. |
-| **Graphics (GX to D3D11)** | **86%** | Menus, 3D lit Miis, and rendering pipelines. |
-| **Input System** | **66%** | Emulated Wii Remote via virtual Bluetooth. |
-| **Audio Pipeline** | **83%** | Recompiled DSP audio microcode. |
-| **Game Flow** | **80%** | Full matches and minigames execute smoothly. |
-| **PC Features** | **52%** | Qt launcher and options panels. |
+| **Recompilation Toolchain** | **95%** | The DOL and all 115 REL modules translate and build. |
+| **System Runtime** | **91%** | OS, threads, interrupts, IPC, DVD, NAND and Bluetooth work, with no known blockers. |
+| **Graphics (GX to D3D11)** | **86%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies. |
+| **Audio Pipeline** | **83%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music. |
+| **Game Flow** | **80%** | A full 17-round Board Game Island game; 50 of 56 Free Play minigames checked without faults. |
+| **Input System** | **66%** | Emulated Wii Remote over emulated Bluetooth; keyboard, mouse and up to four gamepads. |
+| **PC Features** | **56%** | Single-file launcher, in-game options menu (F10), key bindings, save backups, custom textures. |
+
+### Known Limitations
+
+- Pair minigames and the other modes are not fully checked yet; some minigames show graphics faults (see `docs/MINIGAMES.md`).
+- Some block artifacts on Mii faces at high resolutions.
+- Real Wii Remotes are not supported yet.
 
 ---
 
-## Feature Breakdown
+## Installing
 
-- **Static Translation & Emulation:** Compiles main binaries into a single native program and emulates Revolution OS and Direct3D 11 rendering.
-- **Limitations:** Minor block artifacts on high-resolution Mii renders and lack of support for physical Wii Remotes.
+1. Download `wiipartyrecomp-launcher.exe` from the [latest release](https://github.com/arelkair/wiiparty-recomp/releases/latest). It is the only file you need.
+2. Open it, check the install folder, choose your own copy of Wii Party (`.iso`, `.wbfs`, `.rvz`, `.ciso`, `.wia` or `.gcm`) and press **Install**.
+3. When it finishes, press **Play**.
+
+The launcher downloads any missing build tools from their official sites and checks each one against its published SHA-256. Nothing from the game is downloaded and nothing leaves your computer.
+
+| Requirement | |
+| :--- | :--- |
+| System | Windows 10 or 11, 64-bit |
+| Free space | About 5 GB |
+| Memory | 4 GB minimum, 8 GB or more recommended for the build |
+| Build time | About 10 minutes on a 6-core processor; longer on slower machines |
+
+The build runs once, at low priority, with as many parallel jobs as your memory allows. Updating to a newer launcher rebuilds the game and keeps your saves and settings.
 
 ---
 
-## Input Mappings & Controls
+## Controls
 
-Mappings support keyboard, mouse, and gamepads, and can be customized in `settings.ini`.
+Every key can be changed on the launcher's **Controls** page or in `games/wiiparty/settings.ini`. Up to four gamepads act as Wii Remotes 1 to 4, with gyroscope pointer, motion, rumble and player lights.
+
+| Wii Remote | Keyboard and mouse |
+| :--- | :--- |
+| Pointer | Mouse |
+| A / B | Left click, Enter or Space / Right click or Backspace |
+| 1 / 2 | 1 / 2 |
+| + / - / HOME | Plus / Minus / H |
+| D-pad | Arrow keys, W A S D |
+| Shake | Middle click or Left Shift |
+| Swing up / down | Mouse wheel, T / G |
+| Tilt | Q, E, R, F |
+| Upright or sideways grip | Tab |
+
+| PC key | Action |
+| :--- | :--- |
+| F9 | Screenshot to the `screenshots` folder |
+| F10 | Options menu over the game |
+| F11 | Full screen |
+| F12 | Frame capture for debugging |
+
+---
+
+## Roadmap
+
+| Stage | When it is reached |
+| :--- | :--- |
+| **Alpha** (current) | The game runs from start to finish, with known bugs and features still missing. |
+| **Beta** | Every mode and all 80 minigames are checked, including the pair minigames; no known crashes; the known graphics faults in `docs/MINIGAMES.md` are fixed; the install is tested on several different PCs. |
+| **1.0** | No known bugs, overall progress around 95%, and a period of use by players without serious problems. |
+
+Also planned: a Mii editor, ultrawide support and online play.
+
+### Platforms
+
+- **Windows 10 and 11:** supported.
+- **Linux:** planned. The translated code and most of the engine are portable; the renderer (Direct3D 11), the window and the thread switching still depend on Windows.
+- **macOS:** planned after Linux. **Help wanted:** if you have a Mac and would like to test builds in the future, please open an issue or a discussion.
 
 ---
 
@@ -52,35 +110,45 @@ Mappings support keyboard, mouse, and gamepads, and can be customized in `settin
 ```
 ├── engine/             # Core reusable Wii engine
 ├── recompiler/         # PowerPC & DSP static recompilation pipelines
-├── games/wiiparty/     # Wii Party configurations and analysis dumps
-├── launcher/           # Cross-platform Qt 6 installer and config manager
+├── games/wiiparty/     # Wii Party configuration and analysis
+├── launcher/           # Installer and settings (SDL3 + Dear ImGui)
 ├── tools/              # Developer scripts
 ├── tests/              # Test suites
-└── docs/               # Technical specs and progress markers
+└── docs/               # Technical notes and progress
 ```
 
 ---
 
+## Building from Source
 
-# Environment Setup & Installation
-
-### Step-by-Step Build Pipeline
+Requirements: Python 3.11+, CMake 3.20+, Ninja, a MinGW-w64 GCC 13+ and [nodtool](https://github.com/encounter/nod).
 
 ```bash
 nodtool extract games/wiiparty/disc/wiiparty.rvz games/wiiparty/extracted
+python tools/fetch_sdl.py
 python recompiler/unpack_rels.py
 python recompiler/recomp.py
+python recompiler/recomp_rel.py --all
+python recompiler/recomp.py
+python recompiler/dsp/recomp_dsp.py
 cmake -S . -B build/out -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/out
-```
-
-Run the compiled executable:
-```bash
+cmake --build build/out --target wiiparty
 ./build/out/wiiparty
 ```
+
+The launcher builds with the same compiler; CMake downloads its libraries:
+
+```bash
+cmake -S launcher -B build/launcher -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/launcher
+```
+
+Technical notes and the history of every change are in `docs/DECOMP_PROGRESS.md`. See `CONTRIBUTING.md` before opening a pull request.
 
 ---
 
 ## Legal & Licensing
 
 Independent project not affiliated with or endorsed by Nintendo. Users must supply their own legally obtained game files.
+
+Licensed under the GPL-3.0-or-later. Third-party code and libraries are listed in `THIRD_PARTY_NOTICES.md`.

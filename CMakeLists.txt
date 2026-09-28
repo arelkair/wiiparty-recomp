@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(WP_GAME "wiiparty" CACHE STRING "Game folder under games/ to build")
 set(WP_BUILD "2609-001" CACHE STRING "Build number shown in the window title")
 option(WP_TRACE "Record function entries for diagnostics" ON)
+set(WP_CODE_OPT "-O1" CACHE STRING "Optimization flag for the translated game code")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 

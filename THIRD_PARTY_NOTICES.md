@@ -70,9 +70,13 @@ These dependencies are dynamically linked during runtime or retrieved through au
 - **License:** **zlib License** (Fully compatible with GPL-3.0-or-later).
 - **Copyright:** Copyright (C) 1997-2026 Sam Lantinga.
 
-### Qt 6 Framework
-- **Usage Area:** Standalone desktop application launcher UI (`launcher/`).
-- **License:** **LGPL-3.0 / GPL-3.0** (Fully compatible with project terms when dynamically linked).
+### Launcher Libraries (`launcher/`)
+The launcher is a single static executable. CMake downloads each library below at configure time and checks its published SHA-256; none of them is stored in this repository. The launcher's Licenses page shows every license text.
+- **SDL 3.4.16:** window, input, file dialogs and rendering, linked statically. **zlib License**. Copyright (C) 1997-2026 Sam Lantinga.
+- **Dear ImGui 1.92.9b:** user interface. **MIT License**. Copyright (c) 2014-2026 Omar Cornut.
+- **Inter 4.1 (Regular and SemiBold):** embedded font. **SIL Open Font License 1.1**. Copyright (c) 2016 The Inter Project Authors.
+- **mingw-w64 winpthreads:** threading runtime of the MinGW-w64 GCC toolchain, linked statically. **MIT-style license** (`launcher/licenses/winpthreads.txt`). Copyright (c) 2011 mingw-w64 project.
+- **GCC runtime libraries (libstdc++, libgcc):** linked statically. **GPL-3.0 with the GCC Runtime Library Exception 3.1** (`launcher/licenses/gcc-runtime-library-exception.txt`).
 
 ---
 

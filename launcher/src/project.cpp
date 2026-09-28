@@ -1,120 +1,116 @@
 #include "project.h"
 
-#include <QCoreApplication>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QRegularExpression>
+#include <SDL3/SDL.h>
+
+#include "embedded.h"
+#include "payload.h"
+#include "subprocess.h"
 
 namespace {
 
-QString find_root(const QString& start, const QString& game) {
-    QDir dir(start);
-    while (true) {
-        if (QFileInfo::exists(dir.filePath("games/" + game + "/game.toml"))) {
-            return dir.absolutePath();
+bool contains_game(const std::filesystem::path& folder) {
+    std::error_code error;
+    return std::filesystem::exists(folder / "games" / kGame / "game.toml", error);
+}
+
+bool search_up(std::filesystem::path folder, std::filesystem::path& root) {
+    while (!folder.empty()) {
+        if (contains_game(folder)) {
+            root = folder;
+            return true;
         }
-        if (!dir.cdUp()) {
-            return {};
+        std::filesystem::path parent = folder.parent_path();
+        if (parent == folder) {
+            break;
         }
+        folder = parent;
     }
-}
-
-QString read_title(const QString& toml) {
-    QFile file(toml);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return {};
-    }
-    static const QRegularExpression name(R"re(^\s*name\s*=\s*"([^"]*)")re", QRegularExpression::MultilineOption);
-    QRegularExpressionMatch match = name.match(QString::fromUtf8(file.readAll()));
-    return match.hasMatch() ? match.captured(1) : QString();
+    return false;
 }
 
 }
 
-Project Project::locate(const QString& game) {
-    Project project;
-    project.game_ = game;
-    project.root_ = find_root(QCoreApplication::applicationDirPath(), game);
-    if (project.root_.isEmpty()) {
-        project.root_ = find_root(QDir::currentPath(), game);
-    }
-    if (!project.root_.isEmpty()) {
-        project.title_ = read_title(project.game_folder() + "/game.toml");
-    }
-    if (project.title_.isEmpty()) {
-        project.title_ = game;
-    }
-    return project;
+std::filesystem::path Project::game_folder() const {
+    return root / "games" / kGame;
 }
 
-Project Project::at(const QString& root, const QString& game) {
-    Project project;
-    project.game_ = game;
-    project.root_ = QDir(root).absolutePath();
-    project.packaged_ = true;
-    project.title_ = read_title(project.game_folder() + "/game.toml");
-    if (project.title_.isEmpty()) {
-        project.title_ = read_title(":/source/games/" + game + "/game.toml");
-    }
-    if (project.title_.isEmpty()) {
-        project.title_ = game;
-    }
-    return project;
+std::filesystem::path Project::extracted_folder() const {
+    return game_folder() / "extracted";
 }
 
-bool Project::packaged() const {
-    return packaged_;
+std::filesystem::path Project::nand_folder() const {
+    return game_folder() / "nand";
 }
 
-bool Project::valid() const {
-    return !root_.isEmpty();
+std::filesystem::path Project::backups_folder() const {
+    return game_folder() / "backups";
 }
 
-QString Project::root() const {
-    return root_;
-}
-
-QString Project::game() const {
-    return game_;
-}
-
-QString Project::title() const {
-    return title_;
-}
-
-QString Project::game_folder() const {
-    return root_ + "/games/" + game_;
-}
-
-QString Project::extracted_folder() const {
-    return game_folder() + "/extracted";
-}
-
-QString Project::settings_file() const {
-    return game_folder() + "/settings.ini";
-}
-
-QString Project::nand_folder() const {
-    return game_folder() + "/nand";
-}
-
-QString Project::backups_folder() const {
-    return game_folder() + "/backups";
-}
-
-QString Project::executable() const {
-#ifdef Q_OS_WIN
-    return root_ + "/build/out/" + game_ + ".exe";
+std::filesystem::path Project::executable() const {
+#ifdef _WIN32
+    return root / "build" / "out" / (std::string(kGame) + ".exe");
 #else
-    return root_ + "/build/out/" + game_;
+    return root / "build" / "out" / kGame;
 #endif
 }
 
+std::string Project::settings_file() const {
+    return std::string("games/") + kGame + "/settings.ini";
+}
+
 bool Project::extracted() const {
-    return QFileInfo::exists(extracted_folder() + "/sys/main.dol");
+    std::error_code error;
+    return std::filesystem::exists(extracted_folder() / "sys" / "main.dol", error);
 }
 
 bool Project::built() const {
-    return QFileInfo::exists(executable());
+    std::error_code error;
+    return std::filesystem::exists(executable(), error);
+}
+
+bool Project::outdated() const {
+    return packaged && built() && stored_revision(root) != source_revision();
+}
+
+double Project::needed_gigabytes() const {
+    if (built()) {
+        return 1.0;
+    }
+    return extracted() ? 4.0 : 5.0;
+}
+
+double Project::free_gigabytes() const {
+    std::error_code error;
+    std::filesystem::path folder = root;
+    while (!folder.empty() && !std::filesystem::exists(folder, error)) {
+        std::filesystem::path parent = folder.parent_path();
+        if (parent == folder) {
+            break;
+        }
+        folder = parent;
+    }
+    std::filesystem::space_info info = std::filesystem::space(folder, error);
+    return error ? -1.0 : static_cast<double>(info.available) / (1024.0 * 1024.0 * 1024.0);
+}
+
+bool find_checkout(std::filesystem::path& root) {
+    const char* base = SDL_GetBasePath();
+    if (base && search_up(path_from(base), root)) {
+        return true;
+    }
+    std::error_code error;
+    return search_up(std::filesystem::current_path(error), root);
+}
+
+std::filesystem::path default_install_folder() {
+#ifdef _WIN32
+    std::string local = environment_value("LOCALAPPDATA");
+    if (!local.empty()) {
+        return path_from(local) / kInstallFolderName;
+    }
+#endif
+    char* data = SDL_GetPrefPath(nullptr, kInstallFolderName);
+    std::filesystem::path folder = data ? path_from(data) : std::filesystem::path(kInstallFolderName);
+    SDL_free(data);
+    return folder;
 }

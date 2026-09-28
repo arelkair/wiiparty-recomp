@@ -1,8 +1,8 @@
 #pragma once
 
-#include <QString>
-
-inline constexpr const char* kInstallFolderName = "WiiPartyRecomp";
+#include <filesystem>
+#include <string>
 
 bool payload_available();
-bool extract_payload(const QString& root, QString& message);
+std::string stored_revision(const std::filesystem::path& root);
+bool extract_payload(const std::filesystem::path& root, std::string& message);

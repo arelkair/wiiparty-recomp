@@ -1,29 +1,26 @@
 #pragma once
 
-#include <QList>
-#include <QProcessEnvironment>
-#include <QString>
+#include <filesystem>
+#include <string>
+#include <vector>
 
-#include "build_runner.h"
+#include "runner.h"
 
 struct ToolStatus {
-    QString name;
-    QString program;
-    QString path;
-    QString version;
+    std::string program;
+    std::string version;
     bool usable = false;
-    bool downloadable = false;
 };
 
 class Toolchain {
 public:
-    explicit Toolchain(QString folder);
+    explicit Toolchain(std::filesystem::path folder);
 
-    QList<ToolStatus> inspect() const;
-    QList<BuildStep> preparation(const QList<ToolStatus>& tools) const;
-    QProcessEnvironment environment() const;
-    QString python() const;
+    void add_to_path() const;
+    std::vector<ToolStatus> inspect() const;
+    std::vector<Step> preparation(const std::vector<ToolStatus>& tools) const;
+    std::string python() const;
 
 private:
-    QString folder_;
+    std::filesystem::path folder_;
 };

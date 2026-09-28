@@ -1,29 +1,27 @@
 #pragma once
 
-#include <QString>
+#include <filesystem>
+#include <string>
 
-class Project {
-public:
-    static Project locate(const QString& game);
-    static Project at(const QString& root, const QString& game);
+struct Project {
+    std::filesystem::path root;
+    bool packaged = false;
 
-    bool valid() const;
-    bool packaged() const;
-    QString root() const;
-    QString game() const;
-    QString title() const;
-    QString game_folder() const;
-    QString extracted_folder() const;
-    QString settings_file() const;
-    QString nand_folder() const;
-    QString backups_folder() const;
-    QString executable() const;
+    std::filesystem::path game_folder() const;
+    std::filesystem::path extracted_folder() const;
+    std::filesystem::path nand_folder() const;
+    std::filesystem::path backups_folder() const;
+    std::filesystem::path executable() const;
+    std::string settings_file() const;
     bool extracted() const;
     bool built() const;
-
-private:
-    QString root_;
-    QString game_;
-    QString title_;
-    bool packaged_ = false;
+    bool outdated() const;
+    double needed_gigabytes() const;
+    double free_gigabytes() const;
 };
+
+constexpr const char* kGame = "wiiparty";
+constexpr const char* kInstallFolderName = "WiiPartyRecomp";
+
+bool find_checkout(std::filesystem::path& root);
+std::filesystem::path default_install_folder();

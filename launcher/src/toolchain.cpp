@@ -1,13 +1,11 @@
 #include "toolchain.h"
 
-#include <QCryptographicHash>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QProcess>
-#include <QRegularExpression>
-#include <QStandardPaths>
+#include <cstdlib>
+#include <cstring>
+#include <regex>
 
+#include "subprocess.h"
+#include "sha256.h"
 #include "texts.h"
 
 namespace {
@@ -25,7 +23,7 @@ struct Package {
     const char* bin;
 };
 
-#ifdef Q_OS_WIN
+#ifdef _WIN32
 constexpr Package kPackages[] = {
     {"nodtool", "nodtool 1.4.4", "https://github.com/encounter/nod/releases/download/v1.4.4/nodtool-windows-x86_64.exe",
      "fb3203a68a59fa19ba9de0aa2f8c339396b6e4c5f9274d0858d302074cdedf8b", "nodtool.exe", Packaging::Single, "nodtool", "nodtool"},
@@ -39,35 +37,23 @@ constexpr Package kPackages[] = {
     {"g++", "MinGW-w64 GCC 15.2 (nuwen.net 20.0)", "https://nuwen.net/files/mingw/mingw-20.0.exe",
      "bce8bdaa095848561488d34fd80371a1f36eb0a590202eb534f32e026e5cd8ef", "mingw-20.0.exe", Packaging::SelfExtracting, "mingw", "mingw/MinGW/bin"},
 };
+constexpr const char* kPython = "python";
+constexpr const char* kCompiler = "g++";
 #else
-constexpr Package kPackages[1] = {};
+constexpr Package kPackages[] = {{nullptr, nullptr, nullptr, nullptr, nullptr, Packaging::Single, nullptr, nullptr}};
+constexpr const char* kPython = "python3";
+constexpr const char* kCompiler = "c++";
 #endif
 
 struct Requirement {
     const char* program;
-    QStringList arguments;
+    const char* argument;
     const char* pattern;
     int major;
     int minor;
 };
 
-QString python_name() {
-#ifdef Q_OS_WIN
-    return "python";
-#else
-    return "python3";
-#endif
-}
-
-QString compiler_name() {
-#ifdef Q_OS_WIN
-    return "g++";
-#else
-    return "c++";
-#endif
-}
-
-const Package* package_for(const QString& program) {
+const Package* package_for(const std::string& program) {
     for (const Package& package : kPackages) {
         if (package.program && program == package.program) {
             return &package;
@@ -76,151 +62,140 @@ const Package* package_for(const QString& program) {
     return nullptr;
 }
 
-QString run(const QString& program, const QStringList& arguments) {
-    QProcess process;
-    process.setProcessChannelMode(QProcess::MergedChannels);
-    process.start(program, arguments);
-    if (!process.waitForFinished(8000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-        process.kill();
-        return {};
-    }
-    return QString::fromLocal8Bit(process.readAll()).trimmed();
-}
-
-QString system_program(const char* name) {
-#ifdef Q_OS_WIN
-    return QDir(qEnvironmentVariable("SystemRoot", "C:/Windows")).filePath(QString("System32/") + name + ".exe");
+std::string system_program(const char* name) {
+#ifdef _WIN32
+    std::string root = environment_value("SystemRoot");
+    return utf8_of(path_from(root.empty() ? "C:/Windows" : root) / "System32" / (std::string(name) + ".exe"));
 #else
     return name;
 #endif
 }
 
-QString sha256_of(const QString& path) {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    hash.addData(&file);
-    return QString::fromLatin1(hash.result().toHex());
 }
 
-}
+Toolchain::Toolchain(std::filesystem::path folder) : folder_(std::move(folder)) {}
 
-Toolchain::Toolchain(QString folder) : folder_(std::move(folder)) {}
-
-QProcessEnvironment Toolchain::environment() const {
-    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    QStringList paths;
+void Toolchain::add_to_path() const {
+    std::vector<std::filesystem::path> folders;
     for (const Package& package : kPackages) {
         if (package.bin) {
-            paths << QDir::toNativeSeparators(folder_ + "/" + package.bin);
+            folders.push_back(folder_ / path_from(package.bin));
         }
     }
-    paths << environment.value("PATH");
-    environment.insert("PATH", paths.join(QDir::listSeparator()));
-    return environment;
+    prepend_path(folders);
 }
 
-QString Toolchain::python() const {
-    return python_name();
+std::string Toolchain::python() const {
+    return kPython;
 }
 
-QList<ToolStatus> Toolchain::inspect() const {
-    const QList<Requirement> requirements = {
-        {"nodtool", {"--version"}, R"(nodtool)", 0, 0},
-        {nullptr, {"--version"}, R"(Python (\d+)\.(\d+))", 3, 11},
-        {"cmake", {"--version"}, R"(cmake version (\d+)\.(\d+))", 3, 20},
-        {"ninja", {"--version"}, R"((\d+)\.(\d+))", 1, 10},
-        {nullptr, {"-dumpfullversion"}, R"((\d+)\.(\d+))", 13, 0},
+std::vector<ToolStatus> Toolchain::inspect() const {
+    const Requirement requirements[] = {
+        {"nodtool", "--version", R"(nodtool)", 0, 0},
+        {kPython, "--version", R"(Python (\d+)\.(\d+))", 3, 11},
+        {"cmake", "--version", R"(cmake version (\d+)\.(\d+))", 3, 20},
+        {"ninja", "--version", R"((\d+)\.(\d+))", 1, 10},
+        {kCompiler, "-dumpfullversion", R"((\d+)\.(\d+))", 13, 0},
     };
-    QStringList search = environment().value("PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts);
-    QList<ToolStatus> tools;
-    for (int i = 0; i < requirements.size(); i++) {
-        const Requirement& requirement = requirements[i];
+    std::vector<ToolStatus> tools;
+    for (const Requirement& requirement : requirements) {
         ToolStatus status;
-        status.program = requirement.program ? QString(requirement.program) : i == 1 ? python_name() : compiler_name();
-        status.name = status.program;
-        status.downloadable = package_for(status.program) != nullptr;
-        status.path = QStandardPaths::findExecutable(status.program, search);
-        if (status.path.isEmpty() || status.path.contains("WindowsApps", Qt::CaseInsensitive)) {
-            status.path.clear();
-            tools << status;
-            continue;
-        }
-        QString text = run(status.path, requirement.arguments);
-        QRegularExpressionMatch match = QRegularExpression(requirement.pattern).match(text);
-        if (!match.hasMatch()) {
-            tools << status;
-            continue;
-        }
-        status.version = match.captured(0);
-        bool numeric = match.lastCapturedIndex() >= 2;
-        int major = numeric ? match.captured(1).toInt() : 0;
-        int minor = numeric ? match.captured(2).toInt() : 0;
-        status.usable = major > requirement.major || (major == requirement.major && minor >= requirement.minor);
-#ifdef Q_OS_WIN
-        if (status.usable && i == 4) {
-            status.usable = run(status.path, {"-dumpmachine"}).contains("mingw32");
-        }
+        status.program = requirement.program;
+        std::string path = find_program(status.program);
+        std::smatch match;
+        std::string text = path.empty() ? std::string() : capture(path, {requirement.argument});
+        if (!text.empty() && std::regex_search(text, match, std::regex(requirement.pattern))) {
+            status.version = match.str(0);
+            int major = match.size() > 2 ? std::atoi(match.str(1).c_str()) : 0;
+            int minor = match.size() > 2 ? std::atoi(match.str(2).c_str()) : 0;
+            status.usable = major > requirement.major || (major == requirement.major && minor >= requirement.minor);
+#ifdef _WIN32
+            if (status.usable && std::strcmp(requirement.program, kCompiler) == 0) {
+                status.usable = capture(path, {"-dumpmachine"}).find("mingw32") != std::string::npos;
+            }
 #endif
-        tools << status;
+        }
+        tools.push_back(status);
     }
     return tools;
 }
 
-QList<BuildStep> Toolchain::preparation(const QList<ToolStatus>& tools) const {
+std::vector<Step> Toolchain::preparation(const std::vector<ToolStatus>& tools) const {
     const Texts& t = texts();
-    QList<BuildStep> steps;
-    QString downloads = folder_ + "/downloads";
+    std::vector<Step> steps;
+    std::filesystem::path downloads = folder_ / "downloads";
     for (const ToolStatus& tool : tools) {
         if (tool.usable) {
             continue;
         }
         const Package* package = package_for(tool.program);
         if (!package) {
-            QString program = tool.program;
-            steps << BuildStep{t.step_tool.arg(program), {}, {}, {}, [program](QString& message) {
-                                   message = texts().tool_unavailable.arg(program);
-                                   return false;
-                               }};
+            std::string program = tool.program;
+            Step step;
+            step.title = format(t.step_tool, program);
+            step.action = [program](std::string& message) {
+                message = format(texts().tool_unavailable, program);
+                return false;
+            };
+            steps.push_back(step);
             continue;
         }
-        QString archive = downloads + "/" + package->file;
-        QString destination = folder_ + "/" + package->folder;
-        QString name = package->name;
-        QString expected = package->sha256;
-        steps << BuildStep{t.step_download.arg(name), system_program("curl"), {"-L", "--fail", "--silent", "--show-error", "--create-dirs", "-o", archive, package->url}, {}, {}};
-        steps << BuildStep{t.step_verify.arg(name), {}, {}, {}, [archive, expected, destination](QString& message) {
-                               if (sha256_of(archive) != expected) {
-                                   QFile::remove(archive);
-                                   message = texts().hash_mismatch.arg(QFileInfo(archive).fileName());
-                                   return false;
-                               }
-                               QDir(destination).removeRecursively();
-                               QDir().mkpath(destination);
-                               return true;
-                           }};
+        std::filesystem::path archive = downloads / package->file;
+        std::filesystem::path destination = folder_ / package->folder;
+        std::string name = package->name;
+        std::string expected = package->sha256;
+        Step download;
+        download.title = format(t.step_download, name);
+        download.program = system_program("curl");
+        download.arguments = {"-L", "--fail", "--silent", "--show-error", "--create-dirs", "-o", utf8_of(archive), package->url};
+        download.weight = 2.0f;
+        steps.push_back(download);
+        Step verify;
+        verify.title = format(t.step_verify, name);
+        verify.action = [archive, expected, destination](std::string& message) {
+            std::error_code error;
+            if (sha256_of(archive) != expected) {
+                std::filesystem::remove(archive, error);
+                message = format(texts().hash_mismatch, utf8_of(archive.filename()));
+                return false;
+            }
+            std::filesystem::remove_all(destination, error);
+            std::filesystem::create_directories(destination, error);
+            return true;
+        };
+        steps.push_back(verify);
+        Step unpack;
+        unpack.title = format(t.step_install, name);
         switch (package->packaging) {
         case Packaging::Archive:
-            steps << BuildStep{t.step_install.arg(name), system_program("tar"), {"-xf", archive, "-C", destination}, {}, {}};
+            unpack.program = system_program("tar");
+            unpack.arguments = {"-xf", utf8_of(archive), "-C", utf8_of(destination)};
             break;
         case Packaging::SelfExtracting:
-            steps << BuildStep{t.step_install.arg(name), archive, {"-y", "-o" + QDir::toNativeSeparators(destination)}, {}, {}};
+            unpack.program = utf8_of(archive);
+            unpack.arguments = {"-y", "-o" + utf8_of(destination.lexically_normal().make_preferred())};
             break;
         case Packaging::Single:
-            steps << BuildStep{t.step_install.arg(name), {}, {}, {}, [archive, destination, program = tool.program](QString&) {
-                                   return QFile::copy(archive, destination + "/" + program + ".exe");
-                               }};
+            unpack.action = [archive, destination, program = tool.program](std::string&) {
+                std::error_code error;
+                return std::filesystem::copy_file(archive, destination / (program + ".exe"), std::filesystem::copy_options::overwrite_existing, error);
+            };
             break;
         }
-        steps << BuildStep{t.step_finish.arg(name), {}, {}, {}, [archive, destination](QString&) {
-                               for (const QString& restriction : QDir(destination).entryList({"*._pth"}, QDir::Files)) {
-                                   QFile::remove(destination + "/" + restriction);
-                               }
-                               QFile::remove(archive);
-                               return true;
-                           }};
+        steps.push_back(unpack);
+        Step finish;
+        finish.title = format(t.step_finish, name);
+        finish.action = [archive, destination](std::string&) {
+            std::error_code error;
+            for (const auto& entry : std::filesystem::directory_iterator(destination, error)) {
+                if (entry.path().extension() == "._pth") {
+                    std::filesystem::remove(entry.path(), error);
+                }
+            }
+            std::filesystem::remove(archive, error);
+            return true;
+        };
+        steps.push_back(finish);
     }
     return steps;
 }

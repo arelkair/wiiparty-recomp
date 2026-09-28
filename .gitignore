@@ -44,4 +44,5 @@ __pycache__/
 /.cache/
 /.claude/
 /CLAUDE.md
+/AGENTS.md
 /.mcp.json

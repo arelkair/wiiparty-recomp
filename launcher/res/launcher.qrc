@@ -1,6 +1,0 @@
-<RCC>
-    <qresource prefix="/launcher">
-        <file>launcher.qss</file>
-        <file alias="icon.ico">../../games/wiiparty/res/wiiparty.ico</file>
-    </qresource>
-</RCC>

@@ -1,54 +1,68 @@
 #include "payload.h"
 
-#include <QDir>
-#include <QDirIterator>
-#include <QFile>
-#include <QFileInfo>
+#include <fstream>
 
+#include "embedded.h"
+#include "subprocess.h"
 #include "texts.h"
 
 namespace {
 
-constexpr const char* kPrefix = ":/source";
-constexpr const char* kRevisionFile = "/.launcher-revision";
+constexpr const char* kRevisionFile = ".launcher-revision";
+constexpr const char* kArchiveFile = ".launcher-payload.tar.gz";
 
-QString stored_revision(const QString& root) {
-    QFile file(root + kRevisionFile);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    return QString::fromUtf8(file.readAll()).trimmed();
+std::string tar_program() {
+#ifdef _WIN32
+    std::string system = environment_value("SystemRoot");
+    return utf8_of(path_from(system.empty() ? "C:/Windows" : system) / "System32" / "tar.exe");
+#else
+    return find_program("tar");
+#endif
 }
 
 }
 
 bool payload_available() {
-    return QFileInfo::exists(QString(kPrefix) + "/CMakeLists.txt");
+    return !blob("payload").empty();
 }
 
-bool extract_payload(const QString& root, QString& message) {
-    if (stored_revision(root) == WP_SOURCE_REVISION) {
+std::string stored_revision(const std::filesystem::path& root) {
+    std::ifstream file(root / kRevisionFile, std::ios::binary);
+    std::string revision;
+    std::getline(file, revision);
+    return revision;
+}
+
+bool extract_payload(const std::filesystem::path& root, std::string& message) {
+    if (stored_revision(root) == source_revision()) {
         return true;
     }
-    int count = 0;
-    QDirIterator it(kPrefix, QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        QString source = it.next();
-        QString target = root + source.mid(QString(kPrefix).size());
-        QDir().mkpath(QFileInfo(target).absolutePath());
-        QFile in(source);
-        QFile out(target);
-        if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            message = texts().extract_failed.arg(target);
+    std::string_view data = blob("payload");
+    std::filesystem::path archive = root / kArchiveFile;
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    {
+        std::ofstream file(archive, std::ios::binary | std::ios::trunc);
+        file.write(data.data(), static_cast<std::streamsize>(data.size()));
+        if (!file) {
+            message = format(texts().extract_failed, utf8_of(root));
             return false;
         }
-        out.write(in.readAll());
-        count++;
     }
-    QFile revision(root + kRevisionFile);
-    if (revision.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        revision.write(WP_SOURCE_REVISION);
+    Process tar;
+    std::string failure;
+    bool started = tar.start(tar_program(), {"-xzf", kArchiveFile}, root, false, failure);
+    char buffer[1024];
+    while (started && tar.read(buffer, sizeof(buffer))) {
     }
-    message = texts().extracted_files.arg(count).arg(root);
+    bool extracted = started && tar.wait() == 0;
+    std::filesystem::remove(archive, error);
+    if (!extracted) {
+        message = format(texts().extract_failed, utf8_of(root)) + (failure.empty() ? "" : " " + failure);
+        return false;
+    }
+    std::ofstream revision(root / kRevisionFile, std::ios::binary | std::ios::trunc);
+    revision << source_revision() << '\n';
+    message = format(texts().extracted_files, utf8_of(root));
     return true;
 }
