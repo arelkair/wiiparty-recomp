@@ -30,5 +30,5 @@
     "powerpc",
     "static-recompilation"
   ],
-  "notes": "Alpha (v0.1.1). The main executable and all 115 code modules are translated to C++ and build into one native Windows program; the game's own audio microcode is recompiled too. A full game of Board Game Island plays from start to finish, and 50 of 56 Free Play minigames checked by hand show no faults. Runs at 60 fps (PAL60) at up to 6x resolution with keyboard, mouse and up to four gamepads. A single-file launcher builds the game from the user's own disc in about 10 minutes. Next: the pair minigames and remaining modes, graphics faults in a few minigames, then Linux."
+  "notes": "Alpha (v0.1.1). The main executable and all 115 code modules are translated to C++ and build into one native Windows program; the game's own audio microcode is recompiled too. A full game of Board Game Island plays from start to finish, and every Free Play minigame has been played by hand, 71 of 79 without faults. Runs at 60 fps (PAL60) at up to 6x resolution with keyboard, mouse and up to four gamepads. A single-file launcher builds the game from the user's own disc in about 10 minutes. Next: the remaining modes, Mii face parts and graphics faults in a few minigames, then Linux."
 }

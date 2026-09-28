@@ -3,7 +3,7 @@
 Static recompilation of Wii Party for native PC.
 
 > [!NOTE]
-> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and Free Play minigames. Progress is estimated at **80%** overall.
+> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **80%** overall.
 
 ![Project progress](docs/progress.svg)
 
@@ -31,13 +31,13 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 | **System Runtime** | **91%** | OS, threads, interrupts, IPC, DVD, NAND and Bluetooth work, with no known blockers. |
 | **Graphics (GX to D3D11)** | **86%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies. |
 | **Audio Pipeline** | **83%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music. |
-| **Game Flow** | **80%** | A full 17-round Board Game Island game; 50 of 56 Free Play minigames checked without faults. |
+| **Game Flow** | **86%** | A full 17-round Board Game Island game; every Free Play minigame played by hand, 71 of 79 without faults. |
 | **Input System** | **66%** | Emulated Wii Remote over emulated Bluetooth; keyboard, mouse and up to four gamepads. |
 | **PC Features** | **56%** | Single-file launcher, in-game options menu (F10), key bindings, save backups, custom textures. |
 
 ### Known Limitations
 
-- Pair minigames and the other modes are not fully checked yet; some minigames show graphics faults (see `docs/MINIGAMES.md`).
+- The modes other than Board Game Island and Free Play are not fully checked yet; some minigames show graphics faults or wrong Mii face parts (see `docs/MINIGAMES.md`).
 - Some block artifacts on Mii faces at high resolutions.
 - Real Wii Remotes are not supported yet.
 

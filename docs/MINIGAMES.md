@@ -1,6 +1,6 @@
 # Minigame check
 
-Manual play-through of every minigame in Free Play, by the user, with the Spanish version of the game (names as the game shows them). Build from 2026-09-26 (with the coroutine resume fix). "OK" means no fault was seen while playing it once.
+Manual play-through of every minigame in Free Play, by the user, with the Spanish version of the game (names as the game shows them). Build from 2026-09-26 (with the coroutine resume fix); pair games on 2026-09-28. "OK" means no fault was seen while playing it once.
 
 ## 4 players
 
@@ -46,7 +46,7 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 | Domina las dominadas | OK | |
 | La distancia justa | OK | |
 | Rodeo al volante | OK | |
-| El vagón del destino | Pending | |
+| El vagón del destino | OK | Played on 2026-09-28 |
 
 ## 1 vs 3
 
@@ -76,12 +76,41 @@ Manual play-through of every minigame in Free Play, by the user, with the Spanis
 
 ## Pair games
 
-Pending.
+Played by the user on 2026-09-28 with build 2609-002 (v0.1.1-alpha): 22 pair minigames, all playable to the end.
+
+| Minigame | Result | Notes |
+| --- | --- | --- |
+| Lluvia de frutas | OK | |
+| ¡Canastas! | Mii face | Plays correctly; the Mii icons at the top show different faces (the user's Mii has lips it does not have) |
+| ¡Explotad los globos! | OK | |
+| Ensamblaje robótico | OK | |
+| El puente movedizo | OK | |
+| La bici voladora | OK | |
+| Río abajo | OK | |
+| Ovejas descarriadas | OK | |
+| Las puertas del pánico | Mii face | Plays correctly; the user's Mii has lips in game |
+| La casa encantada | OK | |
+| Pesca sincronizada | OK | |
+| Huida en vagoneta | OK | |
+| Objetivo: la Tierra | OK | |
+| Trineo veloz | OK | |
+| Los cinco tréboles | OK | |
+| Atrapad al ratón | OK | |
+| La comba | OK | |
+| Almacén de plátanos | OK | |
+| Tiro a la lata | OK | |
+| El templo maldito | OK | |
+| Las anillas | OK | |
+| Laberinto en equipo | OK | |
+
+## Summary
+
+Every minigame in every Free Play list (4 players, 1 vs 3, 1 vs 1 and pairs) has been played by hand: 79 entries, 71 without faults. Open faults: graphics in ¡Puños fuera!, Carrera galáctica, Saltos selváticos and Bote a bote; Mii faces in ¡Canastas! and Las puertas del pánico; input in Bebés llorones; Fotos perrunas to check.
 
 ## Other observations
 
 - Moving the game window feels laggy.
 
-- Some menu sounds may not match the original: in the Free Play 4-player minigame list, the + and - buttons seem to play the same click as many other buttons (such as Start). Not yet compared with Dolphin.
-- Mii faces: some female guest Miis look masculine. Abby, described by Mii wikis as blonde with blue eyes and slim eyebrows, showed brown hair and marked eyebrows in the Mii selection. Not yet compared with Dolphin.
+- Some menu sounds may not match the original: in the Free Play 4-player minigame list, the + and - buttons (scrolling) seem to play the same click as many other buttons (such as Start), while the user believes they should sound different. Reported again on 2026-09-28. Not yet compared with Dolphin.
+- Mii faces: the user's Mii shows lips it does not have, in the HUD icons of ¡Canastas! and in game in Las puertas del pánico; Saltos selváticos and Bote a bote also change faces. Probably one shared fault in how Mii face parts (mouth, eyes, eyebrows) are chosen or drawn. Some female guest Miis look masculine. Abby, described by Mii wikis as blonde with blue eyes and slim eyebrows, showed brown hair and marked eyebrows in the Mii selection. Not yet compared with Dolphin.
 - The cursor leaves a trail, also in menus. Whether the game draws it is not yet known.
