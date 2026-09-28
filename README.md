@@ -7,7 +7,7 @@ Static recompilation of Wii Party for native PC.
 
 ![Project progress](docs/progress.svg)
 
-**[Download the latest release](https://github.com/arelkair/wiiparty-recomp/releases/latest)** · Windows 10 and 11 (64-bit)
+**[Download the latest build](https://github.com/arelkair/wiiparty-recomp/releases)** · Windows 10 and 11 (64-bit)
 
 ---
 
@@ -45,7 +45,7 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 
 ## Installing
 
-1. Download `wiipartyrecomp-launcher.exe` from the [latest release](https://github.com/arelkair/wiiparty-recomp/releases/latest). It is the only file you need.
+1. Download `wiipartyrecomp-launcher.exe` from the [releases page](https://github.com/arelkair/wiiparty-recomp/releases) (the newest one is at the top). It is the only file you need.
 2. Open it, check the install folder, choose your own copy of Wii Party (`.iso`, `.wbfs`, `.rvz`, `.ciso`, `.wia` or `.gcm`) and press **Install**.
 3. When it finishes, press **Play**.
 
