@@ -39,6 +39,20 @@ constexpr Package kPackages[] = {
 };
 constexpr const char* kPython = "python";
 constexpr const char* kCompiler = "g++";
+#elif defined(__linux__) && defined(__x86_64__)
+constexpr Package kPackages[] = {
+    {"nodtool", "nodtool 1.4.4", "https://github.com/encounter/nod/releases/download/v1.4.4/nodtool-linux-x86_64",
+     "cf20828d1a437ca14ed7acfd5545e1a0e62c082f5a77240a399aa4f172119fc4", "nodtool-linux-x86_64", Packaging::Single, "nodtool", "nodtool"},
+};
+constexpr const char* kPython = "python3";
+constexpr const char* kCompiler = "c++";
+#elif defined(__linux__) && defined(__aarch64__)
+constexpr Package kPackages[] = {
+    {"nodtool", "nodtool 1.4.4", "https://github.com/encounter/nod/releases/download/v1.4.4/nodtool-linux-aarch64",
+     "4180f9501dc0de2fb4841c865604fad91899798280f49015e7be8f89890ee37e", "nodtool-linux-aarch64", Packaging::Single, "nodtool", "nodtool"},
+};
+constexpr const char* kPython = "python3";
+constexpr const char* kCompiler = "c++";
 #else
 constexpr Package kPackages[] = {{nullptr, nullptr, nullptr, nullptr, nullptr, Packaging::Single, nullptr, nullptr}};
 constexpr const char* kPython = "python3";
@@ -178,7 +192,18 @@ std::vector<Step> Toolchain::preparation(const std::vector<ToolStatus>& tools) c
         case Packaging::Single:
             unpack.action = [archive, destination, program = tool.program](std::string&) {
                 std::error_code error;
-                return std::filesystem::copy_file(archive, destination / (program + ".exe"), std::filesystem::copy_options::overwrite_existing, error);
+                std::filesystem::path target = destination / program;
+#ifdef _WIN32
+                target += ".exe";
+                return std::filesystem::copy_file(archive, target, std::filesystem::copy_options::overwrite_existing, error);
+#else
+                if (!std::filesystem::copy_file(archive, target, std::filesystem::copy_options::overwrite_existing, error)) {
+                    return false;
+                }
+                std::filesystem::permissions(target, std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec | std::filesystem::perms::others_exec,
+                                             std::filesystem::perm_options::add, error);
+                return !error;
+#endif
             };
             break;
         }

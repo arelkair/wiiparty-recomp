@@ -15,6 +15,9 @@ target = deps / f"SDL3-{VERSION}"
 
 
 def main():
+    if sys.platform != "win32":
+        print("SDL3 comes from the system or is built by CMake")
+        return 0
     if (target / "x86_64-w64-mingw32" / "lib" / "cmake" / "SDL3").is_dir():
         print(f"SDL3 {VERSION} already in {target}")
         return 0

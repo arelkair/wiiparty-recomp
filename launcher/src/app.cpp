@@ -1018,16 +1018,18 @@ void App::settings_page(float width) {
     inset_separator(width);
     row(width, t.shortcut_label, t.shortcut_detail, 230.0f, 36.0f, [&] {
         ImVec2 at = ImGui::GetCursorScreenPos();
+        std::error_code missing;
+        std::filesystem::path icon = std::filesystem::absolute(project_.root / "games" / kGame / "res" / (std::string(kGame) + ".svg"), missing);
         if (ui::button(t.shortcut_launcher, Kind::Secondary, 110.0f)) {
             std::string error;
-            launcher_message_failed_ = !create_desktop_shortcut(launcher_path(), launcher_path().parent_path(), "Wii Party Recomp", error);
+            launcher_message_failed_ = !create_desktop_shortcut(launcher_path(), launcher_path().parent_path(), icon, "Wii Party Recomp", error);
             launcher_message_ = launcher_message_failed_ ? format(t.shortcut_failed, error) : std::string(t.shortcut_done);
         }
         ImGui::SetCursorScreenPos(ImVec2(at.x + px(120), at.y));
-        std::error_code missing;
         if (ui::button(t.shortcut_game, Kind::Secondary, 110.0f, std::filesystem::exists(project_.executable(), missing))) {
             std::string error;
-            launcher_message_failed_ = !create_desktop_shortcut(std::filesystem::absolute(project_.executable(), missing), std::filesystem::absolute(project_.root, missing), "Wii Party", error);
+            launcher_message_failed_ = !create_desktop_shortcut(std::filesystem::absolute(project_.executable(), missing),
+                                                                std::filesystem::absolute(project_.root, missing), icon, "Wii Party", error);
             launcher_message_ = launcher_message_failed_ ? format(t.shortcut_failed, error) : std::string(t.shortcut_done);
         }
     });
@@ -1734,8 +1736,11 @@ void App::finish_install() {
     runner_.take_output(log_);
     if (outcome_ == Outcome::Success) {
         std::error_code error;
-        std::filesystem::remove(project_.root / "build" / "out" / "lifted_tests.exe", error);
-        std::filesystem::remove(project_.root / "build" / "out" / "runtime_tests.exe", error);
+        for (const char* test : {"lifted_tests", "runtime_tests", "translator_tests"}) {
+            std::filesystem::path built = project_.root / "build" / "out" / test;
+            std::filesystem::remove(built, error);
+            std::filesystem::remove(built.concat(".exe"), error);
+        }
         progress_view_ = false;
         result_ = t.build_finished;
         background().minutes = 0;
