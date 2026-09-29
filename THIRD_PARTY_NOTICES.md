@@ -60,6 +60,13 @@ All components adapted from the **Dolphin Emulator** originate from a source sna
 
 ---
 
+### 5. Gekko Floating-Point Estimates and Single-Precision Rounding
+- **Repository Files:** `engine/include/wp/cpu.h` (`reciprocal_estimate`, `reciprocal_sqrt_estimate`, `force25`, `madd_single` and their tables).
+- **Upstream Origin:** `Source/Core/Common/FloatUtils.cpp` (`ApproximateReciprocal`, `ApproximateReciprocalSquareRoot`, `fres_expected`, `frsqrte_expected`) and `Source/Core/Core/PowerPC/Interpreter/Interpreter_FPUtils.h` (`Force25Bit`, the single-precision branch of `NI_madd_msub`), current master as of 2026-09-29.
+- **Copyright:** Copyright 2018 Dolphin Emulator Project.
+- **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
+- **Engineering Changes (2026-09-29):** Rewritten as inline functions over `wp::fpr_bits`; FPSCR exception flags and the flush-to-zero option are not modelled; the estimate tables are unchanged.
+
 ## Externally Linked Libraries (Permissive Licenses)
 
 These dependencies are dynamically linked during runtime or retrieved through automated build scripts; no code is hosted directly inside the repository.

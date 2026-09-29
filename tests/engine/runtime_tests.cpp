@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -26,17 +27,6 @@
 #include "wp/ui_text.h"
 #include "wp/video.h"
 
-namespace wp {
-const FunctionEntry g_function_table[1] = {};
-const size_t g_function_count = 0;
-const FunctionEntry g_resume_table[1] = {};
-const size_t g_resume_count = 0;
-const ModuleDescriptor* const g_module_table[1] = {nullptr};
-const size_t g_module_count = 0;
-const NameEntry g_name_table[1] = {};
-const size_t g_name_count = 0;
-}
-
 namespace {
 
 int failures = 0;
@@ -49,6 +39,24 @@ void check(bool condition, const char* expression, int line) {
 }
 
 #define CHECK(expression) check((expression), #expression, __LINE__)
+
+void test_software_fma() {
+    std::mt19937_64 random(2026);
+    std::uniform_real_distribution<double> mantissa(-2.0, 2.0);
+    std::uniform_int_distribution<int> exponent(-60, 60);
+    int mismatches = 0;
+    for (int i = 0; i < 200000; i++) {
+        double a = std::ldexp(mantissa(random), exponent(random));
+        double b = std::ldexp(mantissa(random), exponent(random));
+        double c = std::ldexp(mantissa(random), exponent(random) * 2);
+        double expected = wp::g_hardware_fma ? wp::hardware_fma(a, b, c) : std::fma(a, b, c);
+        if (wp::fpr_bits(wp::software_fma(a, b, c)) != wp::fpr_bits(expected)) {
+            mismatches++;
+        }
+    }
+    CHECK(!wp::g_hardware_fma || mismatches == 0);
+    CHECK(wp::fpr_bits(wp::software_fma(339099.27191141015, 292340.0665708075, -16.0)) == 0x423714bee95cb1a9ull);
+}
 
 void test_memory() {
     wp::wr32(0x80001000, 0x11223344);
@@ -950,6 +958,7 @@ int main() {
     test_options_menu();
     test_options_repeat_and_layout();
     test_options_render();
+    test_software_fma();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");

@@ -30,9 +30,11 @@ def function_name(address):
 
 
 def rotate_mask(mb, me):
-    if mb <= me:
-        return ((0xFFFFFFFF >> mb) & (0xFFFFFFFF << (31 - me))) & 0xFFFFFFFF
-    return ~rotate_mask(me + 1, mb - 1) & 0xFFFFFFFF
+    value = 0
+    for bit in range(32):
+        if (mb <= bit <= me) if mb <= me else (bit >= mb or bit <= me):
+            value |= 0x80000000 >> bit
+    return value
 
 
 def build_memory_table():
@@ -59,7 +61,7 @@ def build_memory_table():
     table["lhbrx"] = ("load", "wp::rd16_reversed({ea})", True, False)
     table["stwbrx"] = ("store", "wp::wr32_reversed({ea}, {value})", True, False)
     table["sthbrx"] = ("store", "wp::wr16_reversed({ea}, {value})", True, False)
-    table["stfiwx"] = ("store", "wp::wr32({ea}, static_cast<uint32_t>(wp::fpr_bits({value})))", True, False)
+    table["stfiwx"] = ("fstore", "wp::wr32({ea}, static_cast<uint32_t>(wp::fpr_bits({value})))", True, False)
     return table
 
 
@@ -103,16 +105,16 @@ FLOAT_ARITHMETIC = {
     "fdiv": ("{a} / {b}", False),
     "fadds": ("{a} + {b}", True),
     "fsubs": ("{a} - {b}", True),
-    "fmuls": ("{a} * {c}", True),
+    "fmuls": ("{a} * wp::force25({c})", True),
     "fdivs": ("{a} / {b}", True),
-    "fmadd": ("std::fma({a}, {c}, {b})", False),
-    "fmsub": ("std::fma({a}, {c}, -{b})", False),
-    "fnmadd": ("-std::fma({a}, {c}, {b})", False),
-    "fnmsub": ("-std::fma({a}, {c}, -{b})", False),
-    "fmadds": ("std::fma({a}, {c}, {b})", True),
-    "fmsubs": ("std::fma({a}, {c}, -{b})", True),
-    "fnmadds": ("-std::fma({a}, {c}, {b})", True),
-    "fnmsubs": ("-std::fma({a}, {c}, -{b})", True),
+    "fmadd": ("wp::fused_multiply_add({a}, {c}, {b})", False),
+    "fmsub": ("wp::fused_multiply_add({a}, {c}, -{b})", False),
+    "fnmadd": ("-wp::fused_multiply_add({a}, {c}, {b})", False),
+    "fnmsub": ("-wp::fused_multiply_add({a}, {c}, -{b})", False),
+    "fmadds": ("wp::madd_single({a}, {c}, {b})", True),
+    "fmsubs": ("wp::madd_single({a}, {c}, -{b})", True),
+    "fnmadds": ("-wp::madd_single({a}, {c}, {b})", True),
+    "fnmsubs": ("-wp::madd_single({a}, {c}, -{b})", True),
     "fsqrt": ("std::sqrt({b})", False),
     "fsqrts": ("std::sqrt({b})", True),
     "fres": ("wp::reciprocal_estimate({b})", True),
@@ -223,6 +225,14 @@ class Emitter:
     def assign(self, instr, target, expression, force=False):
         return [f"{target} = {expression};"] + self.record(instr, target, force)
 
+    def overflowing(self, instr, expression, first, second, check=None):
+        target = reg(instr.rd)
+        if not instr.oe:
+            return self.assign(instr, target, expression)
+        condition = check or f"(((q ^ {target}) & (ea ^ {target})) >> 31) != 0"
+        lines = [f"q = {first};", f"ea = {second};", f"{target} = {expression};", f"wp::set_overflow(c, {condition});"]
+        return lines + self.record(instr, target, False)
+
     def base(self, register):
         return "0u" if register == 0 else reg(register)
 
@@ -304,40 +314,40 @@ class Emitter:
         return [f"{reg(i.rd)} = {reg(i.ra)} * {self.simm_expr(i)};"]
 
     def op_add(self, i):
-        return self.assign(i, reg(i.rd), f"{reg(i.ra)} + {reg(i.rb)}")
+        return self.overflowing(i, f"{reg(i.ra)} + {reg(i.rb)}", reg(i.ra), reg(i.rb))
 
     def op_addc(self, i):
-        return self.assign(i, reg(i.rd), f"wp::add_carry(c, {reg(i.ra)}, {reg(i.rb)}, 0)")
+        return self.overflowing(i, f"wp::add_carry(c, {reg(i.ra)}, {reg(i.rb)}, 0)", reg(i.ra), reg(i.rb))
 
     def op_adde(self, i):
-        return self.assign(i, reg(i.rd), f"wp::add_extended(c, {reg(i.ra)}, {reg(i.rb)})")
+        return self.overflowing(i, f"wp::add_extended(c, {reg(i.ra)}, {reg(i.rb)})", reg(i.ra), reg(i.rb))
 
     def op_addze(self, i):
-        return self.assign(i, reg(i.rd), f"wp::add_extended(c, {reg(i.ra)}, 0)")
+        return self.overflowing(i, f"wp::add_extended(c, {reg(i.ra)}, 0)", reg(i.ra), "0u")
 
     def op_addme(self, i):
-        return self.assign(i, reg(i.rd), f"wp::add_extended(c, {reg(i.ra)}, 0xFFFFFFFFu)")
+        return self.overflowing(i, f"wp::add_extended(c, {reg(i.ra)}, 0xFFFFFFFFu)", reg(i.ra), "0xFFFFFFFFu")
 
     def op_subf(self, i):
-        return self.assign(i, reg(i.rd), f"{reg(i.rb)} - {reg(i.ra)}")
+        return self.overflowing(i, f"{reg(i.rb)} - {reg(i.ra)}", f"~{reg(i.ra)}", reg(i.rb))
 
     def op_subfc(self, i):
-        return self.assign(i, reg(i.rd), f"wp::sub_carry(c, {reg(i.ra)}, {reg(i.rb)})")
+        return self.overflowing(i, f"wp::sub_carry(c, {reg(i.ra)}, {reg(i.rb)})", f"~{reg(i.ra)}", reg(i.rb))
 
     def op_subfe(self, i):
-        return self.assign(i, reg(i.rd), f"wp::sub_extended(c, {reg(i.ra)}, {reg(i.rb)})")
+        return self.overflowing(i, f"wp::sub_extended(c, {reg(i.ra)}, {reg(i.rb)})", f"~{reg(i.ra)}", reg(i.rb))
 
     def op_subfze(self, i):
-        return self.assign(i, reg(i.rd), f"wp::sub_extended(c, {reg(i.ra)}, 0)")
+        return self.overflowing(i, f"wp::sub_extended(c, {reg(i.ra)}, 0)", f"~{reg(i.ra)}", "0u")
 
     def op_subfme(self, i):
-        return self.assign(i, reg(i.rd), f"wp::sub_extended(c, {reg(i.ra)}, 0xFFFFFFFFu)")
+        return self.overflowing(i, f"wp::sub_extended(c, {reg(i.ra)}, 0xFFFFFFFFu)", f"~{reg(i.ra)}", "0xFFFFFFFFu")
 
     def op_neg(self, i):
-        return self.assign(i, reg(i.rd), f"0u - {reg(i.ra)}")
+        return self.overflowing(i, f"0u - {reg(i.ra)}", reg(i.ra), "0u", "q == 0x80000000u")
 
     def op_mullw(self, i):
-        return self.assign(i, reg(i.rd), f"{reg(i.ra)} * {reg(i.rb)}")
+        return self.overflowing(i, f"{reg(i.ra)} * {reg(i.rb)}", reg(i.ra), reg(i.rb), "wp::multiply_overflows(q, ea)")
 
     def op_mulhw(self, i):
         return self.assign(i, reg(i.rd), f"wp::mulhw({reg(i.ra)}, {reg(i.rb)})")
@@ -346,10 +356,10 @@ class Emitter:
         return self.assign(i, reg(i.rd), f"wp::mulhwu({reg(i.ra)}, {reg(i.rb)})")
 
     def op_divw(self, i):
-        return self.assign(i, reg(i.rd), f"wp::divw({reg(i.ra)}, {reg(i.rb)})")
+        return self.overflowing(i, f"wp::divw({reg(i.ra)}, {reg(i.rb)})", reg(i.ra), reg(i.rb), "ea == 0u || (q == 0x80000000u && ea == 0xFFFFFFFFu)")
 
     def op_divwu(self, i):
-        return self.assign(i, reg(i.rd), f"wp::divwu({reg(i.ra)}, {reg(i.rb)})")
+        return self.overflowing(i, f"wp::divwu({reg(i.ra)}, {reg(i.rb)})", reg(i.ra), reg(i.rb), "ea == 0u")
 
     def op_extsb(self, i):
         return self.assign(i, reg(i.ra), f"wp::sign_extend8({reg(i.rs)})")

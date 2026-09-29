@@ -1323,6 +1323,10 @@ void App::choose_disc() {
         this, window_, filters, 1, start.c_str(), false);
 }
 
+bool App::use_version_now(const std::string& id) {
+    return project_.switch_version(id);
+}
+
 void App::add_on_start(const std::string& disc) {
     started_ = true;
     std::lock_guard<std::mutex> lock(picked_mutex_);

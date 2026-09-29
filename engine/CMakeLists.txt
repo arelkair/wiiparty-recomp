@@ -1,5 +1,6 @@
 add_library(wp_engine STATIC
     src/core/runtime.cpp
+    src/core/fpu.cpp
     src/core/dol.cpp
     src/core/boot.cpp
     src/core/hle.cpp

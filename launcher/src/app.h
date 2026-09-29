@@ -38,6 +38,7 @@ public:
     int exit_code() const;
     void apply_theme();
     void add_on_start(const std::string& disc);
+    bool use_version_now(const std::string& id);
 
 private:
     void use_root(const std::filesystem::path& root);

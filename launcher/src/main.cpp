@@ -51,9 +51,12 @@ int main(int argc, char** argv) {
     bool install_mode = false;
     std::string screenshot_prefix;
     std::string added_disc;
+    std::string used_version;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--install") == 0) {
             install_mode = true;
+        } else if (std::strcmp(argv[i], "--use-version") == 0 && i + 1 < argc) {
+            used_version = argv[++i];
         } else if (std::strcmp(argv[i], "--add-disc") == 0 && i + 1 < argc) {
             added_disc = argv[++i];
         } else if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
@@ -99,6 +102,9 @@ int main(int argc, char** argv) {
     app.apply_theme();
     SDL_ShowWindow(window);
 
+    if (!used_version.empty()) {
+        return app.use_version_now(used_version) ? 0 : 1;
+    }
     Uint64 previous = SDL_GetTicksNS();
     int shot_page = 0;
     int shot_frames = 0;
