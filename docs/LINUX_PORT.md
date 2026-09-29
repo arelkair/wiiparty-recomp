@@ -9,30 +9,37 @@ State on 2026-09-29, measured with GCC 13.3, CMake 3.28 and Ninja 1.11 on Ubuntu
 - **Engine sources that pass a Linux syntax check (24 of 36):** all of `core/` except `threads.cpp` (`boot`, `dol`, `format`, `fpu`, `hle`, `interrupts`, `log`, `modules`, `runtime`), `gx_lighting.cpp`, `gx_state.cpp`, `bluetooth.cpp`, `keymap.cpp`, `wiimote.cpp`, `disc.cpp`, `ios.cpp`, `ipc.cpp`, `options.cpp`, `save_backup.cpp`, `screenshot.cpp`, `settings.cpp`, `ui_text.cpp`, and the no-op variants. `gamepad.cpp` only needs SDL3 headers.
 - **Launcher:** SDL3 and Dear ImGui; `subprocess.cpp` already has a POSIX branch (`fork`, process group, `setpriority`).
 
-## What is Windows-only
+## Windows-only code and its Linux replacement
 
 | File | Lines | Windows use | Linux replacement |
 | --- | --- | --- | --- |
-| `gpu/gx_render.cpp` | 2,540 | Direct3D 11 renderer, HLSL compiled at run time | New backend on SDL_GPU (Vulkan on Linux, Metal on macOS, Direct3D 12 or Vulkan on Windows); shaders translated with SDL_shadercross or kept as SPIR-V built at compile time |
-| `platform/video.cpp` | 589 | Win32 window on its own thread, DXGI swap chain, `SystemParametersInfo` | SDL3 window; presentation through the SDL_GPU swap chain |
-| `audio/audio.cpp` | 307 | WASAPI output with windowed-sinc resampling | `SDL_AudioStream` (SDL3 resamples); keep the queue and timing logic |
-| `input/input.cpp` | 342 | `GetAsyncKeyState`, `GetCursorPos`, focus through `GetForegroundWindow` | SDL3 keyboard, mouse and focus state (the key map already uses its own key names) |
-| `platform/options_window.cpp` | 301 | F10 menu drawn with GDI into an overlay texture | Draw the same panel into a pixel buffer (already RGBA) and upload through the renderer |
-| `core/threads.cpp` | 391 | Win32 fibers for guest threads, `OSSaveContext` and `setjmp` resumption | Small `wp::fiber` layer: Win32 fibers on Windows, `ucontext` (`makecontext`/`swapcontext`) on Linux and macOS |
-| `gpu/custom_textures.cpp` | 272 | PNG decoding with WIC | `SDL_LoadPNG` (SDL 3.4) or a vendored decoder |
-| `gpu/gx.cpp` | 1,284 | `CreateDirectoryA`, `GetThreadTimes` for the thread load statistics | `std::filesystem`; `pthread_getcpuclockid` with `clock_gettime` |
-| `audio/dsp.cpp` | 916 | `CreateThread` with a 64 MB stack for the DSP self-test | `pthread_attr_setstacksize` |
-| `ios/nand.cpp` | 525 | `GetUserDefaultUILanguage` for the console language | `SDL_GetPreferredLocales` |
-| `app/main.cpp` | 96 | `SetUnhandledExceptionFilter` crash report | `sigaction` for `SIGSEGV`/`SIGBUS` |
+| `gpu/gx_render.cpp` | 1,985 | Direct3D 11 renderer, HLSL compiled at run time | Done: `gx_render_gl.cpp` (OpenGL 4.1 core, GLSL) |
+| `platform/video.cpp` | 589 | Win32 window on its own thread, DXGI swap chain, `SystemParametersInfo` | Done: `video_sdl.cpp` (SDL3 window, OpenGL context) |
+| `audio/audio.cpp` | 307 | WASAPI output with windowed-sinc resampling | Done: shared `Mixer` feeding an `SDL_AudioStream` |
+| `input/input.cpp` | 342 | `GetAsyncKeyState`, `GetCursorPos`, focus through `GetForegroundWindow` | Done: queries moved to the video layer, answered by SDL3 |
+| `platform/options_window.cpp` | 301 | F10 menu drawn with GDI into an overlay texture | Pending: draw the panel into an RGBA buffer without GDI |
+| `core/threads.cpp` | 391 | Win32 fibers for guest threads, `OSSaveContext` and `setjmp` resumption | Done: `wp::fiber` (`ucontext`) |
+| `gpu/custom_textures.cpp` | 272 | PNG decoding with WIC | Pending: `SDL_LoadPNG` (SDL 3.4) or a vendored decoder |
+| `gpu/gx.cpp` | 1,284 | `CreateDirectoryA`, `GetThreadTimes` for the thread load statistics | Done |
+| `audio/dsp.cpp` | 916 | `CreateThread` with a 64 MB stack for the DSP self-test | Done: `wp::run_with_stack` |
+| `ios/nand.cpp` | 525 | `GetUserDefaultUILanguage` for the console language | Done: `LC_ALL`/`LANG` |
+| `app/main.cpp` | 96 | `SetUnhandledExceptionFilter` crash report | Done: signal handlers |
 
 ## Order of work
 
-1. **Build system (done 2026-09-29):** split `engine/CMakeLists.txt` into common and per-platform source lists; build the game on Linux with no-op video, audio and input (headless) to boot the game to the main menu, checking `WP_SAVE_FRAME` output through a software copy path. This proves the translated code, fibers, IOS, disc and NAND on Linux.
+1. **Build system (done 2026-09-29):** split `engine/CMakeLists.txt` into common and per-platform source lists; build the game on Linux with no-op video, audio and input (headless) to boot the game to the main menu. This proves the translated code, fibers, IOS, disc and NAND on Linux.
 2. **Fibers (done 2026-09-29):** introduce `wp::fiber` and move `threads.cpp` onto it; run the Windows build on it first to check nothing changes.
-3. **SDL3 platform layer:** window, input, audio and locale through SDL3 on every platform, so Windows and Linux share one path (Windows keeps WASAPI quality through SDL's WASAPI backend).
-4. **Renderer on SDL_GPU:** port `gx_render.cpp` behind the same interface (`copy_to_texture`, `texture_for`, the TEV pixel shader, EFB copies with write-back, custom textures). Compare frames with the Direct3D 11 renderer using `WP_SAVE_FRAME` and the scripted input paths before switching Windows over.
-5. **Launcher on Linux:** use the distribution's GCC, CMake, Ninja and Python instead of downloading the Windows tool chain; `nodtool` from its Linux release; package as an AppImage. Self-update stays Windows-only until a Linux asset exists.
-6. **Testers:** the README asks for Linux and macOS testers; macOS follows once SDL_GPU works (Metal) and needs an arm64 check of the fiber layer.
+3. **Window, input and audio on SDL3 (done on Linux 2026-09-29):** `video_sdl.cpp` (window thread, OpenGL context handed to the GPU thread, keyboard and mouse through the existing virtual-key codes) and an `SDL_AudioStream` output fed by the resampler shared with WASAPI. Windows keeps its Win32 window and WASAPI output for now.
+4. **Renderer (done on Linux 2026-09-29):** `gx_render_gl.cpp`, OpenGL 4.1 core with GLSL ports of the Direct3D shaders, instead of the SDL_GPU plan: OpenGL needs no shader cross-compiler at build or run time and 4.1 also runs on macOS. Frames match the Direct3D renderer on the title screen, menus, Mii lineup, ¡Puños fuera! and Cinturón de asteroides. SDL_GPU (Vulkan) stays an option if OpenGL drivers turn out to be a problem.
+5. **F10 options menu on Linux:** draw the existing panel into an RGBA buffer without GDI (the renderer already shows the overlay).
+6. **Launcher on Linux:** use the distribution's GCC, CMake, Ninja and Python instead of downloading the Windows tool chain; `nodtool` from its Linux release; package as an AppImage. Self-update stays Windows-only until a Linux asset exists.
+7. **Testers:** the README asks for Linux and macOS testers; macOS needs an arm64 check of the fiber layer.
+
+## Building on Linux
+
+- Packages (Ubuntu 24.04): `build-essential cmake ninja-build python3` plus SDL3 3.4 built from source with its X11, Wayland, OpenGL, PipeWire and PulseAudio development packages (Ubuntu 24.04 has no SDL3 package).
+- `cmake -S . -B ~/wp-build -G Ninja -DCMAKE_BUILD_TYPE=Release` and `cmake --build ~/wp-build`; without SDL3 the game builds headless.
+- In WSL, Mesa picks its software renderer by default; `GALLIUM_DRIVER=d3d12` uses the PC's GPU.
 
 ## Checks for each step
 

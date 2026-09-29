@@ -4,6 +4,8 @@
 #include <windows.h>
 #include <audioclient.h>
 #include <mmdeviceapi.h>
+#elif defined(WP_SDL_AUDIO)
+#include <SDL3/SDL.h>
 #endif
 
 #include <algorithm>
@@ -73,27 +75,6 @@ void write_wav_header(std::FILE* file, uint32_t frames, uint32_t rate) {
     std::fflush(file);
 }
 
-#ifdef _WIN32
-template <typename T>
-void release(T*& object) {
-    if (object) {
-        object->Release();
-        object = nullptr;
-    }
-}
-
-bool is_float(const WAVEFORMATEX* format) {
-    if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
-        return true;
-    }
-    if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
-        const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format);
-        static const GUID kFloat = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
-        return IsEqualGUID(extensible->SubFormat, kFloat) != 0;
-    }
-    return false;
-}
-
 struct Kernel {
     float weights[kPhases + 1][kTaps];
 
@@ -119,6 +100,123 @@ struct Kernel {
 const Kernel& kernel() {
     static const Kernel instance;
     return instance;
+}
+
+class Mixer {
+public:
+    explicit Mixer(double device_rate) : device_rate_(device_rate), filter_(kernel()) {
+        if (const char* path = std::getenv("WP_DUMP_OUTPUT")) {
+            dump_ = std::fopen(path, "wb");
+            if (dump_) {
+                write_wav_header(dump_, 0, static_cast<uint32_t>(device_rate_));
+            }
+        }
+    }
+
+    void fill(Frame* mixed, uint32_t available) {
+        {
+            std::lock_guard<std::mutex> lock(g_queue_mutex);
+            size_t limit = static_cast<size_t>(kMaxLatency * g_source_rate);
+            size_t target = static_cast<size_t>(kTargetLatency * g_source_rate);
+            lowest_ = std::min(lowest_, g_queue.size());
+            highest_ = std::max(highest_, g_queue.size());
+            if (g_queue.size() > limit) {
+                g_queue.erase(g_queue.begin(), g_queue.begin() + static_cast<std::ptrdiff_t>(g_queue.size() - target));
+                gain_ = 0.0f;
+                trims_++;
+            }
+            if (!primed_ && g_queue.size() >= target) {
+                primed_ = true;
+            }
+            double error = (static_cast<double>(g_queue.size()) - static_cast<double>(target)) / static_cast<double>(target);
+            double correction = std::clamp(error * kMaxRateCorrection, -kMaxRateCorrection, kMaxRateCorrection);
+            double step = g_source_rate / device_rate_ * (1.0 + correction);
+            float fade = static_cast<float>(1.0 / (kFadeSeconds * device_rate_));
+            for (uint32_t i = 0; i < available; i++) {
+                if (primed_) {
+                    position_ += step;
+                    while (position_ >= 1.0) {
+                        position_ -= 1.0;
+                        std::copy(history_ + 1, history_ + kTaps, history_);
+                        if (!g_queue.empty()) {
+                            history_[kTaps - 1] = g_queue.front();
+                            g_queue.pop_front();
+                        } else {
+                            missing_++;
+                            primed_ = false;
+                        }
+                    }
+                }
+                gain_ = primed_ ? std::min(1.0f, gain_ + fade) : std::max(0.0f, gain_ - fade);
+                const float* weights = filter_.weights[static_cast<int>(position_ * kPhases)];
+                Frame sample{0.0f, 0.0f};
+                for (int tap = 0; tap < kTaps; tap++) {
+                    sample.left += history_[tap].left * weights[tap];
+                    sample.right += history_[tap].right * weights[tap];
+                }
+                mixed[i] = {sample.left * gain_, sample.right * gain_};
+            }
+        }
+        if (dump_) {
+            std::vector<int16_t> samples(available * 2);
+            for (uint32_t i = 0; i < available; i++) {
+                samples[2 * i] = static_cast<int16_t>(std::lround(std::clamp(mixed[i].left, -1.0f, 1.0f) * 32767.0f));
+                samples[2 * i + 1] = static_cast<int16_t>(std::lround(std::clamp(mixed[i].right, -1.0f, 1.0f) * 32767.0f));
+            }
+            std::fwrite(samples.data(), 4, available, dump_);
+            dump_frames_ += available;
+            write_wav_header(dump_, dump_frames_, static_cast<uint32_t>(device_rate_));
+        }
+        if (muted()) {
+            std::fill(mixed, mixed + available, Frame{0.0f, 0.0f});
+        }
+        Clock::time_point now = Clock::now();
+        if (now - report_ >= std::chrono::seconds(1)) {
+            log::write("output", "device %.0f Hz, queue %.1f-%.1f ms, %u frames missing, %u trims", device_rate_, lowest_ * 1000.0 / g_source_rate,
+                       highest_ * 1000.0 / g_source_rate, missing_, trims_);
+            missing_ = 0;
+            trims_ = 0;
+            lowest_ = SIZE_MAX;
+            highest_ = 0;
+            report_ = now;
+        }
+    }
+
+private:
+    double device_rate_;
+    const Kernel& filter_;
+    double position_ = 0.0;
+    uint32_t missing_ = 0;
+    uint32_t trims_ = 0;
+    size_t lowest_ = SIZE_MAX;
+    size_t highest_ = 0;
+    Clock::time_point report_ = Clock::now();
+    std::FILE* dump_ = nullptr;
+    uint32_t dump_frames_ = 0;
+    bool primed_ = false;
+    float gain_ = 0.0f;
+    Frame history_[kTaps] = {};
+};
+
+#ifdef _WIN32
+template <typename T>
+void release(T*& object) {
+    if (object) {
+        object->Release();
+        object = nullptr;
+    }
+}
+
+bool is_float(const WAVEFORMATEX* format) {
+    if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+        return true;
+    }
+    if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+        const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format);
+        static const GUID kFloat = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+        return IsEqualGUID(extensible->SubFormat, kFloat) != 0;
+    }
+    return false;
 }
 
 void output_thread() {
@@ -152,25 +250,7 @@ void output_thread() {
     }
     const bool floats = is_float(format);
     const uint32_t channels = format->nChannels;
-    const double device_rate = format->nSamplesPerSec;
-    double position = 0.0;
-    uint32_t missing = 0;
-    uint32_t trims = 0;
-    size_t lowest = SIZE_MAX;
-    size_t highest = 0;
-    Clock::time_point report = Clock::now();
-    std::FILE* output_dump = nullptr;
-    uint32_t output_frames = 0;
-    if (const char* path = std::getenv("WP_DUMP_OUTPUT")) {
-        output_dump = std::fopen(path, "wb");
-        if (output_dump) {
-            write_wav_header(output_dump, 0, static_cast<uint32_t>(device_rate));
-        }
-    }
-    bool primed = false;
-    float gain = 0.0f;
-    Frame history[kTaps] = {};
-    const Kernel& filter = kernel();
+    Mixer mixer(format->nSamplesPerSec);
     while (true) {
         WaitForSingleObject(event, 100);
         UINT32 padding = 0;
@@ -186,52 +266,10 @@ void output_thread() {
             continue;
         }
         std::vector<Frame> mixed(available);
-        {
-            std::lock_guard<std::mutex> lock(g_queue_mutex);
-            size_t limit = static_cast<size_t>(kMaxLatency * g_source_rate);
-            size_t target = static_cast<size_t>(kTargetLatency * g_source_rate);
-            lowest = std::min(lowest, g_queue.size());
-            highest = std::max(highest, g_queue.size());
-            if (g_queue.size() > limit) {
-                g_queue.erase(g_queue.begin(), g_queue.begin() + static_cast<std::ptrdiff_t>(g_queue.size() - target));
-                gain = 0.0f;
-                trims++;
-            }
-            if (!primed && g_queue.size() >= target) {
-                primed = true;
-            }
-            double error = (static_cast<double>(g_queue.size()) - static_cast<double>(target)) / static_cast<double>(target);
-            double correction = std::clamp(error * kMaxRateCorrection, -kMaxRateCorrection, kMaxRateCorrection);
-            double step = g_source_rate / device_rate * (1.0 + correction);
-            float fade = static_cast<float>(1.0 / (kFadeSeconds * device_rate));
-            for (UINT32 i = 0; i < available; i++) {
-                if (primed) {
-                    position += step;
-                    while (position >= 1.0) {
-                        position -= 1.0;
-                        std::copy(history + 1, history + kTaps, history);
-                        if (!g_queue.empty()) {
-                            history[kTaps - 1] = g_queue.front();
-                            g_queue.pop_front();
-                        } else {
-                            missing++;
-                            primed = false;
-                        }
-                    }
-                }
-                gain = primed ? std::min(1.0f, gain + fade) : std::max(0.0f, gain - fade);
-                const float* weights = filter.weights[static_cast<int>(position * kPhases)];
-                Frame sample{0.0f, 0.0f};
-                for (int tap = 0; tap < kTaps; tap++) {
-                    sample.left += history[tap].left * weights[tap];
-                    sample.right += history[tap].right * weights[tap];
-                }
-                mixed[i] = {sample.left * gain, sample.right * gain};
-            }
-        }
+        mixer.fill(mixed.data(), available);
         for (UINT32 i = 0; i < available; i++) {
-            float left = muted() ? 0.0f : mixed[i].left;
-            float right = muted() ? 0.0f : mixed[i].right;
+            float left = mixed[i].left;
+            float right = mixed[i].right;
             for (uint32_t channel = 0; channel < channels; channel++) {
                 float value = channel == 0 ? left : channel == 1 ? right : 0.0f;
                 if (floats) {
@@ -242,27 +280,34 @@ void output_thread() {
             }
         }
         render->ReleaseBuffer(available, 0);
-        if (output_dump) {
-            std::vector<int16_t> samples(available * 2);
-            for (UINT32 i = 0; i < available; i++) {
-                samples[2 * i] = static_cast<int16_t>(std::lround(std::clamp(mixed[i].left, -1.0f, 1.0f) * 32767.0f));
-                samples[2 * i + 1] = static_cast<int16_t>(std::lround(std::clamp(mixed[i].right, -1.0f, 1.0f) * 32767.0f));
-            }
-            std::fwrite(samples.data(), 4, available, output_dump);
-            output_frames += available;
-            write_wav_header(output_dump, output_frames, static_cast<uint32_t>(device_rate));
-        }
-        Clock::time_point now = Clock::now();
-        if (now - report >= std::chrono::seconds(1)) {
-            log::write("output", "device %.0f Hz, queue %.1f-%.1f ms, %u frames missing, %u trims", device_rate, lowest * 1000.0 / g_source_rate,
-                       highest * 1000.0 / g_source_rate, missing, trims);
-            missing = 0;
-            trims = 0;
-            lowest = SIZE_MAX;
-            highest = 0;
-            report = now;
-        }
     }
+}
+#elif defined(WP_SDL_AUDIO)
+void SDLCALL feed(void* data, SDL_AudioStream* stream, int additional, int) {
+    Mixer& mixer = *static_cast<Mixer*>(data);
+    uint32_t frames = static_cast<uint32_t>(additional) / sizeof(Frame);
+    if (frames == 0) {
+        return;
+    }
+    std::vector<Frame> mixed(frames);
+    mixer.fill(mixed.data(), frames);
+    SDL_PutAudioStreamData(stream, mixed.data(), static_cast<int>(frames * sizeof(Frame)));
+}
+
+void output_thread() {
+    constexpr int kDeviceRate = 48000;
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        std::fprintf(stderr, "audio output could not start: %s\n", SDL_GetError());
+        return;
+    }
+    static Mixer mixer(kDeviceRate);
+    SDL_AudioSpec spec{SDL_AUDIO_F32, 2, kDeviceRate};
+    SDL_AudioStream* stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, feed, &mixer);
+    if (!stream || !SDL_ResumeAudioStreamDevice(stream)) {
+        std::fprintf(stderr, "audio output could not start: %s\n", SDL_GetError());
+        return;
+    }
+    log::write("output", "SDL audio driver %s", SDL_GetCurrentAudioDriver());
 }
 #else
 void output_thread() {

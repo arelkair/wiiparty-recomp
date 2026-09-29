@@ -300,7 +300,12 @@ void worker() {
         drive_virtual(virtuals);
         SDL_UpdateJoysticks();
         SDL_Event event;
-        while (SDL_PollEvent(&event)) {
+        bool own_queue = !SDL_WasInit(SDL_INIT_VIDEO);
+        if (own_queue) {
+            SDL_PumpEvents();
+        }
+        while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, own_queue ? SDL_EVENT_FIRST : SDL_EVENT_JOYSTICK_AXIS_MOTION,
+                              own_queue ? SDL_EVENT_LAST : SDL_EVENT_FINGER_DOWN - 1) > 0) {
             if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
                 open(pads, event.gdevice.which);
             } else if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {

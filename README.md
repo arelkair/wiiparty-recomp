@@ -99,7 +99,7 @@ Also planned: a Mii editor, ultrawide support and online play.
 ### Platforms
 
 - **Windows 10 and 11:** supported.
-- **Linux:** planned. The translated code and most of the engine are portable; the renderer (Direct3D 11), the window and the thread switching still depend on Windows.
+- **Linux:** in progress. The game builds and plays on Linux with an OpenGL renderer, an SDL3 window, keyboard, mouse and audio (tested on Ubuntu 24.04; gamepad support is built in but not yet tested there); the F10 menu, custom texture packs and a Linux launcher are still missing. **Help wanted:** Linux testers with different GPUs and desktops, please open an issue or a discussion.
 - **macOS:** planned after Linux. **Help wanted:** if you have a Mac and would like to test builds in the future, please open an issue or a discussion.
 
 ---
