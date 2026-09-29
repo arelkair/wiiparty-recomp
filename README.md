@@ -50,6 +50,8 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 
 The launcher downloads any missing build tools from their official sites and checks each one against its published SHA-256. Nothing from the game is downloaded and nothing leaves your computer.
 
+**Without internet:** download `wiipartyrecomp-offline-windows.zip` from the same release instead, unzip it and open the launcher inside. It carries every build tool (about 185 MB), so the install never connects. Turn on **Offline mode** in Settings and the launcher also stops checking for updates. The source code of the GPL tools in that pack is published next to it as `wiipartyrecomp-offline-windows-sources.zip`.
+
 | Requirement | |
 | :--- | :--- |
 | System | Windows 10 or 11, 64-bit |

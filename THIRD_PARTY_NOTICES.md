@@ -94,6 +94,16 @@ The launcher is a single static executable. CMake downloads each library below a
 - **mingw-w64 winpthreads:** threading runtime of the MinGW-w64 GCC toolchain, linked statically. **MIT-style license** (`launcher/licenses/winpthreads.txt`). Copyright (c) 2011 mingw-w64 project.
 - **GCC runtime libraries (libstdc++, libgcc):** linked statically. **GPL-3.0 with the GCC Runtime Library Exception 3.1** (`launcher/licenses/gcc-runtime-library-exception.txt`).
 
+### Offline Tools Pack (release asset `wiipartyrecomp-offline-windows.zip`)
+Built by `tools/make_offline_pack.py`; nothing of it is stored in this repository. It redistributes, unmodified, the same official releases the launcher downloads (each checked against the SHA-256 in `launcher/src/toolchain.cpp`) plus the SDL3 development package used by `tools/fetch_sdl.py`:
+- **nodtool 1.4.4:** MIT License or Apache License 2.0.
+- **Python 3.12.10 (embeddable):** Python Software Foundation License.
+- **CMake 4.4.3:** BSD 3-Clause License (its HTML manual is left out).
+- **Ninja 1.13.2:** Apache License 2.0.
+- **SDL 3.4.16 (MinGW development package):** zlib License.
+- **MinGW-w64 distro 20.0 by nuwen.net (Stephan T. Lavavej):** only its compiler part is kept: GCC 15.2.0 and binutils 2.45.1 (**GPL-3.0**, GCC runtime libraries under the **GCC Runtime Library Exception 3.1**), GMP 6.3.0, MPFR 4.2.2 and MPC 1.3.1 built into GCC (**LGPL-3.0**), ISL 0.24 (**MIT**) and the MinGW-w64 11.0.1 runtime (permissive licences). The distro's other programs and libraries are removed.
+- **Corresponding source:** published with every release that carries the pack, as `wiipartyrecomp-offline-windows-sources.zip`: the official, unmodified source releases of GCC, binutils, GMP, MPFR, MPC, ISL and MinGW-w64 at those versions, and the distro's build scripts (`scripts-20.0`, which also stay inside the pack). The pack's `OFFLINE-PACK.txt` lists every file with its origin and SHA-256.
+
 ---
 
 ## Ingestion Pipeline Requirements

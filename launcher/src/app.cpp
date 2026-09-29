@@ -1716,7 +1716,17 @@ void App::install(bool adding) {
         };
         steps.push_back(change);
     }
-    program(t.step_sdl, python, {"tools/fetch_sdl.py"}, 1.0f);
+    std::vector<std::string> sdl_arguments = {"tools/fetch_sdl.py"};
+    std::filesystem::path sdl_archive = launcher_path().parent_path() / "tools" / "sdl3" / "SDL3-devel-3.4.16-mingw.tar.gz";
+    std::error_code absent;
+    if (std::filesystem::exists(sdl_archive, absent)) {
+        sdl_arguments.push_back("--archive");
+        sdl_arguments.push_back(utf8_of(sdl_archive));
+    }
+    if (pref("offline") == "1") {
+        sdl_arguments.push_back("--offline");
+    }
+    program(t.step_sdl, python, sdl_arguments, 1.0f);
     program(t.step_unpack, python, {"recompiler/unpack_rels.py"}, 1.0f);
     program(t.step_dol, python, {"recompiler/recomp.py"}, 1.0f);
     program(t.step_modules, python, {"recompiler/recomp_rel.py", "--all"}, 3.0f);
@@ -1732,7 +1742,12 @@ void App::install(bool adding) {
             return *translated == 1;
         };
     }
-    program(t.step_configure, "cmake", {"-S", ".", "-B", "build/out", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", std::string("-DWP_GAME=") + kGame}, 1.0f);
+    std::vector<std::string> configure = {"-S", ".", "-B", "build/out", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", std::string("-DWP_GAME=") + kGame};
+#ifndef _WIN32
+    configure.push_back("-DWP_REQUIRE_SDL3=ON");
+    configure.push_back(pref("offline") == "1" ? "-DWP_FETCH_SDL3=OFF" : "-DWP_FETCH_SDL3=ON");
+#endif
+    program(t.step_configure, "cmake", configure, 1.0f);
     program(t.step_compile, "cmake", {"--build", "build/out", "--parallel", std::to_string(jobs), "--target", kGame}, 24.0f);
     progress_view_ = true;
     show_details_ = false;

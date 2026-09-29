@@ -1,4 +1,6 @@
+import argparse
 import hashlib
+import shutil
 import sys
 import tarfile
 import urllib.request
@@ -15,6 +17,10 @@ target = deps / f"SDL3-{VERSION}"
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--archive", help="use this copy of the SDL3 development package instead of downloading it")
+    parser.add_argument("--offline", action="store_true", help="never download")
+    options = parser.parse_args()
     if sys.platform != "win32":
         print("SDL3 comes from the system or is built by CMake")
         return 0
@@ -22,7 +28,12 @@ def main():
         print(f"SDL3 {VERSION} already in {target}")
         return 0
     deps.mkdir(parents=True, exist_ok=True)
+    if not archive.exists() and options.archive:
+        shutil.copyfile(options.archive, archive)
     if not archive.exists():
+        if options.offline:
+            print(f"SDL3 {VERSION} is missing and offline mode is on", file=sys.stderr)
+            return 1
         print(f"downloading {URL}")
         urllib.request.urlretrieve(URL, archive)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
