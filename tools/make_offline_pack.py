@@ -15,7 +15,7 @@ downloads = work / "downloads"
 stage = work / "stage"
 launcher = root / "build" / "launcher" / "wiipartyrecomp-launcher.exe"
 output = root / "build" / "wiipartyrecomp-offline-windows.zip"
-sources_output = root / "build" / "wiipartyrecomp-offline-windows-sources.zip"
+sources_output = root / "build" / "wiipartyrecomp-sources.zip"
 SDL_FILE = "SDL3-devel-3.4.16-mingw.tar.gz"
 SDL_URL = f"https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/{SDL_FILE}"
 SDL_SHA256 = "c7ef65bd72eabac6e5b535411dbd8d5824d0aab24fd62ff8812666b336f18a9c"
@@ -45,6 +45,8 @@ GPL_SOURCES = [
     ("https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz", "mpc-1.3.1.tar.gz"),
     ("https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.24.tar.bz2", "isl-0.24.tar.bz2"),
     ("https://downloads.sourceforge.net/project/mingw-w64/mingw-w64/mingw-w64-release/mingw-w64-v11.0.1.tar.bz2", "mingw-w64-v11.0.1.tar.bz2"),
+    ("https://github.com/libfuse/libfuse/releases/download/fuse-3.15.0/fuse-3.15.0.tar.xz", "fuse-3.15.0.tar.xz"),
+    ("https://github.com/AppImage/type2-runtime/archive/refs/tags/20251108.tar.gz", "type2-runtime-20251108.tar.gz"),
 ]
 
 NOTICE = """Wii Party Recomp - offline tools pack for Windows
@@ -73,6 +75,10 @@ Licences:
   separate file of the same release, {sources}: the official source releases listed
   below, unmodified, and the build scripts of the distro (also in
   tools/mingw/MinGW/scripts-20.0).
+- The same file also carries the source of the AppImage runtime at the start of
+  wiipartyrecomp-launcher-x86_64.AppImage: type2-runtime 20251108 (MIT License, with its
+  build scripts and its libfuse patch) and libfuse 3.15.0 (GNU LGPL version 2.1), which
+  the runtime links statically.
 {source_list}
 """
 
@@ -188,7 +194,7 @@ def main():
     shutil.copy2(launcher, stage / launcher.name)
     (stage / "OFFLINE-PACK.txt").write_text(notice, encoding="utf-8", newline="\r\n")
     zip_folder(stage, output, "wiipartyrecomp", zipfile.ZIP_DEFLATED)
-    zip_folder(sources_stage, sources_output, "wiipartyrecomp-offline-sources", zipfile.ZIP_STORED)
+    zip_folder(sources_stage, sources_output, "wiipartyrecomp-sources", zipfile.ZIP_STORED)
     return 0
 
 

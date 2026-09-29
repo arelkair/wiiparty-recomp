@@ -15,12 +15,18 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <winhttp.h>
+#else
+#include <sys/stat.h>
 #endif
 
 namespace {
 
 constexpr const char* kReleasesUrl = "https://api.github.com/repos/arelkair/wiiparty-recomp/releases?per_page=30";
+#ifdef _WIN32
 constexpr const char* kAssetName = "wiipartyrecomp-launcher.exe";
+#else
+constexpr const char* kAssetName = "wiipartyrecomp-launcher-x86_64.AppImage";
+#endif
 
 struct Json {
     enum class Kind { Null, Boolean, Number, String, Array, Object } kind = Kind::Null;
@@ -333,6 +339,42 @@ bool fetch(const std::string& url, const wchar_t* accept, Sink sink, std::string
     return true;
 }
 
+bool fetch_text(const std::string& url, std::string& body, std::string& error) {
+    return fetch(url, L"application/vnd.github+json", [&](const char* data, size_t size) {
+        body.append(data, size);
+        return true;
+    }, error);
+}
+
+#else
+
+bool curl(const std::vector<std::string>& arguments, std::string& output, std::string& error) {
+    std::string program = find_program("curl");
+    if (environment_value("APPIMAGE").empty() || program.empty()) {
+        error = "not supported";
+        return false;
+    }
+    std::vector<std::string> all = {"-L", "--fail", "--silent", "--show-error", "--connect-timeout", "10"};
+    all.insert(all.end(), arguments.begin(), arguments.end());
+    Process process;
+    if (!process.start(program, all, {}, false, error)) {
+        return false;
+    }
+    char buffer[65536];
+    while (size_t count = process.read(buffer, sizeof(buffer))) {
+        output.append(buffer, count);
+    }
+    if (process.wait() != 0) {
+        error = output.empty() ? "request failed" : output.substr(0, output.find('\n'));
+        return false;
+    }
+    return true;
+}
+
+bool fetch_text(const std::string& url, std::string& body, std::string& error) {
+    return curl({"-H", "Accept: application/vnd.github+json", url}, body, error);
+}
+
 #endif
 
 }
@@ -342,12 +384,8 @@ bool newer_version(const std::string& candidate, const std::string& current) {
 }
 
 bool latest_release(Release& release, Release& current, const std::string& current_version, std::string& error) {
-#ifdef _WIN32
     std::string body;
-    if (!fetch(kReleasesUrl, L"application/vnd.github+json", [&](const char* data, size_t size) {
-            body.append(data, size);
-            return true;
-        }, error)) {
+    if (!fetch_text(kReleasesUrl, body, error)) {
         return false;
     }
     Json list;
@@ -392,13 +430,6 @@ bool latest_release(Release& release, Release& current, const std::string& curre
         error = "no release";
     }
     return found;
-#else
-    (void)release;
-    (void)current;
-    (void)current_version;
-    error = "not supported";
-    return false;
-#endif
 }
 
 bool download(const std::string& url, const std::filesystem::path& target, std::string& error) {
@@ -415,10 +446,11 @@ bool download(const std::string& url, const std::filesystem::path& target, std::
     file.close();
     return ok && static_cast<bool>(file);
 #else
-    (void)url;
-    (void)target;
-    error = "not supported";
-    return false;
+    std::string output;
+    if (!curl({"-o", utf8_of(target), url}, output, error)) {
+        return false;
+    }
+    return chmod(target.c_str(), 0755) == 0;
 #endif
 }
 
@@ -428,6 +460,10 @@ std::filesystem::path launcher_path() {
     DWORD size = GetModuleFileNameW(nullptr, buffer, static_cast<DWORD>(std::size(buffer)));
     return std::filesystem::path(std::wstring(buffer, size));
 #else
+    std::string image = environment_value("APPIMAGE");
+    if (!image.empty()) {
+        return path_from(image);
+    }
     std::error_code error;
     return std::filesystem::read_symlink("/proc/self/exe", error);
 #endif

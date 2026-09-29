@@ -7,13 +7,13 @@ Static recompilation of Wii Party for native PC.
 
 ![Project progress](docs/progress.svg)
 
-**[Download the latest build](https://github.com/arelkair/wiiparty-recomp/releases)** · Windows 10 and 11 (64-bit)
+**[Download the latest build](https://github.com/arelkair/wiiparty-recomp/releases)** · Windows 10 and 11 (64-bit) · Linux x86_64 (experimental)
 
 ---
 
 ## Overview
 
-Wii Party Recomp translates the game's PowerPC code into C++ and compiles it into a native Windows program. The game and Nintendo SDK code run translated; only what depends on the console hardware is replaced, and the hardware itself (GPU, DSP audio, Bluetooth, IOS, disc and NAND) is reimplemented underneath. The game's own audio microcode is recompiled too.
+Wii Party Recomp translates the game's PowerPC code into C++ and compiles it into a native Windows or Linux program. The game and Nintendo SDK code run translated; only what depends on the console hardware is replaced, and the hardware itself (GPU, DSP audio, Bluetooth, IOS, disc and NAND) is reimplemented underneath. The game's own audio microcode is recompiled too.
 
 No game files are distributed. The launcher builds the game on your PC from your own copy of the disc.
 
@@ -50,7 +50,7 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 
 The launcher downloads any missing build tools from their official sites and checks each one against its published SHA-256. Nothing from the game is downloaded and nothing leaves your computer.
 
-**Without internet:** download `wiipartyrecomp-offline-windows.zip` from the same release instead, unzip it and open the launcher inside. It carries every build tool (about 185 MB), so the install never connects. Turn on **Offline mode** in Settings and the launcher also stops checking for updates. The source code of the GPL tools in that pack is published next to it as `wiipartyrecomp-offline-windows-sources.zip`.
+**Without internet (Windows):** download `wiipartyrecomp-offline-windows.zip` from the same release instead, unzip it and open the launcher inside. It carries every build tool (about 185 MB), so the install never connects. Turn on **Offline mode** in Settings and the launcher also stops checking for updates. The source code of the GPL tools in that pack is published next to it as `wiipartyrecomp-sources.zip`.
 
 | Requirement | |
 | :--- | :--- |
@@ -58,6 +58,17 @@ The launcher downloads any missing build tools from their official sites and che
 | Free space | About 5 GB |
 | Memory | 4 GB minimum, 8 GB or more recommended for the build |
 | Build time | About 10 minutes on a 6-core processor; longer on slower machines |
+
+### Linux (experimental)
+
+1. Install the build tools with your package manager:
+   - Debian and Ubuntu: `sudo apt install g++ cmake ninja-build python3 curl libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgl-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev`
+   - Fedora: `sudo dnf install gcc-c++ cmake ninja-build python3 curl libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel wayland-protocols-devel libdecor-devel mesa-libEGL-devel mesa-libGL-devel pulseaudio-libs-devel alsa-lib-devel systemd-devel dbus-devel`
+   - Arch: `sudo pacman -S --needed gcc cmake ninja python curl sdl3`
+2. Download `wiipartyrecomp-launcher-x86_64.AppImage`, make it executable (`chmod +x wiipartyrecomp-launcher-x86_64.AppImage`, or Properties > Permissions in your file manager) and open it.
+3. Choose your disc and press **Install**, then **Play**. The launcher downloads only nodtool; the game is installed in `~/.local/share/WiiPartyRecomp`.
+
+The launcher needs glibc 2.38 or newer (Ubuntu 24.04, Debian 13, Fedora 39 or later) and the game needs OpenGL 4.1. The Linux version has been tested on Ubuntu 24.04 only (under WSL); reports from other distributions, desktops and graphics cards are very welcome.
 
 The build runs once, at low priority, with as many parallel jobs as your memory allows. Updating to a newer launcher rebuilds the game and keeps your saves and settings.
 
@@ -101,7 +112,7 @@ Also planned: a Mii editor, ultrawide support and online play.
 ### Platforms
 
 - **Windows 10 and 11:** supported.
-- **Linux:** in progress. The game builds and plays on Linux with an OpenGL renderer, an SDL3 window, keyboard, mouse and audio (tested on Ubuntu 24.04; gamepad support is built in but not yet tested there), including the F10 menu and custom texture packs; a Linux launcher is still missing. **Help wanted:** Linux testers with different GPUs and desktops, please open an issue or a discussion.
+- **Linux:** experimental. The launcher is an AppImage and the game plays with an OpenGL renderer, keyboard, mouse, audio, the F10 menu and custom texture packs (tested on Ubuntu 24.04; gamepad support is built in but not yet tested there). **Help wanted:** Linux testers with different GPUs and desktops, please open an issue or a discussion.
 - **macOS:** planned after Linux. **Help wanted:** if you have a Mac and would like to test builds in the future, please open an issue or a discussion.
 
 ---

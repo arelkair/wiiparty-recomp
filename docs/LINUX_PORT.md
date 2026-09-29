@@ -32,12 +32,13 @@ State on 2026-09-29, measured with GCC 13.3, CMake 3.28 and Ninja 1.11 on Ubuntu
 3. **Window, input and audio on SDL3 (done on Linux 2026-09-29):** `video_sdl.cpp` (window thread, OpenGL context handed to the GPU thread, keyboard and mouse through the existing virtual-key codes) and an `SDL_AudioStream` output fed by the resampler shared with WASAPI. Windows keeps its Win32 window and WASAPI output for now.
 4. **Renderer (done on Linux 2026-09-29):** `gx_render_gl.cpp`, OpenGL 4.1 core with GLSL ports of the Direct3D shaders, instead of the SDL_GPU plan: OpenGL needs no shader cross-compiler at build or run time and 4.1 also runs on macOS. Frames match the Direct3D renderer on the title screen, menus, Mii lineup, ¡Puños fuera! and Cinturón de asteroides. SDL_GPU (Vulkan) stays an option if OpenGL drivers turn out to be a problem.
 5. **F10 options menu and custom textures on Linux (done 2026-09-29):** the menu logic is shared and only the drawing is per system; PNGs load through SDL.
-6. **Launcher on Linux:** use the distribution's GCC, CMake, Ninja and Python instead of downloading the Windows tool chain; `nodtool` from its Linux release; package as an AppImage. Self-update stays Windows-only until a Linux asset exists.
+6. **Launcher on Linux (done 2026-09-29):** the distribution's GCC, CMake, Ninja and Python instead of the Windows tool chain; `nodtool` from its Linux release; packaged as an AppImage by `tools/make_appimage.py`, which updates itself from the release's AppImage. A full install from the PAL disc and a fast update through the AppImage were checked in WSL.
 7. **Testers:** the README asks for Linux and macOS testers; macOS needs an arm64 check of the fiber layer.
 
 ## Building on Linux
 
-- Packages (Ubuntu 24.04): `build-essential cmake ninja-build python3` plus SDL3 3.4 built from source with its X11, Wayland, OpenGL, PipeWire and PulseAudio development packages (Ubuntu 24.04 has no SDL3 package).
+- Packages: the lists in the README (compiler, CMake, Ninja, Python, curl and the X11, Wayland, OpenGL, audio, udev and D-Bus development files SDL3 is built with, since Ubuntu 24.04 has no SDL3 3.4 package). The build stops with those lists when SDL3 found no window or audio system.
+- The AppImage runs on glibc 2.38 or newer (Ubuntu 24.04, Debian 13, Fedora 39 and later), since it is built on Ubuntu 24.04.
 - `cmake -S . -B ~/wp-build -G Ninja -DCMAKE_BUILD_TYPE=Release` and `cmake --build ~/wp-build`; without SDL3 the game builds headless.
 - In WSL, Mesa picks its software renderer by default; `GALLIUM_DRIVER=d3d12` uses the PC's GPU.
 
