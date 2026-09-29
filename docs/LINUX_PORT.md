@@ -27,8 +27,8 @@ State on 2026-09-29, measured with GCC 13.3, CMake 3.28 and Ninja 1.11 on Ubuntu
 
 ## Order of work
 
-1. **Build system:** split `engine/CMakeLists.txt` into common and per-platform source lists; build the game on Linux with no-op video, audio and input (headless) to boot the game to the main menu, checking `WP_SAVE_FRAME` output through a software copy path. This proves the translated code, fibers, IOS, disc and NAND on Linux.
-2. **Fibers:** introduce `wp::fiber` and move `threads.cpp` onto it; run the Windows build on it first to check nothing changes.
+1. **Build system (done 2026-09-29):** split `engine/CMakeLists.txt` into common and per-platform source lists; build the game on Linux with no-op video, audio and input (headless) to boot the game to the main menu, checking `WP_SAVE_FRAME` output through a software copy path. This proves the translated code, fibers, IOS, disc and NAND on Linux.
+2. **Fibers (done 2026-09-29):** introduce `wp::fiber` and move `threads.cpp` onto it; run the Windows build on it first to check nothing changes.
 3. **SDL3 platform layer:** window, input, audio and locale through SDL3 on every platform, so Windows and Linux share one path (Windows keeps WASAPI quality through SDL's WASAPI backend).
 4. **Renderer on SDL_GPU:** port `gx_render.cpp` behind the same interface (`copy_to_texture`, `texture_for`, the TEV pixel shader, EFB copies with write-back, custom textures). Compare frames with the Direct3D 11 renderer using `WP_SAVE_FRAME` and the scripted input paths before switching Windows over.
 5. **Launcher on Linux:** use the distribution's GCC, CMake, Ninja and Python instead of downloading the Windows tool chain; `nodtool` from its Linux release; package as an AppImage. Self-update stays Windows-only until a Linux asset exists.

@@ -1,4 +1,8 @@
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <csignal>
+#endif
 
 #include <chrono>
 #include <cstdio>
@@ -6,6 +10,7 @@
 #include <string>
 #include <thread>
 
+#include "wp/big_stack.h"
 #include "wp/boot.h"
 #include "wp/cpu.h"
 #include "wp/disc.h"
@@ -20,6 +25,7 @@
 
 namespace {
 
+#ifdef _WIN32
 LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
     std::fprintf(stderr, "crash: exception %08lx at host address %p (module offset %llx)", record->ExceptionCode, record->ExceptionAddress,
@@ -35,11 +41,21 @@ LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     std::fflush(stderr);
     return EXCEPTION_EXECUTE_HANDLER;
 }
+#else
+void report_crash(int signal) {
+    std::fprintf(stderr, "crash: signal %d", signal);
+    std::fputc(10, stderr);
+    wp::print_guest_registers();
+    wp::print_call_stack();
+    wp::print_thread_stacks();
+    std::fflush(stderr);
+    std::_Exit(128 + signal);
+}
+#endif
 
 }
 
-int main(int argc, char** argv) {
-    SetUnhandledExceptionFilter(report_crash);
+int run(int argc, char** argv) {
     wp::settings::load(wp::game::description().settings_file);
     std::string extracted = argc > 1 ? argv[1] : wp::game::description().data_directory;
     int timeout_seconds = argc > 2 ? std::atoi(argv[2]) : 0;
@@ -93,4 +109,19 @@ int main(int argc, char** argv) {
     wp::call(cpu, entry);
     std::puts("entry returned");
     return 0;
+}
+
+int main(int argc, char** argv) {
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(report_crash);
+    return run(argc, argv);
+#else
+    std::signal(SIGSEGV, report_crash);
+    std::signal(SIGBUS, report_crash);
+    std::signal(SIGILL, report_crash);
+    std::signal(SIGFPE, report_crash);
+    int result = 0;
+    wp::run_with_stack(size_t{512} << 20, [&] { result = run(argc, argv); });
+    return result;
+#endif
 }

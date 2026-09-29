@@ -1,6 +1,8 @@
 add_library(wp_engine STATIC
     src/core/runtime.cpp
     src/core/fpu.cpp
+    src/core/fiber.cpp
+    src/core/big_stack.cpp
     src/core/dol.cpp
     src/core/boot.cpp
     src/core/hle.cpp
@@ -11,11 +13,11 @@ add_library(wp_engine STATIC
     src/core/log.cpp
     src/gpu/gx.cpp
     src/gpu/gx_lighting.cpp
-    src/gpu/gx_render.cpp
     src/gpu/custom_textures.cpp
     src/gpu/gx_state.cpp
     src/audio/dsp.cpp
     src/audio/audio.cpp
+    src/audio/dsp_roms.cpp
     src/ios/ios.cpp
     src/ios/ipc.cpp
     src/ios/nand.cpp
@@ -24,24 +26,41 @@ add_library(wp_engine STATIC
     src/input/wiimote.cpp
     src/input/input.cpp
     src/input/keymap.cpp
-    src/platform/video.cpp
+    src/platform/png.cpp
     src/platform/save_backup.cpp
     src/platform/screenshot.cpp
     src/platform/settings.cpp
     src/platform/ui_text.cpp
     src/platform/options.cpp
-    src/platform/options_window.cpp
 )
+if(WIN32)
+    target_sources(wp_engine PRIVATE src/gpu/gx_render.cpp src/platform/video.cpp src/platform/options_window.cpp)
+else()
+    target_sources(wp_engine PRIVATE src/gpu/null_render.cpp src/platform/video_headless.cpp src/platform/no_options_window.cpp)
+endif()
 target_include_directories(wp_engine PUBLIC include)
-target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}")
-target_link_libraries(wp_engine PUBLIC wp_dolphin_dsp gdi32 user32 d3d11 d3dcompiler dxgi ole32 windowscodecs dwmapi)
+target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}"
+    WP_DSP_IROM_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin"
+    WP_DSP_COEF_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_coef.bin")
+set_source_files_properties(src/audio/dsp_roms.cpp PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin;${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_coef.bin")
+target_link_libraries(wp_engine PUBLIC wp_dolphin_dsp)
+if(WIN32)
+    target_link_libraries(wp_engine PUBLIC gdi32 user32 d3d11 d3dcompiler dxgi ole32 windowscodecs dwmapi)
+else()
+    find_package(Threads REQUIRED)
+    target_link_libraries(wp_engine PUBLIC Threads::Threads)
+endif()
 if(WP_TRACE)
     target_compile_definitions(wp_engine PUBLIC WP_TRACE)
 endif()
 target_compile_options(wp_engine PRIVATE -Wall -Wextra)
 
-set(WP_SDL3_DIR "${CMAKE_SOURCE_DIR}/build/deps/SDL3-3.4.16/x86_64-w64-mingw32" CACHE PATH "SDL3 development files for gamepad support")
-find_package(SDL3 CONFIG QUIET GLOBAL PATHS "${WP_SDL3_DIR}/lib/cmake/SDL3" NO_DEFAULT_PATH)
+if(WIN32)
+    set(WP_SDL3_DIR "${CMAKE_SOURCE_DIR}/build/deps/SDL3-3.4.16/x86_64-w64-mingw32" CACHE PATH "SDL3 development files for gamepad support")
+    find_package(SDL3 CONFIG QUIET GLOBAL PATHS "${WP_SDL3_DIR}/lib/cmake/SDL3" NO_DEFAULT_PATH)
+else()
+    find_package(SDL3 CONFIG QUIET GLOBAL)
+endif()
 if(SDL3_FOUND)
     target_sources(wp_engine PRIVATE src/input/gamepad.cpp)
     target_link_libraries(wp_engine PUBLIC SDL3::SDL3)
@@ -50,5 +69,7 @@ else()
 endif()
 
 add_library(wp_app INTERFACE)
-target_sources(wp_app INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/app/main.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/res/dsp_roms.rc")
-target_link_options(wp_app INTERFACE -Wl,--stack,536870912)
+target_sources(wp_app INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/app/main.cpp")
+if(WIN32)
+    target_link_options(wp_app INTERFACE -Wl,--stack,536870912)
+endif()

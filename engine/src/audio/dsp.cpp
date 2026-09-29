@@ -3,8 +3,6 @@
 
 #include "wp/dsp.h"
 
-#include <windows.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -22,7 +20,9 @@
 #include "Core/DSP/DSPTables.h"
 #include "Core/DSP/Interpreter/DSPInterpreter.h"
 #include "wp/audio.h"
+#include "wp/big_stack.h"
 #include "wp/cpu.h"
+#include "wp/dsp_roms.h"
 #include "wp/dsp_translated.h"
 #include "wp/log.h"
 #include "wp/memory.h"
@@ -186,12 +186,11 @@ bool same_writes(const std::vector<MemoryWrite>& a, const std::vector<MemoryWrit
 
 TranslatedFunction g_translated = nullptr;
 
-bool load_rom(int id, uint16_t* words, size_t count) {
-    HRSRC resource = FindResourceA(nullptr, MAKEINTRESOURCEA(id), MAKEINTRESOURCEA(10));
-    if (!resource || SizeofResource(nullptr, resource) != count * 2) {
+bool load_rom(RomBlob rom, uint16_t* words, size_t count) {
+    if (rom.size != count * 2) {
         return false;
     }
-    const uint8_t* bytes = static_cast<const uint8_t*>(LockResource(LoadResource(nullptr, resource)));
+    const uint8_t* bytes = rom.data;
     for (size_t i = 0; i < count; i++) {
         words[i] = static_cast<uint16_t>((bytes[2 * i] << 8) | bytes[2 * i + 1]);
     }
@@ -553,8 +552,8 @@ void start() {
     g_started = true;
     DSP::DSPInitOptions options;
     options.core_type = DSP::DSPInitOptions::CoreType::Interpreter;
-    if (!load_rom(2, options.irom_contents.data(), options.irom_contents.size()) ||
-        !load_rom(3, options.coef_contents.data(), options.coef_contents.size())) {
+    if (!load_rom(instruction_rom(), options.irom_contents.data(), options.irom_contents.size()) ||
+        !load_rom(coefficient_rom(), options.coef_contents.data(), options.coef_contents.size())) {
         std::fprintf(stderr, "DSP ROMs missing from the executable resources\n");
         return;
     }
@@ -904,11 +903,7 @@ void CodeLoaded(DSPCore& dsp, const u8* pointer, size_t size) {
     if (const char* trials = std::getenv("WP_DSP_SELFTEST")) {
         if (wp::dsp::g_translated) {
             static int count = std::max(1, std::atoi(trials));
-            HANDLE thread = CreateThread(nullptr, 64u << 20, [](void*) -> DWORD {
-                wp::dsp::run_self_test(count);
-                return 0;
-            }, nullptr, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
-            WaitForSingleObject(thread, INFINITE);
+            wp::run_with_stack(64u << 20, [] { wp::dsp::run_self_test(count); });
         }
     }
 }

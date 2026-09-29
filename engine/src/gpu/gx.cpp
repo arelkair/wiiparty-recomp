@@ -1,6 +1,11 @@
 #include "wp/gx.h"
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <pthread.h>
+#include <time.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -9,8 +14,11 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <condition_variable>
 #include <cstring>
 #include <deque>
+#include <filesystem>
+#include <mutex>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -586,9 +594,16 @@ void emit_triangle(std::vector<ScreenVertex>& out, const Prepared& a, const Prep
 uint32_t g_indirect_draws = 0;
 uint32_t g_coordinate_draws = 0;
 std::atomic<uint32_t> g_skipped_presents{0};
-std::atomic<HANDLE> g_cpu_thread{nullptr};
+#ifdef _WIN32
+using ThreadClock = HANDLE;
 
-double thread_seconds(HANDLE thread) {
+ThreadClock current_thread_clock() {
+    HANDLE thread = nullptr;
+    DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread, THREAD_QUERY_LIMITED_INFORMATION, FALSE, 0);
+    return thread;
+}
+
+double thread_seconds(ThreadClock thread) {
     FILETIME created, exited, kernel, user;
     if (!thread || !GetThreadTimes(thread, &created, &exited, &kernel, &user)) {
         return 0.0;
@@ -596,6 +611,26 @@ double thread_seconds(HANDLE thread) {
     auto ticks = [](const FILETIME& time) { return (static_cast<uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
     return static_cast<double>(ticks(kernel) + ticks(user)) * 1e-7;
 }
+#else
+using ThreadClock = clockid_t;
+
+ThreadClock current_thread_clock() {
+    clockid_t clock = CLOCK_THREAD_CPUTIME_ID;
+    pthread_getcpuclockid(pthread_self(), &clock);
+    return clock;
+}
+
+double thread_seconds(ThreadClock clock) {
+    timespec time{};
+    if (clock_gettime(clock, &time) != 0) {
+        return 0.0;
+    }
+    return static_cast<double>(time.tv_sec) + static_cast<double>(time.tv_nsec) * 1e-9;
+}
+#endif
+
+std::atomic<bool> g_cpu_clock_known{false};
+ThreadClock g_cpu_clock{};
 
 void count_indirect() {
     uint32_t stages = ((g_bp[0x00] >> 10) & 15) + 1;
@@ -856,7 +891,8 @@ void capture_frame_boundary() {
     if (!g_capture_requested.exchange(false) && !due) {
         return;
     }
-    CreateDirectoryA("captures", nullptr);
+    std::error_code created;
+    std::filesystem::create_directories("captures", created);
     char path[80];
     while (true) {
         std::snprintf(g_capture_name, sizeof g_capture_name, "captures/gx_capture_%03d", ++g_capture_index);
@@ -937,8 +973,9 @@ void execute_copy(uint32_t value) {
                            vertices, batch_seconds * 1000.0, g_indirect_draws, g_coordinate_draws, g_skipped_presents.exchange(0));
                 static double previous_cpu = 0.0;
                 static double previous_gpu = 0.0;
-                double cpu = thread_seconds(g_cpu_thread.load());
-                double gpu = thread_seconds(GetCurrentThread());
+                double cpu = g_cpu_clock_known.load() ? thread_seconds(g_cpu_clock) : 0.0;
+                static const ThreadClock gpu_clock = current_thread_clock();
+                double gpu = thread_seconds(gpu_clock);
                 log::write("threads", "CPU thread busy %.0f%% (guest idle %.0f%%), GPU thread busy %.0f%%", (cpu - previous_cpu) * 100.0 / seconds, idle_share() * 100.0, (gpu - previous_gpu) * 100.0 / seconds);
                 previous_cpu = cpu;
                 previous_gpu = gpu;
@@ -1192,9 +1229,8 @@ struct GpuItem {
 };
 
 struct GpuQueue {
-    SRWLOCK lock = SRWLOCK_INIT;
-    CONDITION_VARIABLE work = CONDITION_VARIABLE_INIT;
-    CONDITION_VARIABLE progress = CONDITION_VARIABLE_INIT;
+    std::mutex lock;
+    std::condition_variable work;
     std::deque<GpuItem> items;
     int frames = 0;
     bool started = false;
@@ -1210,13 +1246,11 @@ const bool g_threaded = [] {
 void gpu_thread() {
     std::vector<uint8_t> buffer;
     while (true) {
-        AcquireSRWLockExclusive(&g_gpu.lock);
-        while (g_gpu.items.empty()) {
-            SleepConditionVariableSRW(&g_gpu.work, &g_gpu.lock, INFINITE, 0);
-        }
+        std::unique_lock<std::mutex> hold(g_gpu.lock);
+        g_gpu.work.wait(hold, [] { return !g_gpu.items.empty(); });
         GpuItem item = std::move(g_gpu.items.front());
         g_gpu.items.pop_front();
-        ReleaseSRWLockExclusive(&g_gpu.lock);
+        hold.unlock();
         if (!item.bytes.empty()) {
             buffer.insert(buffer.end(), item.bytes.begin(), item.bytes.end());
             size_t used = parse(buffer.data(), buffer.size(), false);
@@ -1226,40 +1260,37 @@ void gpu_thread() {
             item.task();
         }
         if (item.frame) {
-            AcquireSRWLockExclusive(&g_gpu.lock);
+            std::lock_guard<std::mutex> hold(g_gpu.lock);
             g_gpu.frames--;
-            ReleaseSRWLockExclusive(&g_gpu.lock);
-            WakeAllConditionVariable(&g_gpu.progress);
         }
     }
 }
 
 void enqueue(GpuItem item) {
-    AcquireSRWLockExclusive(&g_gpu.lock);
+    std::unique_lock<std::mutex> hold(g_gpu.lock);
     if (!g_gpu.started) {
         g_gpu.started = true;
         std::thread(gpu_thread).detach();
     }
     if (item.frame) {
         if (g_gpu.frames >= kMaxFramesAhead) {
-            ReleaseSRWLockExclusive(&g_gpu.lock);
+            hold.unlock();
             g_skipped_presents++;
             return;
         }
         g_gpu.frames++;
     }
     g_gpu.items.push_back(std::move(item));
-    ReleaseSRWLockExclusive(&g_gpu.lock);
-    WakeConditionVariable(&g_gpu.work);
+    hold.unlock();
+    g_gpu.work.notify_one();
 }
 
 }
 
 void process() {
-    if (!g_cpu_thread.load()) {
-        HANDLE thread = nullptr;
-        DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread, THREAD_QUERY_LIMITED_INFORMATION, FALSE, 0);
-        g_cpu_thread = thread;
+    if (!g_cpu_clock_known.load()) {
+        g_cpu_clock = current_thread_clock();
+        g_cpu_clock_known = true;
     }
     if (g_fifo.empty()) {
         return;

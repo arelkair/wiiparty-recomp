@@ -1,6 +1,8 @@
 #include "wp/nand.h"
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -206,6 +208,7 @@ uint8_t console_language() {
             return name.language;
         }
     }
+#ifdef _WIN32
     switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {
     case LANG_GERMAN:
         return kLanguageGerman;
@@ -220,6 +223,19 @@ uint8_t console_language() {
     default:
         return kLanguageEnglish;
     }
+#else
+    const char* locale = std::getenv("LC_ALL");
+    if (!locale || !*locale) {
+        locale = std::getenv("LANG");
+    }
+    std::string code = locale ? std::string(locale).substr(0, 2) : "";
+    for (const Name& name : kNames) {
+        if (code == name.code) {
+            return name.language;
+        }
+    }
+    return kLanguageEnglish;
+#endif
 }
 
 std::vector<uint8_t> default_sysconf() {

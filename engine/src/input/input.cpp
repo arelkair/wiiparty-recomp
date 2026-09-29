@@ -1,7 +1,5 @@
 #include "wp/input.h"
 
-#include <windows.h>
-
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -64,7 +62,7 @@ bool pressed(int key) {
         int64_t last = (key == keymap::kWheelUp ? g_wheel_up : g_wheel_down).load();
         return now_ms() - last < kWheelSwing.count();
     }
-    return (GetAsyncKeyState(key) & 0x8000) != 0;
+    return video::key_down(key);
 }
 
 bool any_pressed(const std::vector<int>& keys) {
@@ -239,19 +237,16 @@ Sample device_sample(uint32_t channel) {
         }
         return result;
     }
-    HWND window = static_cast<HWND>(video::window_handle());
+    void* window = video::window_handle();
     static const bool log_input = std::getenv("WP_LOG_INPUT") != nullptr;
     static bool logged_focus = false;
-    static HWND logged_foreground = nullptr;
-    bool focused = window != nullptr && GetForegroundWindow() == window;
-    if (log_input && channel == 0 && (focused != logged_focus || GetForegroundWindow() != logged_foreground)) {
+    bool focused = video::window_focused();
+    if (log_input && channel == 0 && focused != logged_focus) {
         logged_focus = focused;
-        logged_foreground = GetForegroundWindow();
-        std::fprintf(stderr, "input window=%p focused=%d foreground=%p", static_cast<void*>(window), focused ? 1 : 0,
-                     static_cast<void*>(GetForegroundWindow()));
+        std::fprintf(stderr, "input window=%p focused=%d", window, focused ? 1 : 0);
         std::fputc(10, stderr);
     }
-    if (window != nullptr && GetForegroundWindow() != window) {
+    if (window != nullptr && !focused) {
         return result;
     }
     if (channel != 0) {
@@ -285,19 +280,20 @@ Sample device_sample(uint32_t channel) {
         std::fprintf(stderr, "input buttons=%04x", result.buttons);
         std::fputc(10, stderr);
     }
-    POINT cursor;
-    RECT client;
-    static POINT last_cursor{};
+    static long last_x = 0;
+    static long last_y = 0;
     static int64_t last_mouse_move = -1000000;
-    if (GetCursorPos(&cursor)) {
-        if (cursor.x != last_cursor.x || cursor.y != last_cursor.y) {
-            last_cursor = cursor;
+    long cursor_x = 0;
+    long cursor_y = 0;
+    if (video::cursor_position(cursor_x, cursor_y)) {
+        if (cursor_x != last_x || cursor_y != last_y) {
+            last_x = cursor_x;
+            last_y = cursor_y;
             last_mouse_move = now;
         }
     }
     bool mouse_recent = now - last_mouse_move < 1000;
-    if ((mouse_recent || !pad.pointer_valid) && ScreenToClient(window, &cursor) && GetClientRect(window, &client) &&
-        video::image_point(cursor.x, cursor.y, client.right, client.bottom, result.pointer_x, result.pointer_y)) {
+    if ((mouse_recent || !pad.pointer_valid) && video::cursor_on_image(result.pointer_x, result.pointer_y)) {
         result.pointer_valid = true;
     } else if (pad.pointer_valid) {
         result.pointer_valid = true;

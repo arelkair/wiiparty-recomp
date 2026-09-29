@@ -724,6 +724,7 @@ def main():
     words = collect(rng)
     functions = []
     table = []
+    values = []
     missing = []
     for name in sorted(words):
         made = 0
@@ -771,15 +772,18 @@ def main():
             expect += [f"{{6, {912 + k}, {after.gqr[k]:#x}ull}}" for k in range(8)]
             if memory_case:
                 expect += [f"{{5, {k}, {int.from_bytes(after.memory[4 * k:4 * k + 4], 'big'):#x}ull}}" for k in range(BUFFER_SIZE // 4)]
-            table.append(f"    {{\"{name}\", 0x{word:08x}u, case_{index}, {{{', '.join(setup)}}}, {{{', '.join(expect)}}}}},\n")
+            values.append(f"const Value setup_{index}[] = {{{', '.join(setup)}}};\nconst Value expect_{index}[] = {{{', '.join(expect)}}};\n")
+            table.append(f"    {{\"{name}\", 0x{word:08x}u, case_{index}, setup_{index}, {len(setup)}, expect_{index}, {len(expect)}}},\n")
             made += 1
         if made < CASES_PER_INSTRUCTION:
             missing.append(f"{name} {made}")
-    out = ["#include <cstdio>", "#include <cstdlib>", "#include <cstring>", "#include <vector>", "", '#include "wp/cpu.h"', "", "namespace {", ""]
+    out = ["#include <cstdio>", "#include <cstdlib>", "#include <cstring>", "", '#include "wp/cpu.h"', "", "namespace {", ""]
     out += functions
     out += ["struct Value {", "    int kind;", "    int index;", "    unsigned long long bits;", "};", "",
-            "struct Case {", "    const char* name;", "    uint32_t word;", "    void (*run)(wp::Cpu&);", "    std::vector<Value> setup;",
-            "    std::vector<Value> expect;", "};", "", "const Case kCases[] = {"]
+            "struct Case {", "    const char* name;", "    uint32_t word;", "    void (*run)(wp::Cpu&);", "    const Value* setup;",
+            "    size_t setup_count;", "    const Value* expect;", "    size_t expect_count;", "};", ""]
+    out += values
+    out += ["const Case kCases[] = {"]
     out += ["".join(table), "};", "", "unsigned long long read(const wp::Cpu& c, const Value& v) {",
             "    switch (v.kind) {", "    case 0:", "        return c.r[v.index];", "    case 1:", "        return wp::fpr_bits(c.f[v.index]);",
             "    case 2:", "        return wp::fpr_bits(c.ps1[v.index]);", "    case 3:", "        return c.cr[v.index];",
@@ -794,8 +798,9 @@ def main():
             "    default:", "        (v.index == 0 ? c.xer_so : v.index == 1 ? c.xer_ov : v.index == 2 ? c.xer_ca : c.xer_byte_count) = static_cast<uint8_t>(v.bits);", "    }", "}", "",
             "}", "", "int main() {", "    wp::g_memory = static_cast<uint8_t*>(std::calloc(wp::kMemorySize, 1));", "    const char* kinds[] = {\"r\", \"f\", \"ps1\", \"cr\", \"xer\", \"word\", \"spr\"};", "    int failures = 0;",
             "    for (const Case& test : kCases) {", "        static wp::Cpu c;", "        std::memset(&c, 0, sizeof c);",
-            "        for (const Value& v : test.setup) {", "            write(c, v);", "        }", "        test.run(c);",
-            "        for (const Value& v : test.expect) {", "            unsigned long long got = read(c, v);", "            if (got != v.bits) {",
+            "        for (size_t i = 0; i < test.setup_count; i++) {", "            write(c, test.setup[i]);", "        }", "        test.run(c);",
+            "        for (size_t i = 0; i < test.expect_count; i++) {", "            const Value& v = test.expect[i];", "            unsigned long long got = read(c, v);",
+            "            if (got != v.bits) {",
             "                failures++;", "                std::printf(\"%s %08x: %s%d is %llx, expected %llx\\n\", test.name, test.word, kinds[v.kind], v.index, got, v.bits);",
             "            }", "        }", "    }", "    std::printf(\"%zu cases, %d mismatches\\n\", sizeof(kCases) / sizeof(kCases[0]), failures);",
             "    return failures == 0 ? 0 : 1;", "}", ""]

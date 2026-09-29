@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(wii_recomp CXX RC)
+project(wii_recomp CXX)
+if(WIN32)
+    enable_language(RC)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

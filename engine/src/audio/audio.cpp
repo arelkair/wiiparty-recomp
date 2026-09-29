@@ -1,8 +1,10 @@
 #include "wp/audio.h"
 
+#ifdef _WIN32
 #include <windows.h>
 #include <audioclient.h>
 #include <mmdeviceapi.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -32,7 +34,9 @@ constexpr double kRate32k = 32000.0;
 constexpr double kRate48k = 48000.0;
 constexpr double kTargetLatency = 0.06;
 constexpr double kMaxLatency = 0.2;
+#ifdef _WIN32
 constexpr REFERENCE_TIME kBufferDuration = 400000;
+#endif
 constexpr double kMaxRateCorrection = 0.005;
 constexpr double kFadeSeconds = 0.004;
 constexpr int kTaps = 16;
@@ -69,6 +73,7 @@ void write_wav_header(std::FILE* file, uint32_t frames, uint32_t rate) {
     std::fflush(file);
 }
 
+#ifdef _WIN32
 template <typename T>
 void release(T*& object) {
     if (object) {
@@ -259,6 +264,27 @@ void output_thread() {
         }
     }
 }
+#else
+void output_thread() {
+    Clock::time_point last = Clock::now();
+    double owed = 0.0;
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        Clock::time_point now = Clock::now();
+        owed += std::chrono::duration<double>(now - last).count();
+        last = now;
+        std::lock_guard<std::mutex> lock(g_queue_mutex);
+        size_t take = static_cast<size_t>(owed * g_source_rate);
+        owed -= static_cast<double>(take) / g_source_rate;
+        size_t limit = static_cast<size_t>(kMaxLatency * g_source_rate);
+        if (g_queue.size() > limit) {
+            take = std::max(take, g_queue.size() - limit);
+        }
+        take = std::min(take, g_queue.size());
+        g_queue.erase(g_queue.begin(), g_queue.begin() + static_cast<std::ptrdiff_t>(take));
+    }
+}
+#endif
 
 }
 

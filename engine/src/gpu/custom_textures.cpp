@@ -1,7 +1,9 @@
 #include "wp/custom_textures.h"
 
+#ifdef _WIN32
 #include <windows.h>
 #include <wincodec.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -68,6 +70,7 @@ bool is_palette(uint32_t format) {
     return format >= 8 && format <= 10;
 }
 
+#ifdef _WIN32
 template <typename T>
 void release(T*& pointer) {
     if (pointer) {
@@ -75,6 +78,7 @@ void release(T*& pointer) {
         pointer = nullptr;
     }
 }
+#endif
 
 }
 
@@ -238,6 +242,13 @@ size_t Index::size() const {
 }
 
 bool decode_png(const std::filesystem::path& path, std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height) {
+#ifndef _WIN32
+    (void)path;
+    (void)pixels;
+    (void)width;
+    (void)height;
+    return false;
+#else
     HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IWICImagingFactory* factory = nullptr;
     IWICBitmapDecoder* decoder = nullptr;
@@ -267,6 +278,7 @@ bool decode_png(const std::filesystem::path& path, std::vector<uint32_t>& pixels
         CoUninitialize();
     }
     return ok;
+#endif
 }
 
 }
