@@ -38,7 +38,6 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 ### Known Limitations
 
 - The modes other than Board Game Island and Free Play have been tried but not played through in full.
-- Some block artifacts on Mii faces at high resolutions.
 - Real Wii Remotes are not supported yet.
 
 ---

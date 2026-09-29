@@ -117,6 +117,7 @@ uint32_t g_xf[kXfSize] = {};
 Statistics g_stats;
 int g_logged_copies = 0;
 int g_copy_total = 0;
+std::atomic<uint64_t> g_frames_drawn{0};
 int g_log_from = std::getenv("WP_LOG_FROM") ? std::atoi(std::getenv("WP_LOG_FROM")) : 0;
 const char* g_log_level = std::getenv("WP_LOG_GX");
 bool g_log = g_log_level != nullptr;
@@ -914,6 +915,7 @@ void execute_copy(uint32_t value) {
         int height = static_cast<int>((size >> 10) & 0x3FF) + 1;
         {
             g_frames++;
+            g_frames_drawn++;
             auto now = std::chrono::steady_clock::now();
             static auto previous_frame = now;
             double frame_ms = std::chrono::duration<double>(now - previous_frame).count() * 1000.0;
@@ -1169,6 +1171,10 @@ void push(uint64_t value, unsigned bytes) {
 
 bool take_finish_interrupt() {
     return g_finish_pending.exchange(false);
+}
+
+uint64_t frames_drawn() {
+    return g_frames_drawn.load();
 }
 
 void request_capture() {

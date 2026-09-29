@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -13,6 +14,7 @@
 
 #include "wp/game.h"
 #include "wp/gamepad.h"
+#include "wp/gx.h"
 #include "wp/keymap.h"
 #include "wp/log.h"
 #include "wp/modules.h"
@@ -221,7 +223,9 @@ Sample device_sample(uint32_t channel) {
             return parse_script(text.c_str());
         }();
         static const auto origin = std::chrono::steady_clock::now();
-        int elapsed = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - origin).count());
+        static const bool by_frames = std::getenv("WP_SCRIPT_CLOCK") && std::strcmp(std::getenv("WP_SCRIPT_CLOCK"), "frames") == 0;
+        int elapsed = by_frames ? static_cast<int>(gx::frames_drawn() * 1000 / 60)
+                                : static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - origin).count());
         if (channel != 0) {
             return gamepad_sample(channel, sideways_grip(false));
         }
