@@ -87,13 +87,15 @@ std::string system_program(const char* name) {
 
 }
 
-Toolchain::Toolchain(std::filesystem::path folder) : folder_(std::move(folder)) {}
+Toolchain::Toolchain(std::filesystem::path folder, std::filesystem::path bundled) : folder_(std::move(folder)), bundled_(std::move(bundled)) {}
 
 void Toolchain::add_to_path() const {
     std::vector<std::filesystem::path> folders;
-    for (const Package& package : kPackages) {
-        if (package.bin) {
-            folders.push_back(folder_ / path_from(package.bin));
+    for (const std::filesystem::path& base : {bundled_, folder_}) {
+        for (const Package& package : kPackages) {
+            if (package.bin) {
+                folders.push_back(base / path_from(package.bin));
+            }
         }
     }
     prepend_path(folders);
@@ -116,6 +118,9 @@ std::vector<ToolStatus> Toolchain::inspect() const {
         ToolStatus status;
         status.program = requirement.program;
         std::string path = find_program(status.program);
+        std::error_code outside;
+        std::filesystem::path relative = std::filesystem::relative(path_from(path), bundled_, outside);
+        status.bundled = !path.empty() && !outside && !relative.empty() && relative.native()[0] != '.';
         std::smatch match;
         std::string text = path.empty() ? std::string() : capture(path, {requirement.argument});
         if (!text.empty() && std::regex_search(text, match, std::regex(requirement.pattern))) {
@@ -134,7 +139,7 @@ std::vector<ToolStatus> Toolchain::inspect() const {
     return tools;
 }
 
-std::vector<Step> Toolchain::preparation(const std::vector<ToolStatus>& tools) const {
+std::vector<Step> Toolchain::preparation(const std::vector<ToolStatus>& tools, bool offline) const {
     const Texts& t = texts();
     std::vector<Step> steps;
     std::filesystem::path downloads = folder_ / "downloads";
@@ -143,12 +148,12 @@ std::vector<Step> Toolchain::preparation(const std::vector<ToolStatus>& tools) c
             continue;
         }
         const Package* package = package_for(tool.program);
-        if (!package) {
+        if (!package || offline) {
             std::string program = tool.program;
             Step step;
             step.title = format(t.step_tool, program);
-            step.action = [program](std::string& message) {
-                message = format(texts().tool_unavailable, program);
+            step.action = [program, offline](std::string& message) {
+                message = format(offline ? texts().tool_offline : texts().tool_unavailable, program);
                 return false;
             };
             steps.push_back(step);

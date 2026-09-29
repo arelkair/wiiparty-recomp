@@ -153,6 +153,10 @@ struct Texts {
     const char* textures_off;
     const char* shortcut_launcher;
     const char* shortcut_game;
+    const char* offline_mode;
+    const char* offline_mode_detail;
+    const char* tool_offline;
+    const char* tool_bundled;
 };
 
 void use_spanish(bool spanish);

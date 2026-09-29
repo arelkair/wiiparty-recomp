@@ -251,7 +251,7 @@ void wake_main_loop() {
 }
 
 App::App(SDL_Window* window, Project project, bool install_mode)
-    : window_(window), project_(std::move(project)), toolchain_(project_.root / "build" / "deps" / "toolchain"), install_mode_(install_mode) {
+    : window_(window), project_(std::move(project)), toolchain_(project_.root / "build" / "deps" / "toolchain", launcher_path().parent_path() / "tools"), install_mode_(install_mode) {
     use_root(project_.root);
     disc_ = pref("disc");
     if (disc_.empty()) {
@@ -273,7 +273,7 @@ App::~App() {
 }
 
 void App::start_update_check() {
-    if (pref("check_updates") == "0") {
+    if (pref("check_updates") == "0" || pref("offline") == "1") {
         return;
     }
     std::thread([] {
@@ -396,7 +396,7 @@ void App::use_root(const std::filesystem::path& root) {
     std::error_code error;
     std::filesystem::create_directories(project_.game_folder(), error);
     std::filesystem::current_path(root, error);
-    toolchain_ = Toolchain(root / "build" / "deps" / "toolchain");
+    toolchain_ = Toolchain(root / "build" / "deps" / "toolchain", launcher_path().parent_path() / "tools");
     toolchain_.add_to_path();
     wp::settings::load(project_.settings_file());
     apply_interface_language(value("system.interface_language"));
@@ -1009,10 +1009,20 @@ void App::settings_page(float width) {
     ui::gap(10);
     Card card(width);
     ImGui::PushID("launcher");
+    row(width, t.offline_mode, t.offline_mode_detail, 42.0f, 24.0f, [&] {
+        bool on = pref("offline") == "1";
+        if (ui::toggle("offline", on)) {
+            set_pref("offline", on ? "0" : "1");
+        }
+    });
+    inset_separator(width);
     row(width, t.check_updates, t.check_updates_detail, 42.0f, 24.0f, [&] {
-        bool on = pref("check_updates") != "0";
+        bool on = pref("check_updates") != "0" && pref("offline") != "1";
         if (ui::toggle("toggle", on)) {
             set_pref("check_updates", on ? "0" : "1");
+            if (!on) {
+                set_pref("offline", "0");
+            }
         }
     });
     inset_separator(width);
@@ -1627,7 +1637,9 @@ void App::install(bool adding) {
     std::filesystem::create_directories(project_.root, error);
     std::vector<ToolStatus> tools = toolchain_.inspect();
     for (const ToolStatus& tool : tools) {
-        log_.push_back(tool.usable ? format(t.tool_ready, tool.program, tool.version) : format(t.tool_to_download, tool.program));
+        log_.push_back(tool.bundled  ? format(t.tool_bundled, tool.program, tool.version)
+                       : tool.usable ? format(t.tool_ready, tool.program, tool.version)
+                                     : format(t.tool_to_download, tool.program));
     }
     int jobs = compile_jobs();
     log_.push_back(format(t.compile_jobs, std::to_string(jobs)));
@@ -1639,7 +1651,7 @@ void App::install(bool adding) {
         prepare.action = [root](std::string& message) { return extract_payload(root, message); };
         steps.push_back(prepare);
     }
-    for (Step& step : toolchain_.preparation(tools)) {
+    for (Step& step : toolchain_.preparation(tools, pref("offline") == "1")) {
         steps.push_back(std::move(step));
     }
     std::string python = toolchain_.python();

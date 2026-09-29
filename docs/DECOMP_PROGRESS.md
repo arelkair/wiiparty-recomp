@@ -988,3 +988,9 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Desktop shortcuts on Linux write a `.desktop` entry to the applications menu (`$XDG_DATA_HOME/applications`) and, when it exists, to the desktop folder given by `xdg-user-dir`, with the game's SVG icon.
 - After a build the launcher deletes the test programs with or without the `.exe` suffix; `tools/fetch_sdl.py` does nothing outside Windows.
 - Game build: when the system has no SDL3 (Ubuntu 24.04 has no package), `engine/CMakeLists.txt` downloads SDL 3.4.16 (same URL and SHA-256 as the launcher) and links it statically (option `WP_FETCH_SDL3`, on by default outside Windows). Checked by building the whole game in a new folder with the system SDL3 hidden (`CMAKE_DISABLE_FIND_PACKAGE_SDL3=ON`): 1,290 steps in 8 minutes, and the game ran with OpenGL, audio and saved frames. SDL still needs the X11, Wayland and audio development packages at build time to include those backends.
+
+## Launcher offline mode (2026-09-29)
+
+- New "Offline mode" setting (`offline=1` in the launcher preferences): the launcher never connects to the internet. The update check is skipped (its switch shows off; turning it back on leaves offline mode), and the install never downloads tools: a missing tool stops the install with a message that names it and offers three ways out (the offline tools pack, installing it yourself, or turning offline mode off). Without offline mode the behaviour is unchanged.
+- Offline tools pack support: the toolchain also looks in a `tools` folder next to the launcher, with the same layout as the downloaded tools (`tools/nodtool`, `tools/python`, `tools/cmake/...`, `tools/ninja`, `tools/mingw/...`), and puts it first on the PATH. Tools found there are listed in the install log as "(offline pack)" and are never downloaded.
+- Checked on Linux: the switch writes the preference, turns the update check off and the install log path builds on both systems.

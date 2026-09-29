@@ -154,6 +154,10 @@ constexpr Texts kEnglish = {
     "Custom textures are off in Settings, so no pack is used.",
     "Launcher",
     "Game",
+    "Offline mode",
+    "The launcher never connects to the internet: no update check and no tool downloads. Missing tools must come from the offline pack next to the launcher or be installed by you.",
+    "%1 is missing and offline mode is on. Put the offline tools pack next to the launcher, install %1 yourself, or turn offline mode off in Settings.",
+    "%1 %2 (offline pack)",
 };
 
 constexpr Texts kSpanish = {
@@ -306,6 +310,10 @@ constexpr Texts kSpanish = {
     "Las texturas personalizadas están desactivadas en Opciones, así que no se usa ningún pack.",
     "Lanzador",
     "Juego",
+    "Modo sin conexión",
+    "El lanzador no se conecta nunca a Internet: no busca actualizaciones ni descarga herramientas. Las que falten deben venir del paquete sin conexión junto al lanzador o instalarlas tú.",
+    "Falta %1 y el modo sin conexión está activado. Pon el paquete de herramientas sin conexión junto al lanzador, instala %1 tú mismo o desactiva el modo sin conexión en Ajustes.",
+    "%1 %2 (paquete sin conexión)",
 };
 
 struct Detail {
