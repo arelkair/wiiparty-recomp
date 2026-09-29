@@ -1,5 +1,7 @@
 #include "wp/gx_render.h"
 
+#include "gx_render_common.h"
+
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <dxgi1_2.h>
@@ -29,12 +31,7 @@ namespace wp::gx::render {
 
 namespace {
 
-constexpr int kEfbWidth = 640;
-constexpr int kEfbHeight = 528;
-constexpr uint32_t kMaxStages = 16;
-constexpr uint32_t kTextureMaps = 8;
 constexpr uint32_t kVertexCapacity = 1 << 16;
-constexpr float kScissorOffset = 342.0f;
 
 const char* kPresentShaderSource = R"HLSL(
 Texture2D frame : register(t0);
@@ -599,21 +596,6 @@ PixelOutput pixel_main(PixelInput p) {
 }
 )HLSL";
 
-struct Constants {
-    float initial[4][4];
-    float konst[4][4];
-    uint32_t stage[kMaxStages][4];
-    uint32_t header[4];
-    uint32_t swaps[4];
-    float texdims[8][4];
-    int32_t indmtx[6][4];
-    uint32_t indirect[4];
-    uint32_t tevind[kMaxStages][4];
-    float fog[4];
-    int32_t fog_integer[4];
-    float fog_range[3][4];
-};
-
 template <typename T>
 void release(T*& pointer) {
     if (pointer) {
@@ -719,9 +701,6 @@ struct Device {
     bool ready = false;
 };
 
-constexpr uint32_t kTlutSize = 0x100000;
-constexpr uint32_t kTlutMask = 0x7FE00;
-
 struct PendingBatch {
     std::vector<ScreenVertex> vertices;
     Constants constants;
@@ -745,7 +724,6 @@ bool g_logged_palette = false;
 bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
 uint64_t g_texture_epoch = 0;
-uint8_t g_tlut[kTlutSize];
 int g_scale = 1;
 uint32_t g_vertex_cursor = kVertexCapacity;
 uint32_t g_batches = 0;
@@ -908,222 +886,6 @@ bool initialize() {
     return true;
 }
 
-uint16_t be16(const uint8_t* p) {
-    return static_cast<uint16_t>((p[0] << 8) | p[1]);
-}
-
-uint32_t rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
-    return r | (g << 8) | (b << 16) | (a << 24);
-}
-
-uint32_t expand5(uint32_t v) {
-    return (v << 3) | (v >> 2);
-}
-
-uint32_t expand6(uint32_t v) {
-    return (v << 2) | (v >> 4);
-}
-
-uint32_t expand4(uint32_t v) {
-    return v * 17;
-}
-
-uint32_t expand3(uint32_t v) {
-    return (v << 5) | (v << 2) | (v >> 1);
-}
-
-uint32_t rgb565(uint16_t v) {
-    return rgba(expand5((v >> 11) & 31), expand6((v >> 5) & 63), expand5(v & 31), 255);
-}
-
-uint32_t rgb5a3(uint16_t v) {
-    if (v & 0x8000) {
-        return rgba(expand5((v >> 10) & 31), expand5((v >> 5) & 31), expand5(v & 31), 255);
-    }
-    return rgba(expand4((v >> 8) & 15), expand4((v >> 4) & 15), expand4(v & 15), expand3((v >> 12) & 7));
-}
-
-struct Layout {
-    uint32_t block_width;
-    uint32_t block_height;
-    bool supported;
-};
-
-Layout layout_for(uint32_t format) {
-    switch (format) {
-    case 0:
-    case 8:
-        return {8, 8, true};
-    case 1:
-    case 2:
-    case 9:
-        return {8, 4, true};
-    case 3:
-    case 4:
-    case 5:
-    case 6:
-    case 10:
-        return {4, 4, true};
-    case 14:
-        return {8, 8, true};
-    default:
-        return {4, 4, false};
-    }
-}
-
-uint32_t block_bytes(uint32_t format) {
-    return format == 6 ? 64 : 32;
-}
-
-void decode_cmpr_block(const uint8_t* source, uint32_t* out, uint32_t stride) {
-    uint16_t c0 = be16(source);
-    uint16_t c1 = be16(source + 2);
-    uint32_t palette[4];
-    auto split = [](uint16_t c, uint32_t& r, uint32_t& g, uint32_t& b) {
-        r = expand5((c >> 11) & 31);
-        g = expand6((c >> 5) & 63);
-        b = expand5(c & 31);
-    };
-    uint32_t r0, g0, b0, r1, g1, b1;
-    split(c0, r0, g0, b0);
-    split(c1, r1, g1, b1);
-    palette[0] = rgba(r0, g0, b0, 255);
-    palette[1] = rgba(r1, g1, b1, 255);
-    if (c0 > c1) {
-        palette[2] = rgba((2 * r0 + r1) / 3, (2 * g0 + g1) / 3, (2 * b0 + b1) / 3, 255);
-        palette[3] = rgba((r0 + 2 * r1) / 3, (g0 + 2 * g1) / 3, (b0 + 2 * b1) / 3, 255);
-    } else {
-        palette[2] = rgba((r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2, 255);
-        palette[3] = rgba(0, 0, 0, 0);
-    }
-    for (uint32_t row = 0; row < 4; row++) {
-        uint8_t bits = source[4 + row];
-        for (uint32_t column = 0; column < 4; column++) {
-            out[row * stride + column] = palette[(bits >> (6 - 2 * column)) & 3];
-        }
-    }
-}
-
-uint32_t palette_entry(const uint8_t* tlut, uint32_t tlut_format, uint32_t index) {
-    uint16_t entry = be16(tlut + index * 2);
-    switch (tlut_format) {
-    case 0:
-        return rgba(entry & 0xFF, entry & 0xFF, entry & 0xFF, entry >> 8);
-    case 1:
-        return rgb565(entry);
-    default:
-        return rgb5a3(entry);
-    }
-}
-
-std::vector<uint32_t> decode_texture(const uint8_t* data, uint32_t width, uint32_t height, uint32_t format, const uint8_t* tlut,
-                                     uint32_t tlut_format) {
-    Layout layout = layout_for(format);
-    uint32_t padded_width = (width + layout.block_width - 1) / layout.block_width * layout.block_width;
-    uint32_t padded_height = (height + layout.block_height - 1) / layout.block_height * layout.block_height;
-    std::vector<uint32_t> pixels(static_cast<size_t>(padded_width) * padded_height, rgba(255, 0, 255, 255));
-    if (!layout.supported) {
-        return pixels;
-    }
-    uint32_t bytes = block_bytes(format);
-    for (uint32_t by = 0; by < padded_height; by += layout.block_height) {
-        for (uint32_t bx = 0; bx < padded_width; bx += layout.block_width) {
-            uint32_t* out = &pixels[static_cast<size_t>(by) * padded_width + bx];
-            const uint8_t* block = data;
-            data += bytes;
-            for (uint32_t y = 0; y < layout.block_height; y++) {
-                for (uint32_t x = 0; x < layout.block_width; x++) {
-                    uint32_t pixel = 0;
-                    switch (format) {
-                    case 0: {
-                        uint32_t v = (block[y * 4 + x / 2] >> ((x & 1) ? 0 : 4)) & 15;
-                        pixel = rgba(expand4(v), expand4(v), expand4(v), expand4(v));
-                        break;
-                    }
-                    case 1: {
-                        uint32_t v = block[y * 8 + x];
-                        pixel = rgba(v, v, v, v);
-                        break;
-                    }
-                    case 2: {
-                        uint32_t v = block[y * 8 + x];
-                        uint32_t i = expand4(v & 15);
-                        pixel = rgba(i, i, i, expand4(v >> 4));
-                        break;
-                    }
-                    case 3: {
-                        uint32_t a = block[(y * 4 + x) * 2];
-                        uint32_t i = block[(y * 4 + x) * 2 + 1];
-                        pixel = rgba(i, i, i, a);
-                        break;
-                    }
-                    case 4:
-                        pixel = rgb565(be16(block + (y * 4 + x) * 2));
-                        break;
-                    case 5:
-                        pixel = rgb5a3(be16(block + (y * 4 + x) * 2));
-                        break;
-                    case 6: {
-                        uint32_t index = (y * 4 + x) * 2;
-                        pixel = rgba(block[index + 1], block[32 + index], block[32 + index + 1], block[index]);
-                        break;
-                    }
-                    case 8:
-                        pixel = palette_entry(tlut, tlut_format, (block[y * 4 + x / 2] >> ((x & 1) ? 0 : 4)) & 15);
-                        break;
-                    case 9:
-                        pixel = palette_entry(tlut, tlut_format, block[y * 8 + x]);
-                        break;
-                    case 10:
-                        pixel = palette_entry(tlut, tlut_format, be16(block + (y * 4 + x) * 2) & 0x3FFF);
-                        break;
-                    case 14: {
-                        uint32_t sub = (y / 4) * 2 + (x / 4);
-                        uint32_t local[16];
-                        decode_cmpr_block(block + sub * 8, local, 4);
-                        pixel = local[(y % 4) * 4 + (x % 4)];
-                        break;
-                    }
-                    default:
-                        break;
-                    }
-                    out[y * padded_width + x] = pixel;
-                }
-            }
-        }
-    }
-    std::vector<uint32_t> cropped(static_cast<size_t>(width) * height);
-    for (uint32_t y = 0; y < height; y++) {
-        std::memcpy(&cropped[static_cast<size_t>(y) * width], &pixels[static_cast<size_t>(y) * padded_width], width * sizeof(uint32_t));
-    }
-    return cropped;
-}
-
-uint64_t hash_bytes(const uint8_t* data, size_t size) {
-    uint64_t hash = 1469598103934665603ull;
-    size_t words = size / 8;
-    const uint64_t* p = reinterpret_cast<const uint64_t*>(data);
-    for (size_t i = 0; i < words; i++) {
-        hash = (hash ^ p[i]) * 1099511628211ull;
-    }
-    for (size_t i = words * 8; i < size; i++) {
-        hash = (hash ^ data[i]) * 1099511628211ull;
-    }
-    return hash;
-}
-
-uint64_t sample_hash(const uint8_t* data, size_t size) {
-    constexpr size_t kSamples = 32;
-    uint64_t hash = 1469598103934665603ull;
-    size_t step = size / kSamples;
-    for (size_t i = 0; i < kSamples; i++) {
-        uint64_t word = 0;
-        std::memcpy(&word, data + std::min(i * step, size > 8 ? size - 8 : 0), std::min<size_t>(size, 8));
-        hash = (hash ^ word) * 1099511628211ull;
-    }
-    return hash;
-}
-
 std::string g_copy_dump_prefix;
 int g_copy_dump_index = 0;
 FILE* g_texture_notes = nullptr;
@@ -1214,52 +976,22 @@ void dump_texture(const custom_textures::TextureName& name, const std::vector<st
 
 ID3D11ShaderResourceView* texture_for(uint32_t map) {
     g_custom_maps &= ~(1u << map);
-    const uint32_t* bp = bp_registers();
-    uint32_t image0_reg = map < 4 ? 0x88 + map : 0xA8 + (map - 4);
-    uint32_t image3_reg = map < 4 ? 0x94 + map : 0xB4 + (map - 4);
-    uint32_t image0 = bp[image0_reg];
-    uint32_t width = (image0 & 0x3FF) + 1;
-    uint32_t height = ((image0 >> 10) & 0x3FF) + 1;
-    uint32_t format = (image0 >> 20) & 15;
-    uint32_t address = 0x80000000u | ((bp[image3_reg] & 0x00FFFFFF) << 5);
-    Layout layout = layout_for(format);
-    if (!layout.supported && !g_logged_palette) {
+    TextureRequest request = describe_texture(map);
+    if (!request.supported && !g_logged_palette) {
         g_logged_palette = true;
-        std::fprintf(stderr, "unsupported texture format %u\n", format);
+        std::fprintf(stderr, "unsupported texture format %u\n", request.format);
     }
-    uint32_t mode0 = bp[map < 4 ? 0x80 + map : 0xA0 + (map - 4)];
-    uint32_t mode1 = bp[map < 4 ? 0x84 + map : 0xA4 + (map - 4)];
-    uint32_t levels = 1;
-    if (((mode0 >> 5) & 3) != 0) {
-        uint32_t requested = (((mode1 >> 8) & 0xFF) + 15) / 16 + 1;
-        uint32_t largest = std::max(width, height);
-        uint32_t available = 1;
-        while ((largest >> available) != 0) {
-            available++;
-        }
-        levels = std::min(requested, available);
-    }
-    auto level_size = [&](uint32_t level) {
-        uint32_t level_width = std::max(width >> level, 1u);
-        uint32_t level_height = std::max(height >> level, 1u);
-        uint32_t padded_width = (level_width + layout.block_width - 1) / layout.block_width * layout.block_width;
-        uint32_t padded_height = (level_height + layout.block_height - 1) / layout.block_height * layout.block_height;
-        return static_cast<size_t>(padded_width / layout.block_width) * (padded_height / layout.block_height) * block_bytes(format);
-    };
-    size_t size = level_size(0);
-    if (!guest_range_valid(address, size)) {
+    if (!request.valid) {
         return nullptr;
     }
-    size_t total = size;
-    for (uint32_t level = 1; level < levels; level++) {
-        size_t next = total + level_size(level);
-        if (!guest_range_valid(address, next)) {
-            levels = level;
-            break;
-        }
-        total = next;
-    }
-    const uint8_t* source = host(address);
+    uint32_t address = request.address;
+    uint32_t width = request.width;
+    uint32_t height = request.height;
+    uint32_t format = request.format;
+    uint32_t levels = request.levels;
+    size_t size = request.size;
+    const uint8_t* source = request.source;
+    const uint8_t* tlut = request.tlut;
     auto copied = g_device.copies.find(address);
     if (copied != g_device.copies.end() && copied->second.logical_width == width && copied->second.logical_height == height &&
         format <= 6 && copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
@@ -1274,20 +1006,8 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     } else {
         note_texture(map, address, width, height, format, "RAM");
     }
-    uint64_t key = (static_cast<uint64_t>(address) << 20) ^ (static_cast<uint64_t>(width) << 8) ^ (static_cast<uint64_t>(height) << 32) ^ format ^
-                   (static_cast<uint64_t>(levels) << 4);
-    const uint8_t* tlut = nullptr;
-    uint32_t tlut_format = 0;
-    uint32_t entries = 0;
-    if (format >= 8 && format <= 10) {
-        uint32_t tlut_register = bp[map < 4 ? 0x98 + map : 0xB8 + (map - 4)];
-        uint32_t tlut_offset = (tlut_register & 0x3FF) << 9;
-        tlut_format = (tlut_register >> 10) & 3;
-        tlut = g_tlut + (tlut_offset & kTlutMask);
-        entries = format == 8 ? 16 : format == 9 ? 256 : 16384;
-        key ^= (static_cast<uint64_t>(tlut_offset >> 9) << 54) ^ (static_cast<uint64_t>(tlut_format) << 52);
-    }
-    bool mipmaps = ((mode0 >> 5) & 3) != 0;
+    uint64_t key = request.key;
+    bool mipmaps = request.mipmaps;
     CachedTexture& entry = g_device.textures[key];
     auto use = [&](CachedTexture& texture) {
         if (texture.custom) {
@@ -1299,10 +1019,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         entry.levels == levels && entry.mipmaps == mipmaps) {
         return use(entry);
     }
-    uint64_t hash = hash_bytes(source, total);
-    if (tlut) {
-        hash = (hash ^ hash_bytes(tlut, entries * 2)) * 1099511628211ull ^ tlut_format;
-    }
+    uint64_t hash = texture_hash(request);
     if (entry.view && entry.hash == hash && entry.width == width && entry.height == height && entry.format == format && entry.levels == levels &&
         entry.mipmaps == mipmaps) {
         entry.verified_epoch = g_texture_epoch;
@@ -1322,7 +1039,7 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         entry.verified_epoch = g_texture_epoch;
         return use(entry);
     };
-    bool named = layout.supported && copied == g_device.copies.end() && (g_pack.dump || g_pack.load);
+    bool named = request.supported && copied == g_device.copies.end() && (g_pack.dump || g_pack.load);
     custom_textures::TextureName name;
     ID3D11ShaderResourceView* custom = nullptr;
     if (named) {
@@ -1340,15 +1057,10 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
         entry.custom = true;
         return finish();
     }
-    std::vector<std::vector<uint32_t>> pixels(levels);
+    std::vector<std::vector<uint32_t>> pixels = decode_levels(request);
     std::vector<D3D11_SUBRESOURCE_DATA> initial(levels);
-    size_t offset = 0;
     for (uint32_t level = 0; level < levels; level++) {
-        uint32_t level_width = std::max(width >> level, 1u);
-        uint32_t level_height = std::max(height >> level, 1u);
-        pixels[level] = decode_texture(source + offset, level_width, level_height, format, tlut, tlut_format);
-        initial[level] = {pixels[level].data(), level_width * 4, 0};
-        offset += level_size(level);
+        initial[level] = {pixels[level].data(), std::max(width >> level, 1u) * 4, 0};
     }
     if (named && g_pack.dump) {
         dump_texture(name, pixels, width, height);
@@ -1376,12 +1088,8 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
 }
 
 ID3D11SamplerState* sampler_for(uint32_t map) {
-    const uint32_t* bp = bp_registers();
-    uint32_t mode = bp[map < 4 ? 0x80 + map : 0xA0 + (map - 4)];
-    uint32_t lod = bp[map < 4 ? 0x84 + map : 0xA4 + (map - 4)];
-    bool custom = (g_custom_maps >> map) & 1;
-    uint64_t key = (mode & 0x3FFFFF) | (static_cast<uint64_t>(lod & 0xFFFF) << 32) | (static_cast<uint64_t>(custom) << 48);
-    auto found = g_device.samplers.find(key);
+    SamplerParams params = sampler_params(map, (g_custom_maps >> map) & 1);
+    auto found = g_device.samplers.find(params.key);
     if (found != g_device.samplers.end()) {
         return found->second;
     }
@@ -1389,30 +1097,19 @@ ID3D11SamplerState* sampler_for(uint32_t map) {
         return wrap == 1 ? D3D11_TEXTURE_ADDRESS_WRAP : wrap == 2 ? D3D11_TEXTURE_ADDRESS_MIRROR : D3D11_TEXTURE_ADDRESS_CLAMP;
     };
     D3D11_SAMPLER_DESC description{};
-    bool mag_linear = ((mode >> 4) & 1) != 0;
-    uint32_t mip_mode = (mode >> 5) & 3;
-    bool min_linear = ((mode >> 7) & 1) != 0;
-    D3D11_FILTER_TYPE min_type = min_linear ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
-    D3D11_FILTER_TYPE mag_type = mag_linear ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
-    D3D11_FILTER_TYPE mip_type = mip_mode == 2 ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
+    D3D11_FILTER_TYPE min_type = params.min_linear ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
+    D3D11_FILTER_TYPE mag_type = params.mag_linear ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
+    D3D11_FILTER_TYPE mip_type = params.mip_mode == 2 ? D3D11_FILTER_TYPE_LINEAR : D3D11_FILTER_TYPE_POINT;
     description.Filter = D3D11_ENCODE_BASIC_FILTER(min_type, mag_type, mip_type, false);
-    description.AddressU = address(mode & 3);
-    description.AddressV = address((mode >> 2) & 3);
+    description.AddressU = address(params.wrap_s);
+    description.AddressV = address(params.wrap_t);
     description.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-    if (mip_mode == 0) {
-        description.MinLOD = 0.0f;
-        description.MaxLOD = 0.0f;
-        description.MipLODBias = 0.0f;
-    } else {
-        uint32_t max_lod = (lod >> 8) & 0xFF;
-        uint32_t min_lod = std::min(lod & 0xFF, max_lod);
-        description.MinLOD = min_lod / 16.0f;
-        description.MaxLOD = custom ? D3D11_FLOAT32_MAX : max_lod / 16.0f;
-        description.MipLODBias = static_cast<int8_t>((mode >> 9) & 0xFF) / 32.0f;
-    }
+    description.MinLOD = params.min_lod;
+    description.MaxLOD = params.unlimited_lod ? D3D11_FLOAT32_MAX : params.max_lod;
+    description.MipLODBias = params.lod_bias;
     ID3D11SamplerState* state = nullptr;
     g_device.device->CreateSamplerState(&description, &state);
-    g_device.samplers[key] = state;
+    g_device.samplers[params.key] = state;
     return state;
 }
 
@@ -1457,10 +1154,6 @@ D3D11_BLEND_OP d3d_operation(BlendOperation operation) {
     default:
         return D3D11_BLEND_OP_ADD;
     }
-}
-
-BlendState blend_state_for(uint32_t word) {
-    return blend_state(word & 0xFFFF, ((word >> 16) & 1) != 0, ((word >> 17) & 1) != 0, ((word >> 18) & 1) == 0);
 }
 
 ID3D11BlendState* blend_for(uint32_t word) {
@@ -1511,127 +1204,6 @@ ID3D11DepthStencilState* depth_for(uint32_t word) {
     g_device.device->CreateDepthStencilState(&description, &state);
     g_device.depth_states[key] = state;
     return state;
-}
-
-float signed11(uint32_t value) {
-    int32_t v = static_cast<int32_t>(value & 0x7FF);
-    if (v & 0x400) {
-        v -= 0x800;
-    }
-    return static_cast<float>(v) / 255.0f;
-}
-
-void fill_constants(Constants& constants) {
-    const uint32_t* bp = bp_registers();
-    std::memset(&constants, 0, sizeof constants);
-    for (uint32_t i = 0; i < 4; i++) {
-        uint32_t ra = bp[0xE0 + 2 * i];
-        uint32_t bg = bp[0xE1 + 2 * i];
-        constants.initial[i][0] = signed11(ra);
-        constants.initial[i][3] = signed11(ra >> 12);
-        constants.initial[i][2] = signed11(bg);
-        constants.initial[i][1] = signed11(bg >> 12);
-    }
-    const uint32_t* konst = konst_registers();
-    for (uint32_t i = 0; i < 4; i++) {
-        uint32_t ra = konst[2 * i];
-        uint32_t bg = konst[2 * i + 1];
-        constants.konst[i][0] = signed11(ra);
-        constants.konst[i][3] = signed11(ra >> 12);
-        constants.konst[i][2] = signed11(bg);
-        constants.konst[i][1] = signed11(bg >> 12);
-    }
-    for (uint32_t i = 0; i < 8; i++) {
-        uint32_t image0 = bp[i < 4 ? 0x88 + i : 0xA8 + (i - 4)];
-        constants.texdims[i][0] = static_cast<float>((image0 & 0x3FF) + 1);
-        constants.texdims[i][1] = static_cast<float>(((image0 >> 10) & 0x3FF) + 1);
-        constants.texdims[i][2] = static_cast<float>((bp[0x30 + 2 * i] & 0xFFFF) + 1);
-        constants.texdims[i][3] = static_cast<float>((bp[0x31 + 2 * i] & 0xFFFF) + 1);
-    }
-    for (uint32_t i = 0; i < 3; i++) {
-        uint32_t a = bp[0x06 + 3 * i];
-        uint32_t b = bp[0x07 + 3 * i];
-        uint32_t c = bp[0x08 + 3 * i];
-        auto field = [](uint32_t value) {
-            int32_t v = static_cast<int32_t>(value & 0x7FF);
-            return (v & 0x400) ? v - 0x800 : v;
-        };
-        int32_t scale = static_cast<int32_t>(((a >> 22) & 3) | (((b >> 22) & 3) << 2) | (((c >> 22) & 3) << 4));
-        constants.indmtx[2 * i][0] = field(a);
-        constants.indmtx[2 * i][1] = field(b);
-        constants.indmtx[2 * i][2] = field(c);
-        constants.indmtx[2 * i][3] = 17 - scale;
-        constants.indmtx[2 * i + 1][0] = field(a >> 11);
-        constants.indmtx[2 * i + 1][1] = field(b >> 11);
-        constants.indmtx[2 * i + 1][2] = field(c >> 11);
-        constants.indmtx[2 * i + 1][3] = 17 - scale;
-    }
-    constants.indirect[0] = ((bp[0x00] >> 16) & 7) | ((bp[0x00] & 15) << 8);
-    constants.indirect[1] = bp[0x27];
-    constants.indirect[2] = bp[0x25];
-    constants.indirect[3] = bp[0x26];
-    uint32_t stages = ((bp[0x00] >> 10) & 15) + 1;
-    for (uint32_t i = 0; i < stages && i < kMaxStages; i++) {
-        constants.tevind[i][0] = bp[0x10 + i];
-    }
-    constants.header[0] = stages;
-    constants.header[1] = bp[0xF3];
-    constants.header[2] = bp[0x42];
-    bool rgba6 = (bp[0x43] & 7) == 1;
-    constants.header[3] = (rgba6 ? 1u : 0u) | ((rgba6 && (bp[0x41] & 4) != 0) ? 2u : 0u) |
-                          (static_cast<uint32_t>(blend_state(bp[0x41], true, false, true).output) << 2);
-    auto fog_float = [](uint32_t value) {
-        uint32_t bits = (((value >> 19) & 1) << 31) | (((value >> 11) & 0xFF) << 23) | ((value & 0x7FF) << 12);
-        float result;
-        std::memcpy(&result, &bits, sizeof result);
-        return result;
-    };
-    uint32_t fog_a = bp[0xEE];
-    uint32_t fog_c = bp[0xF1];
-    bool nan_case = ((fog_a >> 11) & 0xFF) == 255 && ((fog_c >> 11) & 0xFF) == 255;
-    constants.fog[0] = nan_case ? 0.0f : fog_float(fog_a);
-    constants.fog[1] = nan_case ? ((!((fog_a >> 19) & 1) && !((fog_c >> 19) & 1)) ? -INFINITY : INFINITY) : fog_float(fog_c);
-    constants.fog[2] = 0.0f;
-    constants.fog[3] = 1.0f;
-    constants.fog_integer[0] = static_cast<int32_t>((fog_c >> 20) & 15);
-    constants.fog_integer[1] = static_cast<int32_t>(bp[0xEF] & 0xFFFFFF);
-    constants.fog_integer[2] = static_cast<int32_t>(bp[0xF2] & 0xFFFFFF);
-    constants.fog_integer[3] = static_cast<int32_t>(bp[0xF0] & 0x1F);
-    if (bp[0xE8] & (1u << 10)) {
-        const uint32_t* xf = xf_registers();
-        float width = 0.0f;
-        std::memcpy(&width, &xf[0x101A], sizeof width);
-        int center = static_cast<int>(bp[0xE8] & 0x3FF) - 342;
-        constants.fog[2] = (center / (2.0f * width)) * 2.0f - 1.0f;
-        constants.fog[3] = 2.0f * width * g_scale;
-        for (uint32_t i = 0; i < 5; i++) {
-            uint32_t k = bp[0xE9 + i];
-            uint32_t low = 2 * i;
-            uint32_t high = 2 * i + 1;
-            constants.fog_range[low / 4][low % 4] = ((k >> 12) & 0xFFF) / 256.0f * 4.0f;
-            constants.fog_range[high / 4][high % 4] = (k & 0xFFF) / 256.0f * 4.0f;
-        }
-        constants.fog_integer[0] |= 16;
-    }
-    for (uint32_t table = 0; table < 4; table++) {
-        uint32_t low = bp[0xF6 + 2 * table];
-        uint32_t high = bp[0xF7 + 2 * table];
-        constants.swaps[table] = (low & 3) | (((low >> 2) & 3) << 2) | ((high & 3) << 4) | (((high >> 2) & 3) << 6);
-    }
-    for (uint32_t i = 0; i < stages && i < kMaxStages; i++) {
-        uint32_t order_word = bp[0x28 + i / 2];
-        uint32_t order = (i & 1) ? (order_word >> 12) : order_word;
-        uint32_t map = order & 7;
-        uint32_t coord = (order >> 3) & 7;
-        uint32_t enable = (order >> 6) & 1;
-        uint32_t channel = (order >> 7) & 7;
-        uint32_t ksel_word = bp[0xF6 + i / 2];
-        uint32_t ksel = (i & 1) ? ((ksel_word >> 14) & 0x3FF) : ((ksel_word >> 4) & 0x3FF);
-        constants.stage[i][0] = bp[0xC0 + 2 * i];
-        constants.stage[i][1] = bp[0xC1 + 2 * i];
-        constants.stage[i][2] = map | (coord << 3) | (enable << 6) | (channel << 7);
-        constants.stage[i][3] = (ksel & 31) | (((ksel >> 5) & 31) << 5);
-    }
 }
 
 void flush_pending() {
@@ -1707,50 +1279,13 @@ const char* api_name() {
     return "Direct3D 11";
 }
 
-struct AlphaTestResult {
-    bool can_pass;
-    bool can_fail;
-};
-
-AlphaTestResult alpha_test_result(uint32_t test) {
-    static uint32_t cached_test = 0xFFFFFFFF;
-    static AlphaTestResult cached_result{};
-    if (test == cached_test) {
-        return cached_result;
-    }
-    auto compare = [](uint32_t mode, uint32_t value, uint32_t reference) {
-        switch (mode) {
-        case 0: return false;
-        case 1: return value < reference;
-        case 2: return value == reference;
-        case 3: return value <= reference;
-        case 4: return value > reference;
-        case 5: return value != reference;
-        case 6: return value >= reference;
-        default: return true;
-        }
-    };
-    AlphaTestResult result{false, false};
-    for (uint32_t alpha = 0; alpha < 256; alpha++) {
-        bool first = compare((test >> 16) & 7, alpha, test & 255);
-        bool second = compare((test >> 19) & 7, alpha, (test >> 8) & 255);
-        uint32_t logic = (test >> 22) & 3;
-        bool accepted = logic == 0 ? (first && second) : (logic == 1 ? (first || second) : (logic == 2 ? (first != second) : (first == second)));
-        result.can_pass |= accepted;
-        result.can_fail |= !accepted;
-    }
-    cached_test = test;
-    cached_result = result;
-    return result;
-}
-
 void draw(const ScreenVertex* vertices, uint32_t count) {
     if (count == 0 || !initialize()) {
         return;
     }
     const uint32_t* bp = bp_registers();
     Constants constants;
-    fill_constants(constants);
+    fill_constants(constants, g_scale);
     ID3D11ShaderResourceView* views[kTextureMaps] = {};
     ID3D11SamplerState* samplers[kTextureMaps] = {};
     uint32_t used_maps = 0;
@@ -1806,15 +1341,6 @@ void invalidate_textures() {
     g_texture_epoch++;
 }
 
-void load_tlut(uint32_t address, uint32_t tmem_offset, uint32_t bytes) {
-    tmem_offset &= kTlutMask;
-    bytes = std::min(bytes, kTlutSize - tmem_offset);
-    if (!guest_range_valid(address, bytes)) {
-        return;
-    }
-    std::memcpy(g_tlut + tmem_offset, host(address), bytes);
-}
-
 bool create_present_pipeline();
 
 void release_copy(CopiedTexture& entry) {
@@ -1825,26 +1351,6 @@ void release_copy(CopiedTexture& entry) {
 }
 
 void dump_copy(const CopiedTexture& entry);
-
-constexpr uint32_t kXfbFormat = 13;
-
-uint32_t copy_bits(uint32_t format) {
-    switch (format) {
-    case 0:
-        return 4;
-    case 1:
-    case 2:
-    case 7:
-    case 8:
-    case 9:
-    case 10:
-        return 8;
-    case 6:
-        return 32;
-    default:
-        return 16;
-    }
-}
 
 bool run_copy(ID3D11RenderTargetView* target, uint32_t target_width, uint32_t target_height, int x, int y, int width, int height, uint32_t format,
               bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
@@ -1914,59 +1420,6 @@ bool create_copy_texture(ID3D11Texture2D*& texture, ID3D11ShaderResourceView*& v
     return SUCCEEDED(g_device.device->CreateTexture2D(&description, nullptr, &texture)) &&
            SUCCEEDED(g_device.device->CreateShaderResourceView(texture, nullptr, &view)) &&
            SUCCEEDED(g_device.device->CreateRenderTargetView(texture, nullptr, &target));
-}
-
-uint32_t copy_texture_format(uint32_t format) {
-    static constexpr uint32_t kFormats[13] = {0, 1, 2, 3, 4, 5, 6, 1, 1, 1, 1, 3, 3};
-    return kFormats[format];
-}
-
-uint32_t scale_bits(uint32_t value, int bits) {
-    return (value * ((1u << bits) - 1) + 127) / 255;
-}
-
-void encode_texel(uint8_t* block, uint32_t format, uint32_t index, const uint8_t* rgba) {
-    uint32_t r = rgba[0];
-    uint32_t g = rgba[1];
-    uint32_t b = rgba[2];
-    uint32_t a = rgba[3];
-    auto put16 = [&](uint32_t offset, uint32_t value) {
-        block[offset] = static_cast<uint8_t>(value >> 8);
-        block[offset + 1] = static_cast<uint8_t>(value);
-    };
-    switch (format) {
-    case 0: {
-        uint8_t& byte = block[index / 2];
-        uint32_t nibble = scale_bits(r, 4);
-        byte = (index & 1) ? static_cast<uint8_t>((byte & 0xF0) | nibble) : static_cast<uint8_t>((byte & 0x0F) | (nibble << 4));
-        break;
-    }
-    case 1:
-        block[index] = static_cast<uint8_t>(r);
-        break;
-    case 2:
-        block[index] = static_cast<uint8_t>((scale_bits(a, 4) << 4) | scale_bits(r, 4));
-        break;
-    case 3:
-        block[index * 2] = static_cast<uint8_t>(a);
-        block[index * 2 + 1] = static_cast<uint8_t>(r);
-        break;
-    case 4:
-        put16(index * 2, (scale_bits(r, 5) << 11) | (scale_bits(g, 6) << 5) | scale_bits(b, 5));
-        break;
-    case 5: {
-        uint32_t alpha = scale_bits(a, 3);
-        put16(index * 2, alpha == 7 ? 0x8000 | (scale_bits(r, 5) << 10) | (scale_bits(g, 5) << 5) | scale_bits(b, 5)
-                                    : (alpha << 12) | (scale_bits(r, 4) << 8) | (scale_bits(g, 4) << 4) | scale_bits(b, 4));
-        break;
-    }
-    default:
-        block[index * 2] = static_cast<uint8_t>(a);
-        block[index * 2 + 1] = static_cast<uint8_t>(r);
-        block[32 + index * 2] = static_cast<uint8_t>(g);
-        block[32 + index * 2 + 1] = static_cast<uint8_t>(b);
-        break;
-    }
 }
 
 bool write_copy_to_ram(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
@@ -2448,14 +1901,6 @@ bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height
     }
     flush_pending();
     return read_texture(g_device.frame, pixels, width, height);
-}
-
-uint32_t expand(uint32_t value, int bits) {
-    return (value << (8 - bits)) | (value >> (2 * bits - 8));
-}
-
-uint32_t quantize(uint32_t value, int bits) {
-    return expand(value >> (8 - bits), bits);
 }
 
 void clear(int x, int y, int width, int height) {
