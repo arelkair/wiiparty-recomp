@@ -17,9 +17,9 @@ State on 2026-09-29, measured with GCC 13.3, CMake 3.28 and Ninja 1.11 on Ubuntu
 | `platform/video.cpp` | 589 | Win32 window on its own thread, DXGI swap chain, `SystemParametersInfo` | Done: `video_sdl.cpp` (SDL3 window, OpenGL context) |
 | `audio/audio.cpp` | 307 | WASAPI output with windowed-sinc resampling | Done: shared `Mixer` feeding an `SDL_AudioStream` |
 | `input/input.cpp` | 342 | `GetAsyncKeyState`, `GetCursorPos`, focus through `GetForegroundWindow` | Done: queries moved to the video layer, answered by SDL3 |
-| `platform/options_window.cpp` | 301 | F10 menu drawn with GDI into an overlay texture | Pending: draw the panel into an RGBA buffer without GDI |
+| `platform/options_window.cpp` | 301 | F10 menu drawn with GDI into an overlay texture | Done: shared menu logic, `options_render_stb.cpp` (stb_truetype) |
 | `core/threads.cpp` | 391 | Win32 fibers for guest threads, `OSSaveContext` and `setjmp` resumption | Done: `wp::fiber` (`ucontext`) |
-| `gpu/custom_textures.cpp` | 272 | PNG decoding with WIC | Pending: `SDL_LoadPNG` (SDL 3.4) or a vendored decoder |
+| `gpu/custom_textures.cpp` | 272 | PNG decoding with WIC | Done: `SDL_LoadPNG` |
 | `gpu/gx.cpp` | 1,284 | `CreateDirectoryA`, `GetThreadTimes` for the thread load statistics | Done |
 | `audio/dsp.cpp` | 916 | `CreateThread` with a 64 MB stack for the DSP self-test | Done: `wp::run_with_stack` |
 | `ios/nand.cpp` | 525 | `GetUserDefaultUILanguage` for the console language | Done: `LC_ALL`/`LANG` |
@@ -31,7 +31,7 @@ State on 2026-09-29, measured with GCC 13.3, CMake 3.28 and Ninja 1.11 on Ubuntu
 2. **Fibers (done 2026-09-29):** introduce `wp::fiber` and move `threads.cpp` onto it; run the Windows build on it first to check nothing changes.
 3. **Window, input and audio on SDL3 (done on Linux 2026-09-29):** `video_sdl.cpp` (window thread, OpenGL context handed to the GPU thread, keyboard and mouse through the existing virtual-key codes) and an `SDL_AudioStream` output fed by the resampler shared with WASAPI. Windows keeps its Win32 window and WASAPI output for now.
 4. **Renderer (done on Linux 2026-09-29):** `gx_render_gl.cpp`, OpenGL 4.1 core with GLSL ports of the Direct3D shaders, instead of the SDL_GPU plan: OpenGL needs no shader cross-compiler at build or run time and 4.1 also runs on macOS. Frames match the Direct3D renderer on the title screen, menus, Mii lineup, ¡Puños fuera! and Cinturón de asteroides. SDL_GPU (Vulkan) stays an option if OpenGL drivers turn out to be a problem.
-5. **F10 options menu on Linux:** draw the existing panel into an RGBA buffer without GDI (the renderer already shows the overlay).
+5. **F10 options menu and custom textures on Linux (done 2026-09-29):** the menu logic is shared and only the drawing is per system; PNGs load through SDL.
 6. **Launcher on Linux:** use the distribution's GCC, CMake, Ninja and Python instead of downloading the Windows tool chain; `nodtool` from its Linux release; package as an AppImage. Self-update stays Windows-only until a Linux asset exists.
 7. **Testers:** the README asks for Linux and macOS testers; macOS needs an arm64 check of the fiber layer.
 

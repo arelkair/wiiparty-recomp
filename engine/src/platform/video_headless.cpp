@@ -39,6 +39,10 @@ bool window_focused() {
     return false;
 }
 
+bool client_size(int&, int&) {
+    return false;
+}
+
 bool key_down(int) {
     return false;
 }

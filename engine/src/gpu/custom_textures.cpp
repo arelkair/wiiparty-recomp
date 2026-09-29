@@ -3,6 +3,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <wincodec.h>
+#elif defined(WP_SDL_PLATFORM)
+#include <SDL3/SDL.h>
 #endif
 
 #include <algorithm>
@@ -242,7 +244,24 @@ size_t Index::size() const {
 }
 
 bool decode_png(const std::filesystem::path& path, std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height) {
-#ifndef _WIN32
+#if defined(WP_SDL_PLATFORM)
+    SDL_Surface* loaded = SDL_LoadPNG(path.string().c_str());
+    SDL_Surface* converted = loaded ? SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32) : nullptr;
+    bool ok = converted && converted->w > 0 && converted->h > 0 && static_cast<uint32_t>(converted->w) <= kMaxDimension &&
+              static_cast<uint32_t>(converted->h) <= kMaxDimension;
+    if (ok) {
+        width = static_cast<uint32_t>(converted->w);
+        height = static_cast<uint32_t>(converted->h);
+        pixels.resize(static_cast<size_t>(width) * height);
+        for (uint32_t row = 0; row < height; row++) {
+            std::memcpy(pixels.data() + static_cast<size_t>(row) * width, static_cast<const uint8_t*>(converted->pixels) + static_cast<size_t>(row) * converted->pitch,
+                        static_cast<size_t>(width) * 4);
+        }
+    }
+    SDL_DestroySurface(converted);
+    SDL_DestroySurface(loaded);
+    return ok;
+#elif !defined(_WIN32)
     (void)path;
     (void)pixels;
     (void)width;

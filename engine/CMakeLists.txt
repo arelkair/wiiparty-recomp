@@ -33,11 +33,13 @@ add_library(wp_engine STATIC
     src/platform/settings.cpp
     src/platform/ui_text.cpp
     src/platform/options.cpp
+    src/platform/options_window.cpp
 )
 if(WIN32)
-    target_sources(wp_engine PRIVATE src/gpu/gx_render.cpp src/platform/video.cpp src/platform/options_window.cpp)
+    target_sources(wp_engine PRIVATE src/gpu/gx_render.cpp src/platform/video.cpp src/platform/options_render_gdi.cpp)
 else()
-    target_sources(wp_engine PRIVATE src/platform/no_options_window.cpp)
+    target_sources(wp_engine PRIVATE src/platform/options_render_stb.cpp)
+    target_include_directories(wp_engine SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/third_party/stb")
 endif()
 target_include_directories(wp_engine PUBLIC include)
 target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}"
@@ -71,7 +73,7 @@ endif()
 if(NOT WIN32)
     if(SDL3_FOUND)
         target_sources(wp_engine PRIVATE src/gpu/gx_render_gl.cpp src/platform/video_sdl.cpp)
-        target_compile_definitions(wp_engine PRIVATE WP_SDL_AUDIO)
+        target_compile_definitions(wp_engine PRIVATE WP_SDL_PLATFORM)
     else()
         target_sources(wp_engine PRIVATE src/gpu/null_render.cpp src/platform/video_headless.cpp)
     endif()

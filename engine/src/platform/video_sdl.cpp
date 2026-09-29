@@ -261,7 +261,9 @@ void handle_event(SDL_Window* window, const SDL_Event& event) {
         int vk = vk_for_button(event.button.button);
         if (options::menu_open()) {
             if (vk == kLeftButton || vk == kRightButton) {
-                apply_option(window, options::menu_click(window, static_cast<int>(event.button.x), static_cast<int>(event.button.y), vk == kRightButton));
+                float density = SDL_GetWindowPixelDensity(window);
+                apply_option(window, options::menu_click(window, static_cast<int>(event.button.x * density), static_cast<int>(event.button.y * density),
+                                                         vk == kRightButton));
             }
             return;
         }
@@ -498,6 +500,11 @@ bool image_point(long x, long y, long client_width, long client_height, float& o
 bool window_focused() {
     SDL_Window* window = g_window;
     return window != nullptr && (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+}
+
+bool client_size(int& width, int& height) {
+    SDL_Window* window = g_window;
+    return window && SDL_GetWindowSizeInPixels(window, &width, &height);
 }
 
 bool key_down(int key) {

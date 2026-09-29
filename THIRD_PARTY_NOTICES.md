@@ -67,12 +67,21 @@ All components adapted from the **Dolphin Emulator** originate from a source sna
 - **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
 - **Engineering Changes (2026-09-29):** Rewritten as inline functions over `wp::fpr_bits`; FPSCR exception flags and the flush-to-zero option are not modelled; the estimate tables are unchanged.
 
+## Vendored Permissive Components
+
+### stb_truetype
+- **Repository Files:** `third_party/stb/stb_truetype.h`, unmodified.
+- **Usage Area:** text of the F10 options menu outside Windows (`engine/src/platform/options_render_stb.cpp`), drawn with a font installed on the system.
+- **Upstream Origin:** https://github.com/nothings/stb, version 1.26, commit `2c980bb59875b0d32144a71867fbdebb2f77cd20` (retrieved 2026-09-29).
+- **Copyright:** Copyright (c) 2017 Sean Barrett.
+- **License:** dual licensed, **MIT License** or public domain (Unlicense), at the user's choice; the MIT terms are used here, which are compatible with GPL-3.0-or-later. The license text is at the end of the file.
+
 ## Externally Linked Libraries (Permissive Licenses)
 
 These dependencies are dynamically linked during runtime or retrieved through automated build scripts; no code is hosted directly inside the repository.
 
 ### SDL3 Development Package
-- **Usage Area:** Hardware gamepad mappings (Sticks, gyroscope, accelerometer processing) inside `engine/src/input/gamepad.cpp`.
+- **Usage Area:** Hardware gamepad mappings (Sticks, gyroscope, accelerometer processing) inside `engine/src/input/gamepad.cpp`; outside Windows also the window, OpenGL context, keyboard, mouse, audio output and PNG loading (`video_sdl.cpp`, `gx_render_gl.cpp`, `audio.cpp`, `custom_textures.cpp`), linked to the SDL3 installed on the system.
 - **Version:** 3.4.16 (Retrieved by `tools/fetch_sdl.py` into build tree).
 - **License:** **zlib License** (Fully compatible with GPL-3.0-or-later).
 - **Copyright:** Copyright (C) 1997-2026 Sam Lantinga.

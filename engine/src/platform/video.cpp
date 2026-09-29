@@ -370,6 +370,17 @@ bool window_focused() {
     return window != nullptr && GetForegroundWindow() == window;
 }
 
+bool client_size(int& width, int& height) {
+    HWND window = g_window;
+    RECT client{};
+    if (!window || !GetClientRect(window, &client)) {
+        return false;
+    }
+    width = client.right;
+    height = client.bottom;
+    return true;
+}
+
 bool key_down(int key) {
     return (GetAsyncKeyState(key) & 0x8000) != 0;
 }

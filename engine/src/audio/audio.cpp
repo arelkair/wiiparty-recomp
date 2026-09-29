@@ -4,7 +4,7 @@
 #include <windows.h>
 #include <audioclient.h>
 #include <mmdeviceapi.h>
-#elif defined(WP_SDL_AUDIO)
+#elif defined(WP_SDL_PLATFORM)
 #include <SDL3/SDL.h>
 #endif
 
@@ -282,7 +282,7 @@ void output_thread() {
         render->ReleaseBuffer(available, 0);
     }
 }
-#elif defined(WP_SDL_AUDIO)
+#elif defined(WP_SDL_PLATFORM)
 void SDLCALL feed(void* data, SDL_AudioStream* stream, int additional, int) {
     Mixer& mixer = *static_cast<Mixer*>(data);
     uint32_t frames = static_cast<uint32_t>(additional) / sizeof(Frame);

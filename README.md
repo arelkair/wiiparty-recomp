@@ -99,7 +99,7 @@ Also planned: a Mii editor, ultrawide support and online play.
 ### Platforms
 
 - **Windows 10 and 11:** supported.
-- **Linux:** in progress. The game builds and plays on Linux with an OpenGL renderer, an SDL3 window, keyboard, mouse and audio (tested on Ubuntu 24.04; gamepad support is built in but not yet tested there); the F10 menu, custom texture packs and a Linux launcher are still missing. **Help wanted:** Linux testers with different GPUs and desktops, please open an issue or a discussion.
+- **Linux:** in progress. The game builds and plays on Linux with an OpenGL renderer, an SDL3 window, keyboard, mouse and audio (tested on Ubuntu 24.04; gamepad support is built in but not yet tested there), including the F10 menu and custom texture packs; a Linux launcher is still missing. **Help wanted:** Linux testers with different GPUs and desktops, please open an issue or a discussion.
 - **macOS:** planned after Linux. **Help wanted:** if you have a Mac and would like to test builds in the future, please open an issue or a discussion.
 
 ---
