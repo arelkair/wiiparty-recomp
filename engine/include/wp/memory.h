@@ -15,26 +15,19 @@ extern uint8_t* g_memory;
 
 constexpr uint32_t kFifoAddress = 0xCC008000;
 
-namespace gx {
-void push(uint64_t value, unsigned bytes);
-}
-
-namespace dsp {
+namespace mmio {
 uint16_t read16(uint32_t address);
-void write16(uint32_t address, uint16_t value);
-}
-
-namespace ipc {
 uint32_t read32(uint32_t address);
+void write8(uint32_t address, uint8_t value);
+void write16(uint32_t address, uint16_t value);
 void write32(uint32_t address, uint32_t value);
+void write64(uint32_t address, uint64_t value);
 }
 
-constexpr bool dsp_register(uint32_t address) {
-    return (address >> 12) == 0xCC005;
-}
+constexpr uint32_t kSlowAddresses = 0xCC000000;
 
-constexpr bool ipc_register(uint32_t address) {
-    return (address >> 8) == 0xCD0000;
+constexpr bool slow_address(uint32_t address) {
+    return address >= kSlowAddresses;
 }
 
 inline uint8_t* host(uint32_t address) {
@@ -49,23 +42,20 @@ inline uint8_t rd8(uint32_t address) {
 }
 
 inline uint16_t rd16(uint32_t address) {
-    if (__builtin_expect(dsp_register(address), 0)) {
-        return dsp::read16(address);
+    if (__builtin_expect(slow_address(address), 0)) {
+        return mmio::read16(address);
     }
     uint16_t value;
-    std::memcpy(&value, host(address), sizeof value);
+    std::memcpy(&value, g_memory + (address & kAddressMask), sizeof value);
     return __builtin_bswap16(value);
 }
 
 inline uint32_t rd32(uint32_t address) {
-    if (__builtin_expect(dsp_register(address), 0)) {
-        return (static_cast<uint32_t>(dsp::read16(address)) << 16) | dsp::read16(address + 2);
-    }
-    if (__builtin_expect(ipc_register(address), 0)) {
-        return ipc::read32(address);
+    if (__builtin_expect(slow_address(address), 0)) {
+        return mmio::read32(address);
     }
     uint32_t value;
-    std::memcpy(&value, host(address), sizeof value);
+    std::memcpy(&value, g_memory + (address & kAddressMask), sizeof value);
     return __builtin_bswap32(value);
 }
 
@@ -88,51 +78,38 @@ inline uint32_t rd32_reversed(uint32_t address) {
 }
 
 inline void wr8(uint32_t address, uint8_t value) {
-    if (__builtin_expect(address == kFifoAddress, 0)) {
-        gx::push(value, 1);
+    if (__builtin_expect(slow_address(address), 0)) {
+        mmio::write8(address, value);
         return;
     }
-    *host(address) = value;
+    g_memory[address & kAddressMask] = value;
 }
 
 inline void wr16(uint32_t address, uint16_t value) {
-    if (__builtin_expect(address == kFifoAddress, 0)) {
-        gx::push(value, 2);
-        return;
-    }
-    if (__builtin_expect(dsp_register(address), 0)) {
-        dsp::write16(address, value);
+    if (__builtin_expect(slow_address(address), 0)) {
+        mmio::write16(address, value);
         return;
     }
     value = __builtin_bswap16(value);
-    std::memcpy(host(address), &value, sizeof value);
+    std::memcpy(g_memory + (address & kAddressMask), &value, sizeof value);
 }
 
 inline void wr32(uint32_t address, uint32_t value) {
-    if (__builtin_expect(address == kFifoAddress, 0)) {
-        gx::push(value, 4);
-        return;
-    }
-    if (__builtin_expect(dsp_register(address), 0)) {
-        dsp::write16(address, static_cast<uint16_t>(value >> 16));
-        dsp::write16(address + 2, static_cast<uint16_t>(value));
-        return;
-    }
-    if (__builtin_expect(ipc_register(address), 0)) {
-        ipc::write32(address, value);
+    if (__builtin_expect(slow_address(address), 0)) {
+        mmio::write32(address, value);
         return;
     }
     value = __builtin_bswap32(value);
-    std::memcpy(host(address), &value, sizeof value);
+    std::memcpy(g_memory + (address & kAddressMask), &value, sizeof value);
 }
 
 inline void wr64(uint32_t address, uint64_t value) {
-    if (__builtin_expect(address == kFifoAddress, 0)) {
-        gx::push(value, 8);
+    if (__builtin_expect(slow_address(address), 0)) {
+        mmio::write64(address, value);
         return;
     }
     value = __builtin_bswap64(value);
-    std::memcpy(host(address), &value, sizeof value);
+    std::memcpy(g_memory + (address & kAddressMask), &value, sizeof value);
 }
 
 inline void wr16_reversed(uint32_t address, uint16_t value) {

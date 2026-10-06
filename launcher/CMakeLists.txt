@@ -4,8 +4,10 @@ project(wii_recomp_launcher C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(WP_LAUNCHER_VERSION "0.1.2-alpha" CACHE STRING "Version shown in the launcher")
-set(WP_LAUNCHER_BUILD "2609-003" CACHE STRING "Build number shown in the launcher")
+set(CMAKE_C_FLAGS_RELEASE "-Os -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-Os -DNDEBUG")
+set(WP_LAUNCHER_VERSION "0.1.3-alpha" CACHE STRING "Version shown in the launcher")
+set(WP_LAUNCHER_BUILD "2610-001" CACHE STRING "Build number shown in the launcher")
 
 include(FetchContent)
 
@@ -54,27 +56,36 @@ add_executable(launcher WIN32
     src/project.cpp
     src/runner.cpp
     src/sha256.cpp
+    src/gunzip.cpp
     src/texts.cpp
+    src/titlebar.cpp
     src/toolchain.cpp
     src/updater.cpp
     src/shortcut.cpp
+    src/wiimote_pairing.cpp
+    src/app_controls.cpp
+    src/app_dolphin.cpp
+    src/app_captures.cpp
+    src/app_system.cpp
     ${WP_ENGINE}/src/platform/settings.cpp
     ${WP_ENGINE}/src/platform/options.cpp
     ${WP_ENGINE}/src/platform/ui_text.cpp
     ${WP_ENGINE}/src/platform/save_backup.cpp
-    ${WP_ENGINE}/src/input/keymap.cpp)
+    ${WP_ENGINE}/src/input/keymap.cpp
+    ${WP_ENGINE}/src/input/padmap.cpp)
 
 include(cmake/embed.cmake)
 
 set_target_properties(launcher PROPERTIES OUTPUT_NAME wiipartyrecomp-launcher)
 target_include_directories(launcher PRIVATE ${WP_ENGINE}/include src)
+target_include_directories(launcher SYSTEM PRIVATE ${WP_ENGINE}/../third_party/stb)
 target_compile_definitions(launcher PRIVATE WP_LAUNCHER_VERSION="${WP_LAUNCHER_VERSION}" WP_LAUNCHER_BUILD="${WP_LAUNCHER_BUILD}")
 target_compile_options(launcher PRIVATE -Wall -Wextra)
 target_link_libraries(launcher PRIVATE imgui)
 
 if(WIN32)
     target_sources(launcher PRIVATE res/launcher.rc)
-    target_link_libraries(launcher PRIVATE dwmapi winhttp ole32 uuid shell32)
+    target_link_libraries(launcher PRIVATE dwmapi winhttp ole32 uuid shell32 bthprops dxgi)
     target_link_options(launcher PRIVATE -static $<$<CONFIG:Release>:-s>)
 else()
     target_link_options(launcher PRIVATE -static-libstdc++ -static-libgcc $<$<CONFIG:Release>:-s>)

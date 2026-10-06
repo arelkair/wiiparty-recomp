@@ -23,6 +23,13 @@ void take_statistics(uint32_t& batches, uint32_t& vertices, double& seconds) {
     g_vertices = 0;
 }
 
+void take_copy_statistics(uint32_t& write_backs, double& wait_seconds) {
+    write_backs = 0;
+    wait_seconds = 0.0;
+}
+
+void finish_copies() {}
+
 const char* api_name() {
     return "no renderer";
 }

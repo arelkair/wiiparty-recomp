@@ -1,3 +1,5 @@
+import re
+
 from ppc.decoder import Instr
 
 
@@ -27,6 +29,13 @@ def resume_label(address):
 
 def function_name(address):
     return f"f_{address:08x}"
+
+
+def declarations(lines):
+    names = set()
+    for line in lines:
+        names.update(re.findall(r"\bf_(?:[a-z0-9]+_)?[0-9a-f]{8}\b", line))
+    return [f"void {name}(wp::Cpu& c);" for name in sorted(names)]
 
 
 def rotate_mask(mb, me):

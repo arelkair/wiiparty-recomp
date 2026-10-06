@@ -23,12 +23,17 @@
 #include "wp/custom_textures.h"
 #include "wp/game.h"
 #include "wp/gx_state.h"
+#include "wp/log.h"
 #include "wp/memory.h"
+#include "wp/titlebar.h"
 #include "wp/options.h"
 #include "wp/settings.h"
 #include "wp/video.h"
 
 namespace wp::gx::render {
+
+void finish_write_backs();
+bool write_back_overlaps(uint32_t address, size_t size);
 
 namespace {
 
@@ -40,7 +45,8 @@ namespace {
     X(GenSamplers) X(GenTextures) X(GenVertexArrays) X(GenerateMipmap) X(GetIntegerv) X(GetProgramInfoLog) X(GetProgramiv) X(GetShaderInfoLog)      \
     X(GetShaderiv) X(GetString) X(GetStringi) X(GetUniformBlockIndex) X(GetUniformLocation) X(LinkProgram) X(PixelStorei) X(ReadPixels)             \
     X(SamplerParameterf) X(SamplerParameteri) X(Scissor) X(ShaderSource) X(TexImage2D) X(TexParameteri) X(TexSubImage2D) X(Uniform1i)              \
-    X(Uniform1f) X(Uniform4f) X(UniformBlockBinding) X(UseProgram) X(VertexAttribPointer) X(Viewport)
+    X(Uniform1f) X(Uniform4f) X(UniformBlockBinding) X(UseProgram) X(VertexAttribPointer) X(Viewport) X(MapBufferRange) X(UnmapBuffer)    \
+    X(FenceSync) X(ClientWaitSync) X(DeleteSync)
 
 struct Gl {
 #define WP_GL_MEMBER(name) decltype(&::gl##name) name = nullptr;
@@ -632,6 +638,20 @@ struct CopiedTexture {
     uint32_t logical_height = 0;
     uint32_t bytes = 0;
     uint64_t guest_hash = 0;
+    uint32_t pending_writes = 0;
+};
+
+struct PendingWriteBack {
+    GLuint buffer = 0;
+    GLsync fence = nullptr;
+    uint32_t address = 0;
+    uint32_t start = 0;
+    uint32_t end = 0;
+    uint32_t row_bytes = 0;
+    uint32_t logical_width = 0;
+    uint32_t logical_height = 0;
+    uint32_t texture_format = 0;
+    uint64_t frame = 0;
 };
 
 struct Program {
@@ -660,11 +680,17 @@ struct Device {
     GLuint efb_framebuffer = 0;
     Target frame;
     Target write_back;
+    std::vector<GLuint> free_buffers;
+    std::vector<PendingWriteBack> write_backs;
     GLuint overlay_texture = 0;
     uint32_t overlay_width = 0;
     uint32_t overlay_height = 0;
     uint64_t overlay_version = 0;
     bool overlay_visible = false;
+    GLuint bar_texture = 0;
+    uint32_t bar_width = 0;
+    uint32_t bar_height = 0;
+    uint64_t bar_version = 0;
     bool clip_control = false;
     std::map<uint64_t, GLuint> samplers;
     std::map<uint64_t, CachedTexture> textures;
@@ -695,12 +721,16 @@ bool g_log_gx = std::getenv("WP_LOG_GX") != nullptr;
 bool g_logged_palette = false;
 bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
+constexpr uint64_t kWriteBackFrames = 2;
+constexpr GLuint64 kWaitForever = 0xFFFFFFFFFFFFFFFFull;
 uint64_t g_texture_epoch = 0;
 int g_scale = 1;
 uint32_t g_vertex_cursor = kVertexCapacity;
 uint32_t g_batches = 0;
 uint32_t g_batch_vertices = 0;
 double g_batch_seconds = 0.0;
+uint32_t g_write_backs = 0;
+double g_write_back_seconds = 0.0;
 
 int scaled(int value) {
     return value * g_scale;
@@ -931,6 +961,14 @@ int requested_scale() {
     return std::clamp(scale(), 1, 6);
 }
 
+void APIENTRY report_gl_message(GLenum, GLenum type, GLuint id, GLenum severity, GLsizei, const GLchar* message, const void*) {
+    static std::unordered_set<GLuint> reported;
+    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION || reported.size() >= 200 || !reported.insert(id).second) {
+        return;
+    }
+    log::write("gl", "type 0x%x severity 0x%x id %u: %s", type, severity, id, message);
+}
+
 bool initialize() {
     if (g_device.ready) {
         return true;
@@ -946,6 +984,22 @@ bool initialize() {
     }
     std::fprintf(stderr, "OpenGL renderer: %s, %s\n", reinterpret_cast<const char*>(gl.GetString(GL_RENDERER)),
                  reinterpret_cast<const char*>(gl.GetString(GL_VERSION)));
+    log::write("video", "OpenGL renderer: %s, %s", reinterpret_cast<const char*>(gl.GetString(GL_RENDERER)),
+               reinterpret_cast<const char*>(gl.GetString(GL_VERSION)));
+    if (std::getenv("WP_GL_DEBUG")) {
+        using DebugCallbackSetter = void (*)(GLDEBUGPROC, const void*);
+        DebugCallbackSetter set_callback = reinterpret_cast<DebugCallbackSetter>(SDL_GL_GetProcAddress("glDebugMessageCallback"));
+        if (!set_callback) {
+            set_callback = reinterpret_cast<DebugCallbackSetter>(SDL_GL_GetProcAddress("glDebugMessageCallbackKHR"));
+        }
+        if (set_callback) {
+            gl.Enable(GL_DEBUG_OUTPUT);
+            gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+            set_callback(report_gl_message, nullptr);
+        } else {
+            log::write("video", "this OpenGL driver has no debug message callback");
+        }
+    }
     prepare_texture_pack();
     g_device.ready = true;
     return true;
@@ -1060,6 +1114,14 @@ GLuint texture_for(uint32_t map) {
     uint32_t levels = request.levels;
     const uint8_t* source = request.source;
     auto copied = g_device.copies.find(address);
+    if (copied != g_device.copies.end() && copied->second.pending_writes > 0 && copied->second.logical_width == width &&
+        copied->second.logical_height == height && format <= 6) {
+        note_texture(map, address, width, height, format, "EFB copy");
+        return copied->second.view;
+    }
+    if (!g_device.write_backs.empty() && write_back_overlaps(address, request.size)) {
+        finish_write_backs();
+    }
     if (copied != g_device.copies.end() && copied->second.logical_width == width && copied->second.logical_height == height && format <= 6 &&
         copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
         note_texture(map, address, width, height, format, "EFB copy");
@@ -1367,6 +1429,13 @@ void take_statistics(uint32_t& batches, uint32_t& vertices, double& seconds) {
     g_batch_seconds = 0.0;
 }
 
+void take_copy_statistics(uint32_t& write_backs, double& wait_seconds) {
+    write_backs = g_write_backs;
+    wait_seconds = g_write_back_seconds;
+    g_write_backs = 0;
+    g_write_back_seconds = 0.0;
+}
+
 bool guest_range_valid(uint32_t address, size_t size) {
     return static_cast<size_t>(address & kAddressMask) + size <= kPhysicalSize;
 }
@@ -1429,8 +1498,22 @@ bool run_copy(const Target& target, uint32_t target_width, uint32_t target_heigh
     return true;
 }
 
-bool write_copy_to_ram(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
-                       bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
+GLuint take_buffer() {
+    if (!g_device.free_buffers.empty()) {
+        GLuint buffer = g_device.free_buffers.back();
+        g_device.free_buffers.pop_back();
+        return buffer;
+    }
+    GLuint buffer = 0;
+    gl.GenBuffers(1, &buffer);
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, buffer);
+    gl.BufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(kEfbWidth) * kEfbHeight * 4, nullptr, GL_STREAM_READ);
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    return buffer;
+}
+
+bool queue_write_back(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
+                      bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
     if (!g_device.write_back.framebuffer && !create_render_texture(g_device.write_back, kEfbWidth, kEfbHeight)) {
         return false;
     }
@@ -1440,31 +1523,99 @@ bool write_copy_to_ram(uint32_t address, uint32_t stride, int x, int y, int widt
     uint32_t blocks_y = (logical_height + layout.block_height - 1) / layout.block_height;
     uint32_t row_bytes = stride * 32;
     uint32_t bytes = block_bytes(texture_format);
-    if (blocks_x * bytes > row_bytes || !guest_range_valid(address, static_cast<size_t>(blocks_y - 1) * row_bytes + blocks_x * bytes)) {
+    size_t span = static_cast<size_t>(blocks_y - 1) * row_bytes + blocks_x * bytes;
+    if (blocks_x * bytes > row_bytes || !guest_range_valid(address, span)) {
         return false;
     }
     if (!run_copy(g_device.write_back, logical_width, logical_height, x, y, width, height, format, intensity, alpha, depth, filter)) {
         return false;
     }
-    std::vector<uint8_t> pixels(static_cast<size_t>(logical_width) * logical_height * 4);
-    gl.ReadPixels(0, 0, static_cast<GLsizei>(logical_width), static_cast<GLsizei>(logical_height), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-    size_t pitch = static_cast<size_t>(logical_width) * 4;
-    uint8_t block[64];
-    for (uint32_t by = 0; by < blocks_y; by++) {
-        uint8_t* row = host(address + by * row_bytes);
-        for (uint32_t bx = 0; bx < blocks_x; bx++) {
-            std::memset(block, 0, sizeof block);
-            for (uint32_t ty = 0; ty < layout.block_height; ty++) {
-                uint32_t py = std::min(by * layout.block_height + ty, logical_height - 1);
-                for (uint32_t tx = 0; tx < layout.block_width; tx++) {
-                    uint32_t px = std::min(bx * layout.block_width + tx, logical_width - 1);
-                    encode_texel(block, texture_format, ty * layout.block_width + tx, pixels.data() + py * pitch + px * 4);
+    PendingWriteBack pending;
+    pending.buffer = take_buffer();
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, pending.buffer);
+    gl.ReadPixels(0, 0, static_cast<GLsizei>(logical_width), static_cast<GLsizei>(logical_height), GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    pending.fence = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    pending.address = address;
+    pending.start = address & kAddressMask;
+    pending.end = pending.start + static_cast<uint32_t>(span);
+    pending.row_bytes = row_bytes;
+    pending.logical_width = logical_width;
+    pending.logical_height = logical_height;
+    pending.texture_format = texture_format;
+    pending.frame = g_frame;
+    g_device.write_backs.push_back(pending);
+    return true;
+}
+
+bool write_back(const PendingWriteBack& pending, bool wait) {
+    auto wait_start = std::chrono::steady_clock::now();
+    GLenum status = gl.ClientWaitSync(pending.fence, GL_SYNC_FLUSH_COMMANDS_BIT, wait ? kWaitForever : 0);
+    if (status == GL_TIMEOUT_EXPIRED) {
+        return false;
+    }
+    gl.DeleteSync(pending.fence);
+    Layout layout = layout_for(pending.texture_format);
+    uint32_t blocks_x = (pending.logical_width + layout.block_width - 1) / layout.block_width;
+    uint32_t blocks_y = (pending.logical_height + layout.block_height - 1) / layout.block_height;
+    uint32_t bytes = block_bytes(pending.texture_format);
+    size_t pitch = static_cast<size_t>(pending.logical_width) * 4;
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, pending.buffer);
+    const uint8_t* pixels = static_cast<const uint8_t*>(gl.MapBufferRange(GL_PIXEL_PACK_BUFFER, 0, static_cast<GLsizeiptr>(pitch * pending.logical_height), GL_MAP_READ_BIT));
+    g_write_back_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - wait_start).count();
+    g_write_backs++;
+    if (pixels) {
+        uint8_t block[64];
+        for (uint32_t by = 0; by < blocks_y; by++) {
+            uint8_t* row = host(pending.address + by * pending.row_bytes);
+            for (uint32_t bx = 0; bx < blocks_x; bx++) {
+                std::memset(block, 0, sizeof block);
+                for (uint32_t ty = 0; ty < layout.block_height; ty++) {
+                    uint32_t py = std::min(by * layout.block_height + ty, pending.logical_height - 1);
+                    for (uint32_t tx = 0; tx < layout.block_width; tx++) {
+                        uint32_t px = std::min(bx * layout.block_width + tx, pending.logical_width - 1);
+                        encode_texel(block, pending.texture_format, ty * layout.block_width + tx, pixels + py * pitch + px * 4);
+                    }
                 }
+                std::memcpy(row + bx * bytes, block, bytes);
             }
-            std::memcpy(row + bx * bytes, block, bytes);
+        }
+        gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    }
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    return true;
+}
+
+void complete_write_backs(bool wait) {
+    size_t done = 0;
+    for (const PendingWriteBack& pending : g_device.write_backs) {
+        if (!write_back(pending, wait || pending.frame + kWriteBackFrames <= g_frame)) {
+            break;
+        }
+        done++;
+        g_device.free_buffers.push_back(pending.buffer);
+        auto copied = g_device.copies.find(pending.address);
+        if (copied != g_device.copies.end() && copied->second.pending_writes > 0 && --copied->second.pending_writes == 0) {
+            CopiedTexture& entry = copied->second;
+            entry.guest_hash = guest_range_valid(pending.address, entry.bytes) ? sample_hash(host(pending.address), entry.bytes) : 0;
         }
     }
-    return true;
+    g_device.write_backs.erase(g_device.write_backs.begin(), g_device.write_backs.begin() + static_cast<std::ptrdiff_t>(done));
+}
+
+void finish_write_backs() {
+    complete_write_backs(true);
+}
+
+bool write_back_overlaps(uint32_t address, size_t size) {
+    uint32_t start = address & kAddressMask;
+    uint32_t end = start + static_cast<uint32_t>(size);
+    for (const PendingWriteBack& pending : g_device.write_backs) {
+        if (start < pending.end && pending.start < end) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha,
@@ -1509,10 +1660,19 @@ void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width,
     }
     run_copy(entry.converted, target_width, target_height, x, y, width, height, format, intensity, alpha || depth, depth, filter);
     entry.view = entry.converted.texture;
-    write_copy_to_ram(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter);
     entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
-    entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
+    if (queue_write_back(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter)) {
+        entry.pending_writes++;
+    } else if (entry.pending_writes == 0) {
+        entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
+    }
     dump_copy(entry);
+}
+
+void finish_copies() {
+    if (g_device.ready) {
+        complete_write_backs(false);
+    }
 }
 
 void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const CopyFilter& filter) {
@@ -1520,6 +1680,7 @@ void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const 
         return;
     }
     flush_pending();
+    complete_write_backs(false);
     g_frame++;
     g_texture_epoch++;
     x = std::max(0, x);
@@ -1568,25 +1729,41 @@ void apply_scale() {
     gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void upload_overlay(const options::Image& image) {
+void upload_image(GLuint& texture, uint32_t& width, uint32_t& height, const options::Image& image) {
     if (image.pixels.size() != static_cast<size_t>(image.width) * image.height || image.width == 0 || image.height == 0) {
         return;
     }
-    if (!g_device.overlay_texture) {
-        gl.GenTextures(1, &g_device.overlay_texture);
-        set_texture_levels(g_device.overlay_texture, 1);
+    if (!texture) {
+        gl.GenTextures(1, &texture);
+        set_texture_levels(texture, 1);
     }
-    gl.BindTexture(GL_TEXTURE_2D, g_device.overlay_texture);
+    gl.BindTexture(GL_TEXTURE_2D, texture);
     gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(image.width), static_cast<GLsizei>(image.height), 0, GL_BGRA, GL_UNSIGNED_BYTE,
                   image.pixels.data());
-    g_device.overlay_width = image.width;
-    g_device.overlay_height = image.height;
+    width = image.width;
+    height = image.height;
+}
+
+void draw_titlebar(int client_width, int client_height, int bar) {
+    options::Image image;
+    if (titlebar::take(g_device.bar_version, image)) {
+        upload_image(g_device.bar_texture, g_device.bar_width, g_device.bar_height, image);
+    }
+    if (bar <= 0 || !g_device.bar_texture) {
+        return;
+    }
+    gl.Viewport(0, client_height - bar, client_width, bar);
+    use_fullscreen(g_device.overlay, 1.0f);
+    gl.ActiveTexture(GL_TEXTURE0);
+    gl.BindTexture(GL_TEXTURE_2D, g_device.bar_texture);
+    gl.BindSampler(0, g_device.linear_sampler);
+    gl.DrawArrays(GL_TRIANGLES, 0, 3);
 }
 
 void draw_overlay(int client_width, int client_height) {
     options::Image image;
     if (options::take_overlay(g_device.overlay_version, image, g_device.overlay_visible) && !image.pixels.empty()) {
-        upload_overlay(image);
+        upload_image(g_device.overlay_texture, g_device.overlay_width, g_device.overlay_height, image);
     }
     if (!g_device.overlay_visible || !g_device.overlay_texture) {
         return;
@@ -1623,13 +1800,15 @@ bool present_frame(void* window_handle, double aspect) {
     gl.Viewport(0, 0, client_width, client_height);
     gl.ClearColor(0, 0, 0, 1);
     gl.Clear(GL_COLOR_BUFFER_BIT);
+    int bar = titlebar::height(window);
+    int area = std::max(1, client_height - bar);
     double width = client_width;
     double height = width / aspect;
-    if (height > client_height) {
-        height = client_height;
+    if (height > area) {
+        height = area;
         width = height * aspect;
     }
-    gl.Viewport(static_cast<GLint>((client_width - width) / 2), static_cast<GLint>((client_height - height) / 2), static_cast<GLsizei>(width),
+    gl.Viewport(static_cast<GLint>((client_width - width) / 2), static_cast<GLint>((area - height) / 2), static_cast<GLsizei>(width),
                 static_cast<GLsizei>(height));
     use_fullscreen(g_device.present, 1.0f);
     gl.ActiveTexture(GL_TEXTURE0);
@@ -1637,6 +1816,7 @@ bool present_frame(void* window_handle, double aspect) {
     gl.BindSampler(0, g_device.linear_sampler);
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
     draw_overlay(client_width, client_height);
+    draw_titlebar(client_width, client_height, bar);
     SDL_GL_SwapWindow(window);
     apply_scale();
     return true;

@@ -29,6 +29,9 @@
 
 namespace wp::gx::render {
 
+void finish_write_backs();
+bool write_back_overlaps(uint32_t address, size_t size);
+
 namespace {
 
 constexpr uint32_t kVertexCapacity = 1 << 16;
@@ -642,6 +645,19 @@ struct CopiedTexture {
     uint32_t logical_height = 0;
     uint32_t bytes = 0;
     uint64_t guest_hash = 0;
+    uint32_t pending_writes = 0;
+};
+
+struct PendingWriteBack {
+    ID3D11Texture2D* staging = nullptr;
+    uint32_t address = 0;
+    uint32_t start = 0;
+    uint32_t end = 0;
+    uint32_t row_bytes = 0;
+    uint32_t logical_width = 0;
+    uint32_t logical_height = 0;
+    uint32_t texture_format = 0;
+    uint64_t frame = 0;
 };
 
 struct Device {
@@ -665,7 +681,8 @@ struct Device {
     ID3D11Texture2D* write_back = nullptr;
     ID3D11ShaderResourceView* write_back_view = nullptr;
     ID3D11RenderTargetView* write_back_target = nullptr;
-    ID3D11Texture2D* write_back_staging = nullptr;
+    std::vector<ID3D11Texture2D*> free_staging;
+    std::vector<PendingWriteBack> write_backs;
     uint32_t frame_width = 0;
     uint32_t frame_height = 0;
     IDXGISwapChain1* swapchain = nullptr;
@@ -723,12 +740,15 @@ bool g_log_gx = std::getenv("WP_LOG_GX") != nullptr;
 bool g_logged_palette = false;
 bool g_logged_copy_format = false;
 uint64_t g_frame = 0;
+constexpr uint64_t kWriteBackFrames = 2;
 uint64_t g_texture_epoch = 0;
 int g_scale = 1;
 uint32_t g_vertex_cursor = kVertexCapacity;
 uint32_t g_batches = 0;
 uint32_t g_batch_vertices = 0;
 double g_batch_seconds = 0.0;
+uint32_t g_write_backs = 0;
+double g_write_back_seconds = 0.0;
 
 int scaled(int value) {
     return value * g_scale;
@@ -993,6 +1013,14 @@ ID3D11ShaderResourceView* texture_for(uint32_t map) {
     const uint8_t* source = request.source;
     const uint8_t* tlut = request.tlut;
     auto copied = g_device.copies.find(address);
+    if (copied != g_device.copies.end() && copied->second.pending_writes > 0 && copied->second.logical_width == width &&
+        copied->second.logical_height == height && format <= 6) {
+        note_texture(map, address, width, height, format, "EFB copy");
+        return copied->second.view;
+    }
+    if (!g_device.write_backs.empty() && write_back_overlaps(address, size)) {
+        finish_write_backs();
+    }
     if (copied != g_device.copies.end() && copied->second.logical_width == width && copied->second.logical_height == height &&
         format <= 6 && copied->second.guest_hash == sample_hash(source, copied->second.bytes)) {
         note_texture(map, address, width, height, format, "EFB copy");
@@ -1333,6 +1361,13 @@ void take_statistics(uint32_t& batches, uint32_t& vertices, double& seconds) {
     g_batch_seconds = 0.0;
 }
 
+void take_copy_statistics(uint32_t& write_backs, double& wait_seconds) {
+    write_backs = g_write_backs;
+    wait_seconds = g_write_back_seconds;
+    g_write_backs = 0;
+    g_write_back_seconds = 0.0;
+}
+
 bool guest_range_valid(uint32_t address, size_t size) {
     return static_cast<size_t>(address & kAddressMask) + size <= kPhysicalSize;
 }
@@ -1422,20 +1457,28 @@ bool create_copy_texture(ID3D11Texture2D*& texture, ID3D11ShaderResourceView*& v
            SUCCEEDED(g_device.device->CreateRenderTargetView(texture, nullptr, &target));
 }
 
-bool write_copy_to_ram(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
-                       bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
-    if (!g_device.write_back) {
-        if (!create_copy_texture(g_device.write_back, g_device.write_back_view, g_device.write_back_target, kEfbWidth, kEfbHeight)) {
-            return false;
-        }
-        D3D11_TEXTURE2D_DESC description{};
-        g_device.write_back->GetDesc(&description);
-        description.BindFlags = 0;
-        description.Usage = D3D11_USAGE_STAGING;
-        description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &g_device.write_back_staging))) {
-            return false;
-        }
+ID3D11Texture2D* take_staging() {
+    if (!g_device.free_staging.empty()) {
+        ID3D11Texture2D* texture = g_device.free_staging.back();
+        g_device.free_staging.pop_back();
+        return texture;
+    }
+    D3D11_TEXTURE2D_DESC description{};
+    g_device.write_back->GetDesc(&description);
+    description.BindFlags = 0;
+    description.Usage = D3D11_USAGE_STAGING;
+    description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ID3D11Texture2D* texture = nullptr;
+    if (FAILED(g_device.device->CreateTexture2D(&description, nullptr, &texture))) {
+        return nullptr;
+    }
+    return texture;
+}
+
+bool queue_write_back(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
+                      bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
+    if (!g_device.write_back && !create_copy_texture(g_device.write_back, g_device.write_back_view, g_device.write_back_target, kEfbWidth, kEfbHeight)) {
+        return false;
     }
     uint32_t texture_format = copy_texture_format(format);
     Layout layout = layout_for(texture_format);
@@ -1443,36 +1486,99 @@ bool write_copy_to_ram(uint32_t address, uint32_t stride, int x, int y, int widt
     uint32_t blocks_y = (logical_height + layout.block_height - 1) / layout.block_height;
     uint32_t row_bytes = stride * 32;
     uint32_t bytes = block_bytes(texture_format);
-    if (blocks_x * bytes > row_bytes || !guest_range_valid(address, static_cast<size_t>(blocks_y - 1) * row_bytes + blocks_x * bytes)) {
+    size_t span = static_cast<size_t>(blocks_y - 1) * row_bytes + blocks_x * bytes;
+    if (blocks_x * bytes > row_bytes || !guest_range_valid(address, span)) {
         return false;
     }
     if (!run_copy(g_device.write_back_target, logical_width, logical_height, x, y, width, height, format, intensity, alpha, depth, filter)) {
         return false;
     }
-    D3D11_BOX box{0, 0, 0, logical_width, logical_height, 1};
-    g_device.context->CopySubresourceRegion(g_device.write_back_staging, 0, 0, 0, 0, g_device.write_back, 0, &box);
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    if (FAILED(g_device.context->Map(g_device.write_back_staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+    ID3D11Texture2D* staging = take_staging();
+    if (!staging) {
         return false;
+    }
+    D3D11_BOX box{0, 0, 0, logical_width, logical_height, 1};
+    g_device.context->CopySubresourceRegion(staging, 0, 0, 0, 0, g_device.write_back, 0, &box);
+    PendingWriteBack pending;
+    pending.staging = staging;
+    pending.address = address;
+    pending.start = address & kAddressMask;
+    pending.end = pending.start + static_cast<uint32_t>(span);
+    pending.row_bytes = row_bytes;
+    pending.logical_width = logical_width;
+    pending.logical_height = logical_height;
+    pending.texture_format = texture_format;
+    pending.frame = g_frame;
+    g_device.write_backs.push_back(pending);
+    return true;
+}
+
+bool write_back(const PendingWriteBack& pending, bool wait) {
+    Layout layout = layout_for(pending.texture_format);
+    uint32_t blocks_x = (pending.logical_width + layout.block_width - 1) / layout.block_width;
+    uint32_t blocks_y = (pending.logical_height + layout.block_height - 1) / layout.block_height;
+    uint32_t bytes = block_bytes(pending.texture_format);
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    auto wait_start = std::chrono::steady_clock::now();
+    HRESULT mapped_result = g_device.context->Map(pending.staging, 0, D3D11_MAP_READ, wait ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+    if (mapped_result == DXGI_ERROR_WAS_STILL_DRAWING) {
+        return false;
+    }
+    g_write_back_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - wait_start).count();
+    g_write_backs++;
+    if (FAILED(mapped_result)) {
+        return true;
     }
     const uint8_t* pixels = static_cast<const uint8_t*>(mapped.pData);
     uint8_t block[64];
     for (uint32_t by = 0; by < blocks_y; by++) {
-        uint8_t* row = host(address + by * row_bytes);
+        uint8_t* row = host(pending.address + by * pending.row_bytes);
         for (uint32_t bx = 0; bx < blocks_x; bx++) {
             std::memset(block, 0, sizeof block);
             for (uint32_t ty = 0; ty < layout.block_height; ty++) {
-                uint32_t py = std::min(by * layout.block_height + ty, logical_height - 1);
+                uint32_t py = std::min(by * layout.block_height + ty, pending.logical_height - 1);
                 for (uint32_t tx = 0; tx < layout.block_width; tx++) {
-                    uint32_t px = std::min(bx * layout.block_width + tx, logical_width - 1);
-                    encode_texel(block, texture_format, ty * layout.block_width + tx, pixels + static_cast<size_t>(py) * mapped.RowPitch + px * 4);
+                    uint32_t px = std::min(bx * layout.block_width + tx, pending.logical_width - 1);
+                    encode_texel(block, pending.texture_format, ty * layout.block_width + tx, pixels + static_cast<size_t>(py) * mapped.RowPitch + px * 4);
                 }
             }
             std::memcpy(row + bx * bytes, block, bytes);
         }
     }
-    g_device.context->Unmap(g_device.write_back_staging, 0);
+    g_device.context->Unmap(pending.staging, 0);
     return true;
+}
+
+void complete_write_backs(bool wait) {
+    size_t done = 0;
+    for (const PendingWriteBack& pending : g_device.write_backs) {
+        if (!write_back(pending, wait || pending.frame + kWriteBackFrames <= g_frame)) {
+            break;
+        }
+        done++;
+        g_device.free_staging.push_back(pending.staging);
+        auto copied = g_device.copies.find(pending.address);
+        if (copied != g_device.copies.end() && copied->second.pending_writes > 0 && --copied->second.pending_writes == 0) {
+            CopiedTexture& entry = copied->second;
+            entry.guest_hash = guest_range_valid(pending.address, entry.bytes) ? sample_hash(host(pending.address), entry.bytes) : 0;
+        }
+    }
+    g_device.write_backs.erase(g_device.write_backs.begin(), g_device.write_backs.begin() + static_cast<std::ptrdiff_t>(done));
+}
+
+void finish_write_backs() {
+    complete_write_backs(true);
+}
+
+bool write_back_overlaps(uint32_t address, size_t size) {
+    uint32_t start = address & kAddressMask;
+    uint32_t end = start + static_cast<uint32_t>(size);
+    for (const PendingWriteBack& pending : g_device.write_backs) {
+        if (start < pending.end && pending.start < end) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha,
@@ -1523,10 +1629,19 @@ void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width,
         return;
     }
     entry.view = entry.converted_view;
-    write_copy_to_ram(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter);
     entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
-    entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
+    if (queue_write_back(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter)) {
+        entry.pending_writes++;
+    } else if (entry.pending_writes == 0) {
+        entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
+    }
     dump_copy(entry);
+}
+
+void finish_copies() {
+    if (g_device.ready) {
+        complete_write_backs(false);
+    }
 }
 
 void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const CopyFilter& filter) {
@@ -1534,6 +1649,7 @@ void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const 
         return;
     }
     flush_pending();
+    complete_write_backs(false);
     g_frame++;
     g_texture_epoch++;
     x = std::max(0, x);

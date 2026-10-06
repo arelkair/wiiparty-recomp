@@ -53,6 +53,7 @@ void begin_frame(float delta);
 bool animating();
 void request_frames(int count);
 float animate(ImGuiID id, float target, float rate = 16.0f);
+void set_software_rendering(bool software);
 void set_value(ImGuiID id, float value);
 float ease_out(float t);
 ImU32 mix(ImU32 from, ImU32 to, float t);

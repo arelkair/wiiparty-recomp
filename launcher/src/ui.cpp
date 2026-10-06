@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "embedded.h"
+#include "gunzip.h"
 
 namespace ui {
 
@@ -30,6 +31,7 @@ bool g_dark = false;
 float g_scale = 1.0f;
 float g_delta = 0.0f;
 bool g_animating = false;
+bool g_software = false;
 int g_frames = 0;
 ImFont* g_fonts[2] = {};
 std::unordered_map<ImGuiID, float> g_values;
@@ -43,12 +45,15 @@ ImFont* font_for(Font font) {
 }
 
 void add_font(int index, const char* name) {
-    std::string_view data = blob(name);
+    static std::vector<char> data[2];
+    if (data[index].empty()) {
+        data[index] = gunzip(blob(name));
+    }
     ImFontConfig config;
     config.FontDataOwnedByAtlas = false;
     config.OversampleH = 2;
     config.OversampleV = 2;
-    g_fonts[index] = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(data.data()), static_cast<int>(data.size()), size::kBody, &config);
+    g_fonts[index] = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(data[index].data(), static_cast<int>(data[index].size()), size::kBody, &config);
 }
 
 bool behavior(const ImRect& rect, ImGuiID id, bool enabled, bool& hovered, bool& held) {
@@ -156,9 +161,14 @@ void request_frames(int count) {
     g_frames = std::max(g_frames, count);
 }
 
+void set_software_rendering(bool software) {
+    g_software = software;
+}
+
 float animate(ImGuiID id, float target, float rate) {
     auto [it, inserted] = g_values.try_emplace(id, target);
-    if (inserted) {
+    if (inserted || g_software) {
+        it->second = target;
         return target;
     }
     float& value = it->second;

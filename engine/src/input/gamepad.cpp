@@ -1,4 +1,5 @@
 #include "wp/gamepad.h"
+#include "wp/padmap.h"
 
 #include <SDL3/SDL.h>
 
@@ -40,6 +41,7 @@ struct Snapshot {
     float left_x = 0.0f;
     float left_y = 0.0f;
     float right_trigger = 0.0f;
+    float left_trigger = 0.0f;
     bool has_accel = false;
     float accel[3] = {0.0f, 0.0f, 0.0f};
     bool pointer_valid = false;
@@ -171,6 +173,7 @@ Snapshot read(Pad& pad, float dt) {
     snapshot.left_x = axis(handle, SDL_GAMEPAD_AXIS_LEFTX);
     snapshot.left_y = axis(handle, SDL_GAMEPAD_AXIS_LEFTY);
     snapshot.right_trigger = axis(handle, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+    snapshot.left_trigger = axis(handle, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
     float right_x = axis(handle, SDL_GAMEPAD_AXIS_RIGHTX);
     float right_y = axis(handle, SDL_GAMEPAD_AXIS_RIGHTY);
     if (std::fabs(right_x) > kStickDeadZone || std::fabs(right_y) > kStickDeadZone) {
@@ -288,6 +291,9 @@ void worker() {
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_JOY_CONS, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_COMBINE_JOY_CONS, settings::flag("input.joycon_pairs", "WP_JOYCON_PAIRS") ? "1" : "0");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_VERTICAL_JOY_CONS, "0");
+    if (settings::flag("input.real_wiimotes", "WP_REAL_WIIMOTES")) {
+        SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_WII, "0");
+    }
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         log::write("input", "SDL gamepad support unavailable: %s", SDL_GetError());
         return;
@@ -412,47 +418,14 @@ State poll(uint32_t slot, bool sideways) {
     state.connected = true;
     auto held = [&](SDL_GamepadButton button) { return current.buttons[button]; };
     uint32_t& b = state.buttons;
-    if (held(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) {
-        b |= input::kButtonA;
+    padmap::Pressed pressed;
+    pressed.nintendo_layout = current.nintendo_layout;
+    for (int i = 0; i < padmap::kLeftTrigger; i++) {
+        pressed.held[i] = current.buttons[i];
     }
-    if (current.right_trigger > kTriggerThreshold) {
-        b |= input::kButtonB;
-    }
-    if (sideways) {
-        if (held(SDL_GAMEPAD_BUTTON_SOUTH)) {
-            b |= input::kButtonTwo;
-        }
-        if (held(SDL_GAMEPAD_BUTTON_WEST) || held(SDL_GAMEPAD_BUTTON_EAST)) {
-            b |= input::kButtonOne;
-        }
-        if (held(SDL_GAMEPAD_BUTTON_NORTH)) {
-            b |= input::kButtonA;
-        }
-    } else {
-        SDL_GamepadButton a_button = current.nintendo_layout ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH;
-        SDL_GamepadButton b_button = current.nintendo_layout ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST;
-        if (held(a_button)) {
-            b |= input::kButtonA;
-        }
-        if (held(b_button)) {
-            b |= input::kButtonB;
-        }
-        if (held(SDL_GAMEPAD_BUTTON_WEST)) {
-            b |= input::kButtonOne;
-        }
-        if (held(SDL_GAMEPAD_BUTTON_NORTH)) {
-            b |= input::kButtonTwo;
-        }
-    }
-    if (held(SDL_GAMEPAD_BUTTON_BACK)) {
-        b |= input::kButtonMinus;
-    }
-    if (held(SDL_GAMEPAD_BUTTON_START)) {
-        b |= input::kButtonPlus;
-    }
-    if (held(SDL_GAMEPAD_BUTTON_GUIDE)) {
-        b |= input::kButtonHome;
-    }
+    pressed.held[padmap::kLeftTrigger] = current.left_trigger > kTriggerThreshold;
+    pressed.held[padmap::kRightTrigger] = current.right_trigger > kTriggerThreshold;
+    b |= padmap::buttons(pressed, sideways, padmap::current_mapping());
     bool left = held(SDL_GAMEPAD_BUTTON_DPAD_LEFT) || current.left_x < -kStickThreshold;
     bool right = held(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || current.left_x > kStickThreshold;
     bool up = held(SDL_GAMEPAD_BUTTON_DPAD_UP) || current.left_y < -kStickThreshold;

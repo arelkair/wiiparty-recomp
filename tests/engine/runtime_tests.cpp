@@ -14,14 +14,18 @@
 #include "wp/cpu.h"
 #include "wp/custom_textures.h"
 #include "wp/function_table.h"
+#include "wp/hollywood.h"
 #include "wp/gx_state.h"
 #include "wp/input.h"
 #include "wp/ios.h"
 #include "wp/keymap.h"
 #include "wp/modules.h"
+#include "wp/nand.h"
 #include "wp/options.h"
 #include "wp/options_window.h"
 #include "wp/save_backup.h"
+#include "wp/padmap.h"
+#include "wp/input.h"
 #include "wp/screenshot.h"
 #include "wp/settings.h"
 #include "wp/ui_text.h"
@@ -323,6 +327,66 @@ void test_save_backups() {
     fs::create_directories(backups / "2026-01-01_00-00-00.partial");
     CHECK(wp::saves::list(backups).size() == 4);
     fs::remove_all(root, error);
+}
+
+void test_adopt_root_files() {
+    namespace fs = std::filesystem;
+    std::error_code error;
+    fs::path nand = fs::temp_directory_path(error) / "wp_adopt_tests";
+    fs::remove_all(nand, error);
+    fs::path relative = wp::saves::save_relative(0x53555050);
+    write_file(nand / "wiiparty.bin", "misplaced");
+    write_file(nand / "banner.bin", "banner");
+    write_file(nand / "shared2" / "sys" / "SYSCONF", "config");
+    std::vector<std::string> moved = wp::saves::adopt_root_files(nand, relative);
+    CHECK(moved.size() == 2);
+    CHECK(read_file(nand / relative / "wiiparty.bin") == "misplaced");
+    CHECK(read_file(nand / relative / "banner.bin") == "banner");
+    CHECK(!fs::exists(nand / "wiiparty.bin") && !fs::exists(nand / "banner.bin"));
+    CHECK(read_file(nand / "shared2" / "sys" / "SYSCONF") == "config");
+    write_file(nand / "wiiparty.bin", "stale");
+    CHECK(wp::saves::adopt_root_files(nand, relative).empty());
+    CHECK(read_file(nand / relative / "wiiparty.bin") == "misplaced");
+    CHECK(read_file(nand / "wiiparty.bin") == "stale");
+    fs::remove_all(nand, error);
+}
+
+void test_title_data_directory() {
+    namespace fs = std::filesystem;
+    std::error_code error;
+    fs::path parent = fs::temp_directory_path(error) / "wp_title_tests";
+    fs::remove_all(parent, error);
+    fs::path nand = parent / "nand";
+    wp::wr32(0x80000000, 0x53555050);
+    CHECK(wp::nand::mount(nand.string()));
+    CHECK(fs::is_directory(nand / "title" / "00010000" / "53555050" / "data"));
+    fs::remove_all(parent, error);
+}
+
+void test_pad_mapping() {
+    using namespace wp::padmap;
+    Mapping automatic_mapping;
+    automatic_mapping.fill(kAutomatic);
+    Pressed xbox;
+    xbox.held[kSouth] = true;
+    CHECK(buttons(xbox, false, automatic_mapping) == wp::input::kButtonA);
+    Pressed nintendo = xbox;
+    nintendo.nintendo_layout = true;
+    CHECK(buttons(nintendo, false, automatic_mapping) == wp::input::kButtonB);
+    CHECK(buttons(xbox, true, automatic_mapping) == wp::input::kButtonTwo);
+    Mapping custom = automatic_mapping;
+    custom[0] = kWest;
+    Pressed west;
+    west.held[kWest] = true;
+    CHECK(buttons(west, false, custom) == wp::input::kButtonA);
+    CHECK(buttons(xbox, false, custom) == 0);
+    Pressed north;
+    north.held[kNorth] = true;
+    CHECK(buttons(north, false, custom) == wp::input::kButtonTwo);
+    CHECK(physical_from_name("left_trigger") == kLeftTrigger);
+    CHECK(physical_from_name("auto") == kAutomatic);
+    CHECK(std::string(physical_name(kRightShoulder)) == "right_shoulder");
+    CHECK(setting_key(6) == "pad.home");
 }
 
 void test_custom_texture_hash() {
@@ -934,6 +998,32 @@ void test_options_render() {
 
 }
 
+void test_hollywood_registers() {
+    constexpr uint32_t kOut = 0xCD8000C0;
+    constexpr uint32_t kDirection = 0xCD8000C4;
+    constexpr uint32_t kIn = 0xCD8000C8;
+    constexpr uint32_t kBroadwayOwned = 0xC3A0;
+    CHECK(wp::hollywood::owns(kOut) && wp::hollywood::owns(kDirection) && wp::hollywood::owns(kIn));
+    CHECK(wp::hollywood::owns(0xCD800180) && wp::hollywood::owns(0xCD8001CC) && wp::hollywood::owns(0xCD8001D0));
+    CHECK(!wp::hollywood::owns(0xCD8000CC));
+    CHECK(wp::hollywood::read32(kIn) == 0x80);
+    wp::hollywood::write32(kIn, 0);
+    CHECK(wp::hollywood::read32(kIn) == 0x80);
+    CHECK(wp::hollywood::read32(kDirection) == 0xFFDF3F);
+    wp::hollywood::write32(kOut, 0xFFFFFFFF);
+    CHECK(wp::hollywood::read32(kOut) == kBroadwayOwned);
+    wp::hollywood::write32(kOut, 0);
+    CHECK(wp::hollywood::read32(kOut) == 0);
+    wp::hollywood::write32(kDirection, 0);
+    CHECK(wp::hollywood::read32(kDirection) == (0xFFDF3F & ~kBroadwayOwned));
+    wp::hollywood::write32(kDirection, 0xFFFFFFFF);
+    CHECK(wp::hollywood::read32(kDirection) == (0xFFDF3F | kBroadwayOwned));
+    for (uint32_t address : {0xCD800180u, 0xCD8001CCu, 0xCD8001D0u}) {
+        wp::hollywood::write32(address, 0x12345678);
+        CHECK(wp::hollywood::read32(address) == 0);
+    }
+}
+
 int main() {
     wp::g_memory = static_cast<uint8_t*>(std::calloc(wp::kMemorySize, 1));
     test_memory();
@@ -945,6 +1035,9 @@ int main() {
     test_quantization();
     test_disc_drive();
     test_save_backups();
+    test_adopt_root_files();
+    test_title_data_directory();
+    test_pad_mapping();
     test_custom_texture_hash();
     test_custom_texture_names();
     test_custom_texture_index();
@@ -959,6 +1052,7 @@ int main() {
     test_options_repeat_and_layout();
     test_options_render();
     test_software_fma();
+    test_hollywood_registers();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");

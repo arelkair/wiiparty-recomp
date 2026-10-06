@@ -9,7 +9,7 @@ import dol as dol_module
 import game
 from ppc import cfg
 from ppc.decoder import Instr
-from ppc.emit import Emitter, function_name, label, resume_label, u32
+from ppc.emit import Emitter, declarations, function_name, label, resume_label, u32
 
 ROOT = Path(__file__).resolve().parent.parent
 LINES_PER_FILE = 40000
@@ -181,11 +181,11 @@ def write_sources(output, chunks, entries, names, resumes):
             path.write_text(text)
 
     for index, chunk in enumerate(chunks):
-        body = ['#include "wp/cpu.h"', '#include "wp/hle.h"', '#include "wp/threads.h"', '#include "functions.h"', ""] + chunk
+        body = ['#include "wp/cpu.h"', '#include "wp/hle.h"', '#include "wp/threads.h"', ""] + declarations(chunk) + [""] + chunk
         emit(f"dol_{index:03d}.cpp", "\n".join(body) + "\n")
-    declarations = ["#pragma once", '#include "wp/cpu.h"', ""]
-    declarations += [f"void {function_name(a)}(wp::Cpu& c);" for a in entries]
-    emit("functions.h", "\n".join(declarations) + "\n")
+    header = ["#pragma once", '#include "wp/cpu.h"', ""]
+    header += [f"void {function_name(a)}(wp::Cpu& c);" for a in entries]
+    emit("functions.h", "\n".join(header) + "\n")
     table = ['#include "wp/function_table.h"', '#include "functions.h"', "", "namespace wp {", "", "const FunctionEntry g_function_table[] = {"]
     table += [f"    {{{u32(a)}, {function_name(a)}}}," for a in entries]
     table += ["};", "", f"const size_t g_function_count = {len(entries)};", "", "const FunctionEntry g_resume_table[] = {"]

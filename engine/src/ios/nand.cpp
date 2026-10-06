@@ -380,11 +380,12 @@ void apply_settings(const fs::path& path) {
 
 void ensure_sysconf() {
     fs::path path = host_path("/shared2/sys/SYSCONF");
-    if (fs::exists(path) && valid_sysconf(path)) {
+    std::error_code error;
+    if (fs::exists(path, error) && valid_sysconf(path)) {
         apply_settings(path);
         return;
     }
-    fs::create_directories(path.parent_path());
+    fs::create_directories(path.parent_path(), error);
     std::vector<uint8_t> data = default_sysconf();
     std::FILE* file = std::fopen(path.string().c_str(), "wb");
     if (file) {
@@ -404,6 +405,10 @@ bool mount(const std::string& root) {
     }
     ensure_sysconf();
     g_save = saves::save_relative(rd32(kGameIdAddress));
+    fs::create_directories(g_root / g_save, error);
+    for (const std::string& name : saves::adopt_root_files(g_root, g_save)) {
+        log::write("nand", "moved %s from the NAND root into %s", name.c_str(), g_save.generic_string().c_str());
+    }
     g_backups = saves::backups_beside(g_root);
     g_backed_up = false;
     back_up_save("start");
@@ -433,12 +438,14 @@ bool widescreen() {
 }
 
 bool exists(const std::string& path) {
-    return fs::exists(host_path(path));
+    std::error_code error;
+    return fs::exists(host_path(path), error);
 }
 
 int32_t open(const std::string& path, uint32_t mode) {
     fs::path target = host_path(path);
-    if (!fs::is_regular_file(target)) {
+    std::error_code error;
+    if (!fs::is_regular_file(target, error)) {
         return kNotFound;
     }
     const char* flags = (mode & kModeWrite) ? "r+b" : "rb";
@@ -497,10 +504,10 @@ void close(int32_t handle) {
 
 int32_t create_file(const std::string& path) {
     fs::path target = host_path(path);
-    if (fs::exists(target)) {
+    std::error_code error;
+    if (fs::exists(target, error)) {
         return kExists;
     }
-    std::error_code error;
     fs::create_directories(target.parent_path(), error);
     std::FILE* file = std::fopen(target.string().c_str(), "wb");
     if (!file) {
@@ -512,10 +519,10 @@ int32_t create_file(const std::string& path) {
 
 int32_t create_directory(const std::string& path) {
     fs::path target = host_path(path);
-    if (fs::exists(target)) {
+    std::error_code error;
+    if (fs::exists(target, error)) {
         return kExists;
     }
-    std::error_code error;
     fs::create_directories(target, error);
     return error ? kInvalid : 0;
 }

@@ -257,14 +257,11 @@ std::array<Point, 2> camera_points(const input::Sample& sample) {
     return points;
 }
 
-void update_camera(State& state, const input::Sample& sample) {
-    uint8_t* data = state.camera.data() + kCameraDataOffset;
+}
+
+void camera_objects(uint8_t mode, const input::Sample& sample, uint8_t* data) {
     std::fill(data, data + 36, 0xFF);
-    if (state.camera[kCameraTrackingRegister] != kCameraTrackingEnable) {
-        return;
-    }
     std::array<Point, 2> points = camera_points(sample);
-    uint8_t mode = state.camera[kCameraModeRegister];
     if (mode == kCameraModeBasic) {
         if (points[0].visible || points[1].visible) {
             uint16_t x1 = points[0].visible ? points[0].x : 0x3FF;
@@ -298,6 +295,17 @@ void update_camera(State& state, const input::Sample& sample) {
             }
         }
     }
+}
+
+namespace {
+
+void update_camera(State& state, const input::Sample& sample) {
+    uint8_t* data = state.camera.data() + kCameraDataOffset;
+    if (state.camera[kCameraTrackingRegister] != kCameraTrackingEnable) {
+        std::fill(data, data + 36, 0xFF);
+        return;
+    }
+    camera_objects(state.camera[kCameraModeRegister], sample, data);
 }
 
 bool accel_mode(uint8_t mode) {

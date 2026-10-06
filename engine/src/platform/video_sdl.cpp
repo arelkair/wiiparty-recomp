@@ -1,3 +1,4 @@
+#include "wp/titlebar.h"
 #include "wp/video.h"
 
 #include "gl_window.h"
@@ -161,8 +162,7 @@ bool hide_cursor() {
 }
 
 void apply_interface_language() {
-    bool spanish = settings::text("system.interface_language", "WP_INTERFACE_LANGUAGE") == "es";
-    ui::set_language(spanish ? ui::Language::Spanish : ui::Language::English);
+    ui::set_language(settings::text("system.interface_language", "WP_INTERFACE_LANGUAGE"));
 }
 
 void set_fullscreen(SDL_Window* window, bool enable) {
@@ -218,6 +218,9 @@ std::string window_title(double fps) {
 }
 
 void handle_event(SDL_Window* window, const SDL_Event& event) {
+    if (titlebar::handle_event(window, event)) {
+        return;
+    }
     switch (event.type) {
     case SDL_EVENT_QUIT:
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -330,7 +333,7 @@ void window_thread(bool visible) {
             client_height = static_cast<int>(client_width / g_aspect + 0.5);
         }
     }
-    SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | (visible ? 0 : SDL_WINDOW_HIDDEN);
+    SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS | (visible ? 0 : SDL_WINDOW_HIDDEN);
     SDL_Window* window = SDL_CreateWindow(window_title(0.0).c_str(), client_width, client_height, flags);
     SDL_GLContext context = window ? SDL_GL_CreateContext(window) : nullptr;
     if (!context) {
@@ -341,6 +344,9 @@ void window_thread(bool visible) {
         finish_start(nullptr, nullptr);
         return;
     }
+    titlebar::install(window);
+    titlebar::set_title(window_title(0.0));
+    SDL_SetWindowSize(window, client_width, client_height + titlebar::height(window));
     SDL_GL_MakeCurrent(window, nullptr);
     finish_start(window, context);
     if (!visible) {
@@ -361,6 +367,7 @@ void window_thread(bool visible) {
                 title = g_title;
             }
             SDL_SetWindowTitle(window, title.c_str());
+            titlebar::set_title(title);
         }
         apply_option(window, options::poll_gamepads(window));
         bool hide = hide_cursor() && !options::menu_open();
@@ -558,7 +565,8 @@ bool cursor_on_image(float& x, float& y) {
     int width = 0;
     int height = 0;
     SDL_GetWindowSize(window, &width, &height);
-    return image_point(static_cast<long>(fx), static_cast<long>(fy), width, height, x, y);
+    int bar = static_cast<int>(titlebar::height(window) / SDL_GetWindowPixelDensity(window));
+    return image_point(static_cast<long>(fx), static_cast<long>(fy) - bar, width, height - bar, x, y);
 }
 
 void update_statistics(double fps) {

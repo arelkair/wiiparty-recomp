@@ -67,12 +67,47 @@ All components adapted from the **Dolphin Emulator** originate from a source sna
 - **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
 - **Engineering Changes (2026-09-29):** Rewritten as inline functions over `wp::fpr_bits`; FPSCR exception flags and the flush-to-zero option are not modelled; the estimate tables are unchanged.
 
+### 6. Wii Remote Pairing on Windows
+- **Repository Files:** `launcher/src/wiimote_pairing.cpp` | `launcher/src/wiimote_pairing.h`.
+- **Upstream Origin:** `Source/Core/Core/HW/WiimoteReal/IOWin.cpp` (`AuthenticateWiimote`, `RemoveUnusableWiimoteBluetoothDevices`, `DiscoverAndPairWiimotes`, `FindAndAuthenticateWiimotes`), version 2606 snapshot.
+- **Copyright:** Copyright 2008 Dolphin Emulator Project.
+- **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
+- **Engineering Changes (2026-09-29):** Rewritten as two plain functions over the Windows Bluetooth API: the host address as the SYNC-button pass key, three inquiry rounds, removal of remembered but unauthenticated remotes and enabling the HID service; logging and the 1+2 method were dropped.
+
+### 7. EXI Bus, IPL Device and SRAM
+- **Repository Files:** `engine/src/core/exi.cpp` | `engine/include/wp/exi.h`.
+- **Upstream Origin:** `Source/Core/Core/HW/EXI/EXI_Channel.cpp`, `Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp` and `Source/Core/Core/HW/Sram.cpp`, current master as of 2026-09-30.
+- **Copyright:** Copyright 2008 Dolphin Emulator Project.
+- **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
+- **Engineering Changes (2026-09-30):** Rewritten as a single file for 32-bit register access: three channels with immediate and DMA transfers, only the IPL device (SRAM, real-time clock, UART and the Wii RTC flags); no memory cards, BBA or other devices; SRAM is kept in `sram.bin` beside the NAND folder.
+
+### 8. Serial Interface (SI)
+- **Repository Files:** `engine/src/input/si.cpp` | `engine/include/wp/si.h`.
+- **Upstream Origin:** `Source/Core/Core/HW/SI/SI.cpp`, current master as of 2026-09-30.
+- **Copyright:** Copyright 2008 Dolphin Emulator Project.
+- **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
+- **Engineering Changes (2026-09-30):** Register layout and status bits kept; transfers complete at once with no device on any port; no GameCube controller, GBA or keyboard devices.
+
+### 9. Hollywood GPIO Registers
+- **Repository Files:** `engine/src/core/hollywood.cpp` | `engine/include/wp/hollywood.h`.
+- **Upstream Origin:** `Source/Core/Core/HW/WII_IPC.cpp` and `Source/Core/Core/HW/WII_IPC.h` (the GPIO pin layout, the pins the PowerPC may access, the direction register reset value, the disc-slot input and the three constant registers), current master as of 2026-10-06.
+- **Copyright:** Copyright 2008 Dolphin Emulator Project.
+- **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
+- **Engineering Changes (2026-10-06):** Rewritten as a small module over three 32-bit registers (`0xCD8000C0` output, `0xCD8000C4` direction, `0xCD8000C8` input) and the constants at `0xCD800180`, `0xCD8001CC` and `0xCD8001D0`; the disc is always inside, there is no eject, sensor bar or video encoder behaviour.
+
 ## Vendored Permissive Components
 
 ### stb_truetype
 - **Repository Files:** `third_party/stb/stb_truetype.h`, unmodified.
 - **Usage Area:** text of the F10 options menu outside Windows (`engine/src/platform/options_render_stb.cpp`), drawn with a font installed on the system.
 - **Upstream Origin:** https://github.com/nothings/stb, version 1.26, commit `2c980bb59875b0d32144a71867fbdebb2f77cd20` (retrieved 2026-09-29).
+- **Copyright:** Copyright (c) 2017 Sean Barrett.
+- **License:** dual licensed, **MIT License** or public domain (Unlicense), at the user's choice; the MIT terms are used here, which are compatible with GPL-3.0-or-later. The license text is at the end of the file.
+
+### stb_image
+- **Repository Files:** `third_party/stb/stb_image.h`, unmodified.
+- **Usage Area:** only its zlib decoder, to inflate the launcher's embedded fonts (`launcher/src/gunzip.cpp`).
+- **Upstream Origin:** https://github.com/nothings/stb, version 2.30, commit `2c980bb59875b0d32144a71867fbdebb2f77cd20` (retrieved 2026-10-02).
 - **Copyright:** Copyright (c) 2017 Sean Barrett.
 - **License:** dual licensed, **MIT License** or public domain (Unlicense), at the user's choice; the MIT terms are used here, which are compatible with GPL-3.0-or-later. The license text is at the end of the file.
 

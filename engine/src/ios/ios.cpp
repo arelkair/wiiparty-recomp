@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <deque>
 #include <map>
 #include <set>
 
@@ -23,6 +24,16 @@ constexpr uint32_t kGameIdAddress = 0x80000000;
 constexpr uint32_t kEsGetTitleId = 0x20;
 constexpr uint32_t kEsGetConsumption = 0x16;
 constexpr uint32_t kEsGetDiscTicketView = 0x1B;
+constexpr uint32_t kEsGetTitleDir = 0x1D;
+constexpr uint32_t kStmEventHook = 0x1000;
+constexpr uint32_t kStmReleaseEventHook = 0x3002;
+constexpr uint32_t kStmVideoDimming = 0x5001;
+constexpr uint32_t kKdSuspendScheduler = 0x01;
+constexpr uint32_t kKdSetRtcCounter = 0x17;
+constexpr int32_t kIpcExists = -2;
+constexpr int32_t kIpcNotFound = -6;
+constexpr const char* kEventHookDevice = "/dev/stm/eventhook";
+constexpr const char* kStmDevice = "/dev/stm/immediate";
 constexpr uint32_t kVectorSize = 8;
 
 constexpr uint32_t kOpen = 1;
@@ -38,6 +49,7 @@ constexpr uint32_t kDiRead = 0x71;
 constexpr uint32_t kDiUnencryptedRead = 0x8D;
 constexpr uint32_t kDiReportKey = 0xA4;
 constexpr uint32_t kDiRequestError = 0xE0;
+constexpr uint32_t kDiClearCoverInterrupt = 0x86;
 constexpr uint32_t kDiSuccess = 1;
 constexpr uint32_t kDiError = 2;
 constexpr uint32_t kDiErrorOutOfRange = 0x00052100;
@@ -87,6 +99,9 @@ struct Device {
 };
 
 std::map<int32_t, Device> g_devices;
+std::deque<std::pair<uint32_t, int32_t>> g_completions;
+uint32_t g_event_hook = 0;
+uint32_t g_kd_rtc = 0;
 int32_t g_next_descriptor = 1;
 uint32_t g_di_last_error = 0;
 int32_t g_cache_descriptor = -1;
@@ -192,6 +207,8 @@ int32_t di_command(uint32_t command, uint32_t input, uint32_t output) {
     switch (command) {
     case kDiInquiry:
         std::memset(host(output), 0, kDriveInfoSize);
+        return kDiSuccess;
+    case kDiClearCoverInterrupt:
         return kDiSuccess;
     case kDiRead:
         disc::read(static_cast<uint64_t>(rd32(input + 8)) << 2, rd32(input + 4), output);
@@ -299,7 +316,11 @@ void update() {
 }
 
 bool take_completion(uint32_t& request, int32_t& result) {
-    if (!bluetooth::take_completion(request, result)) {
+    if (!g_completions.empty()) {
+        request = g_completions.front().first;
+        result = g_completions.front().second;
+        g_completions.pop_front();
+    } else if (!bluetooth::take_completion(request, result)) {
         return false;
     }
     wr32(request + 4, static_cast<uint32_t>(result));
@@ -370,6 +391,24 @@ int32_t send(uint32_t request, uint64_t& ticks) {
                      : nand::kInvalid;
         break;
     case kIoctl:
+        if (device != g_devices.end() && device->second.path == kEventHookDevice && rd32(request + 12) == kStmEventHook) {
+            if (g_event_hook != 0) {
+                result = kIpcExists;
+                break;
+            }
+            g_event_hook = request;
+            return kDeferred;
+        }
+        if (device != g_devices.end() && device->second.path == kStmDevice && rd32(request + 12) == kStmReleaseEventHook) {
+            if (g_event_hook == 0) {
+                result = kIpcNotFound;
+                break;
+            }
+            wr32(rd32(g_event_hook + 24), 0);
+            g_completions.emplace_back(g_event_hook, 0);
+            g_event_hook = 0;
+            break;
+        }
         result = file_system ? fs_command(rd32(request + 12), rd32(request + 16), rd32(request + 24), ticks)
                              : ioctl(descriptor, rd32(request + 12), rd32(request + 16), rd32(request + 20), rd32(request + 24),
                                      rd32(request + 28));
@@ -424,12 +463,31 @@ int32_t ioctl(int32_t descriptor, uint32_t command, uint32_t input, uint32_t, ui
         wr32(output + 4, static_cast<uint32_t>(position));
         return 0;
     }
+    if (device == kStmDevice && command == kStmVideoDimming) {
+        return 0;
+    }
+    if (device == "/dev/net/kd/request" && command == kKdSuspendScheduler) {
+        wr32(output, 0);
+        return 0;
+    }
+    if (device == "/dev/net/kd/time" && command == kKdSetRtcCounter) {
+        g_kd_rtc = rd32(input);
+        wr32(output, 0);
+        return 0;
+    }
     log_once("ioctl", device, command);
     return 0;
 }
 
 int32_t ioctlv(int32_t descriptor, uint32_t command, uint32_t input_count, uint32_t, uint32_t vectors) {
     const std::string device = device_name(descriptor);
+    if (device == "/dev/es" && command == kEsGetTitleDir) {
+        uint32_t input = rd32(vectors);
+        char path[32];
+        std::snprintf(path, sizeof path, "/title/%08x/%08x/data", rd32(input), rd32(input + 4));
+        std::memcpy(host(rd32(vectors + input_count * kVectorSize)), path, std::strlen(path) + 1);
+        return 0;
+    }
     if (device == "/dev/es" && command == kEsGetTitleId) {
         uint32_t output = rd32(vectors + input_count * kVectorSize);
         wr32(output, kTitleIdHigh);

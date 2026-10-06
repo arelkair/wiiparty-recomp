@@ -404,6 +404,27 @@ Outcome restore(const fs::path& nand_root, const fs::path& backups_root, const B
     }
 }
 
+std::vector<std::string> adopt_root_files(const fs::path& nand_root, const fs::path& relative) {
+    std::vector<std::string> moved;
+    std::error_code error;
+    fs::path data = nand_root / relative;
+    for (const auto& entry : fs::directory_iterator(nand_root, error)) {
+        if (!entry.is_regular_file(error)) {
+            continue;
+        }
+        fs::path target = data / entry.path().filename();
+        if (fs::exists(target, error)) {
+            continue;
+        }
+        fs::create_directories(data, error);
+        fs::rename(entry.path(), target, error);
+        if (!error) {
+            moved.push_back(entry.path().filename().string());
+        }
+    }
+    return moved;
+}
+
 void rotate(const fs::path& backups_root, int keep) {
     if (keep <= 0) {
         return;

@@ -5,11 +5,14 @@
 #include "wp/audio.h"
 #include "wp/cpu.h"
 #include "wp/dsp.h"
+#include "wp/exi.h"
 #include "wp/gx.h"
 #include "wp/log.h"
 #include "wp/hle.h"
 #include "wp/ipc.h"
 #include "wp/memory.h"
+#include "wp/runtime.h"
+#include "wp/si.h"
 #include "wp/threads.h"
 #include "wp/video.h"
 
@@ -23,6 +26,7 @@ constexpr uint32_t kMsrExternalInterrupt = 0x8000;
 constexpr uint32_t kInterruptTable = 0x80003040;
 constexpr uint32_t kVideoInterrupt = 24;
 constexpr uint32_t kFinishInterrupt = 19;
+constexpr uint32_t kSerialInterrupt = 20;
 constexpr uint32_t kVideoInterruptRegisters[] = {0xCC002030, 0xCC002034};
 constexpr uint16_t kVideoInterruptEnable = 0x1000;
 constexpr uint16_t kVideoInterruptFlag = 0x8000;
@@ -166,6 +170,16 @@ void poll_interrupts(Cpu& c) {
     if (gx::take_finish_interrupt()) {
         deliver_external_interrupt(c, kFinishInterrupt);
     }
+    for (int delivered = 0; delivered < 3; delivered++) {
+        uint32_t index = exi::pending_interrupt();
+        if (index == 0) {
+            break;
+        }
+        deliver_external_interrupt(c, index);
+    }
+    if (si::interrupt_pending()) {
+        deliver_external_interrupt(c, kSerialInterrupt);
+    }
     gx::process();
     Clock::time_point now = Clock::now();
     if (now < g_next_retrace) {
@@ -176,6 +190,7 @@ void poll_interrupts(Cpu& c) {
     if (g_next_retrace < now) {
         g_next_retrace = now + period;
     }
+    si::poll();
     deliver_video_interrupt(c);
 }
 

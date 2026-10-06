@@ -30,11 +30,9 @@ constexpr uint32_t kSprLr = 8;
 constexpr uint32_t kSprCtr = 9;
 constexpr uint32_t kSprGqr0 = 912;
 
-[[noreturn]] void missing_function(Cpu& c, uint32_t address);
 [[noreturn]] void illegal_instruction(Cpu& c, uint32_t address, uint32_t word);
 [[noreturn]] void unsupported_instruction(Cpu& c, uint32_t address, const char* name);
 [[noreturn]] void unresolved_jump(Cpu& c, uint32_t target);
-[[noreturn]] void fatal_error(const char* message);
 void call(Cpu& c, uint32_t address);
 void trap(Cpu& c, uint32_t address);
 void system_call(Cpu& c);
@@ -42,12 +40,6 @@ uint64_t time_base();
 void locked_cache_dma(Cpu& c);
 void set_decrementer(Cpu& c, uint32_t value);
 uint32_t get_decrementer(Cpu& c);
-bool decrementer_due();
-void decrementer_fired();
-
-void print_call_stack();
-void start_profiler();
-void print_profile();
 
 extern uint32_t g_poll_counter;
 void poll_interrupts(Cpu& c);
@@ -435,13 +427,31 @@ inline void update_cr1(Cpu& c) {
     c.cr[1] = static_cast<uint8_t>((c.fpscr >> 28) & 0xF);
 }
 
-inline int quantizer_scale(uint32_t bits) {
-    int scale = static_cast<int>(bits & 0x3F);
-    return scale & 0x20 ? scale - 0x40 : scale;
+struct QuantizerFactors {
+    float load[64];
+    float store[64];
+};
+
+constexpr QuantizerFactors make_quantizer_factors() {
+    QuantizerFactors table{};
+    for (int bits = 0; bits < 64; bits++) {
+        int scale = bits & 0x20 ? bits - 0x40 : bits;
+        float up = 1.0f;
+        float down = 1.0f;
+        for (int step = 0; step < (scale < 0 ? -scale : scale); step++) {
+            up *= 2.0f;
+            down *= 0.5f;
+        }
+        table.store[bits] = scale < 0 ? down : up;
+        table.load[bits] = scale < 0 ? up : down;
+    }
+    return table;
 }
 
+inline constexpr QuantizerFactors kQuantizerFactors = make_quantizer_factors();
+
 inline float dequantize(uint32_t address, uint32_t type, uint32_t scale_bits, uint32_t& size) {
-    float factor = std::ldexp(1.0f, -quantizer_scale(scale_bits));
+    float factor = kQuantizerFactors.load[scale_bits & 0x3F];
     switch (type) {
     case 4:
         size = 1;
@@ -492,7 +502,7 @@ inline uint32_t clamp_quantized(float value, uint32_t type) {
 }
 
 inline void quantize(uint32_t address, float value, uint32_t type, uint32_t scale_bits, uint32_t& size) {
-    float scaled = value * std::ldexp(1.0f, quantizer_scale(scale_bits));
+    float scaled = value * kQuantizerFactors.store[scale_bits & 0x3F];
     switch (type) {
     case 4:
     case 6:

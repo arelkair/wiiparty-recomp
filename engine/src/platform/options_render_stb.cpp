@@ -276,4 +276,65 @@ Image render(const Menu& menu, int client_height) {
     return image;
 }
 
+Image render_titlebar(int width, int height, const std::string& title, int hover, int pressed, bool maximized, bool focused) {
+    Image image;
+    if (width <= 0 || height <= 0) {
+        return image;
+    }
+    constexpr uint32_t kBar = 0x161618;
+    constexpr uint32_t kCloseHover = 0xE81123;
+    constexpr uint32_t kClosePressed = 0xB50E1C;
+    constexpr int kButtonCount = 3;
+    Canvas canvas{width, height, std::vector<uint32_t>(static_cast<size_t>(width) * height, kBar)};
+    int button = height * 46 / 32;
+    int stroke = std::max(1, height / 32);
+    int half = std::max(4, height * 5 / 32);
+    int step = std::max(2, height * 2 / 32);
+    int buttons_left = width - button * kButtonCount;
+    int margin = height * 12 / 32;
+    if (font(false).ok) {
+        Face face = make_face(false, std::max(8, height * 13 / 32));
+        canvas.text(face, focused ? kText : kMuted, title, margin, 0, std::max(margin, buttons_left - margin), height - stroke, Align::Left, true);
+    }
+    canvas.fill(0, height - stroke, width, height, kSeparator);
+    for (int i = 0; i < kButtonCount; i++) {
+        int left = buttons_left + i * button;
+        bool close = i == kButtonCount - 1;
+        bool over = i == hover;
+        if (over) {
+            canvas.fill(left, 0, left + button, height - stroke, close ? (pressed == i ? kClosePressed : kCloseHover) : (pressed == i ? kSeparator : kSelected));
+        }
+        uint32_t color = over && close ? kText : focused ? kText : kMuted;
+        int cx = left + button / 2;
+        int cy = (height - stroke) / 2;
+        if (i == 0) {
+            canvas.fill(cx - half, cy, cx + half + 1, cy + stroke, color);
+        } else if (i == 1 && !maximized) {
+            canvas.fill(cx - half, cy - half, cx + half + 1, cy - half + stroke, color);
+            canvas.fill(cx - half, cy + half, cx + half + 1, cy + half + stroke, color);
+            canvas.fill(cx - half, cy - half, cx - half + stroke, cy + half + stroke, color);
+            canvas.fill(cx + half, cy - half, cx + half + stroke, cy + half + stroke, color);
+        } else if (i == 1) {
+            canvas.fill(cx - half, cy - half + step, cx + half - step + 1, cy - half + step + stroke, color);
+            canvas.fill(cx - half, cy + half, cx + half - step + 1, cy + half + stroke, color);
+            canvas.fill(cx - half, cy - half + step, cx - half + stroke, cy + half + stroke, color);
+            canvas.fill(cx + half - step, cy - half + step, cx + half - step + stroke, cy + half + stroke, color);
+            canvas.fill(cx - half + step, cy - half, cx + half + 1, cy - half + stroke, color);
+            canvas.fill(cx + half, cy - half, cx + half + stroke, cy + half - step + stroke, color);
+        } else {
+            for (int k = -half; k <= half; k++) {
+                canvas.fill(cx + k, cy + k, cx + k + stroke, cy + k + stroke, color);
+                canvas.fill(cx + k, cy - k, cx + k + stroke, cy - k + stroke, color);
+            }
+        }
+    }
+    image.width = static_cast<uint32_t>(width);
+    image.height = static_cast<uint32_t>(height);
+    image.pixels.resize(canvas.pixels.size());
+    for (size_t i = 0; i < canvas.pixels.size(); i++) {
+        image.pixels[i] = (canvas.pixels[i] & 0xFFFFFF) | 0xFF000000u;
+    }
+    return image;
+}
+
 }

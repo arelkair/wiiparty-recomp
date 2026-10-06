@@ -27,6 +27,11 @@ add_library(wp_engine STATIC
     src/input/wiimote.cpp
     src/input/input.cpp
     src/input/keymap.cpp
+    src/input/padmap.cpp
+    src/input/si.cpp
+    src/core/exi.cpp
+    src/core/hollywood.cpp
+    src/core/io.cpp
     src/platform/png.cpp
     src/platform/save_backup.cpp
     src/platform/screenshot.cpp
@@ -53,7 +58,7 @@ else()
     find_package(Threads REQUIRED)
     target_link_libraries(wp_engine PUBLIC Threads::Threads)
 endif()
-if(WP_TRACE)
+if(WP_TRACE_CALLS)
     target_compile_definitions(wp_engine PUBLIC WP_TRACE)
 endif()
 target_compile_options(wp_engine PRIVATE -Wall -Wextra)
@@ -75,7 +80,7 @@ else()
             DOWNLOAD_EXTRACT_TIMESTAMP ON)
         FetchContent_MakeAvailable(sdl3)
         set(SDL3_FOUND TRUE)
-        set(WP_SDL_PACKAGES "Debian and Ubuntu: sudo apt install libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgl-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev\nFedora: sudo dnf install libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel wayland-protocols-devel libdecor-devel mesa-libEGL-devel mesa-libGL-devel pulseaudio-libs-devel alsa-lib-devel systemd-devel dbus-devel\nArch: sudo pacman -S --needed sdl3")
+        set(WP_SDL_PACKAGES "Debian and Ubuntu: sudo apt install libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgl-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev\nFedora: sudo dnf install libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXScrnSaver-devel libXtst-devel libxkbcommon-devel wayland-devel wayland-protocols-devel libdecor-devel mesa-libEGL-devel mesa-libGL-devel pulseaudio-libs-devel alsa-lib-devel systemd-devel dbus-devel\nArch: sudo pacman -S --needed sdl3")
         foreach(WP_SDL_FEATURE X11 WAYLAND PULSEAUDIO PIPEWIRE ALSA)
             get_directory_property(WP_HAVE_${WP_SDL_FEATURE} DIRECTORY "${sdl3_SOURCE_DIR}" DEFINITION HAVE_${WP_SDL_FEATURE})
         endforeach()
@@ -92,18 +97,18 @@ else()
     endif()
 endif()
 if(SDL3_FOUND)
-    target_sources(wp_engine PRIVATE src/input/gamepad.cpp)
+    target_sources(wp_engine PRIVATE src/input/gamepad.cpp src/input/real_wiimote.cpp)
     if(TARGET SDL3::SDL3)
         target_link_libraries(wp_engine PUBLIC SDL3::SDL3)
     else()
         target_link_libraries(wp_engine PUBLIC SDL3::SDL3-static)
     endif()
 else()
-    target_sources(wp_engine PRIVATE src/input/no_gamepad.cpp)
+    target_sources(wp_engine PRIVATE src/input/no_gamepad.cpp src/input/no_real_wiimote.cpp)
 endif()
 if(NOT WIN32)
     if(SDL3_FOUND)
-        target_sources(wp_engine PRIVATE src/gpu/gx_render_gl.cpp src/platform/video_sdl.cpp)
+        target_sources(wp_engine PRIVATE src/gpu/gx_render_gl.cpp src/platform/video_sdl.cpp src/platform/titlebar_sdl.cpp)
         target_compile_definitions(wp_engine PRIVATE WP_SDL_PLATFORM)
     else()
         target_sources(wp_engine PRIVATE src/gpu/null_render.cpp src/platform/video_headless.cpp)

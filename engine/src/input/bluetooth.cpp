@@ -16,6 +16,7 @@
 #include "wp/input.h"
 #include "wp/ios.h"
 #include "wp/memory.h"
+#include "wp/real_wiimote.h"
 #include "wp/wiimote.h"
 
 namespace wp::bluetooth {
@@ -127,6 +128,7 @@ enum class Baseband { Inactive, RequestConnection, Pending, Complete };
 
 struct Wiimote {
     Baseband baseband = Baseband::Inactive;
+    bool real = false;
     bool linking = false;
     bool host_ready = false;
     std::chrono::steady_clock::time_point link_deadline{};
@@ -142,6 +144,10 @@ std::deque<Completion> g_completions;
 std::array<Wiimote, kWiimoteCount> g_wiimotes;
 uint8_t g_scan_enable = 0;
 bool g_log = std::getenv("WP_LOG_BT") != nullptr;
+
+bool attached(uint32_t index) {
+    return real_wiimote::present(index) || input::connected(index);
+}
 
 uint32_t in_vector(uint32_t vectors, uint32_t index) {
     return rd32(vectors + index * kVectorSize);
@@ -437,10 +443,14 @@ void receive_acl(uint32_t data) {
     }
     uint32_t wiimote_index = static_cast<uint32_t>(index);
     auto sender = [wiimote_index](const std::vector<uint8_t>& frame) { send_interrupt(wiimote_index, frame); };
-    if (it->second.psm == kPsmHidInterrupt && payload[0] == kHidDataOutput) {
-        wiimote::output_report(wiimote_index, payload + 1, payload_size - 1, sender);
-    } else if (it->second.psm == kPsmHidControl && payload[0] == kHidSetReportOutput) {
+    if (it->second.psm == kPsmHidControl && payload[0] == kHidSetReportOutput) {
         send_acl(wiimote_index, it->second.remote_cid, {kHidHandshakeSuccess});
+    }
+    bool report = (it->second.psm == kPsmHidInterrupt && payload[0] == kHidDataOutput) ||
+                  (it->second.psm == kPsmHidControl && payload[0] == kHidSetReportOutput);
+    if (report && wiimote.real) {
+        real_wiimote::output_report(wiimote_index, payload + 1, payload_size - 1);
+    } else if (report) {
         wiimote::output_report(wiimote_index, payload + 1, payload_size - 1, sender);
     } else {
         std::fprintf(stderr, "BT unhandled data on psm %04x type %02x\n", it->second.psm, payload[0]);
@@ -523,9 +533,10 @@ void execute_command(uint32_t data) {
     case kCommandCreateConnection: {
         command_status(opcode);
         int index = wiimote_from_address(parameters);
-        bool ok = index >= 0 && input::connected(static_cast<uint32_t>(index)) && (g_scan_enable & kPageScanEnable);
+        bool ok = index >= 0 && attached(static_cast<uint32_t>(index)) && (g_scan_enable & kPageScanEnable);
         if (ok) {
             g_wiimotes[index].baseband = Baseband::Complete;
+            g_wiimotes[index].real = real_wiimote::present(static_cast<uint32_t>(index));
         }
         std::vector<uint8_t> body = {static_cast<uint8_t>(ok ? 0x00 : 0x08)};
         put16(body, connection_handle(index < 0 ? 0 : static_cast<uint32_t>(index)));
@@ -541,9 +552,10 @@ void execute_command(uint32_t data) {
         command_status(opcode);
         int index = wiimote_from_address(parameters);
         uint8_t role = rd8(parameters + 6);
-        bool ok = index >= 0 && input::connected(static_cast<uint32_t>(index)) && (g_scan_enable & kPageScanEnable);
+        bool ok = index >= 0 && attached(static_cast<uint32_t>(index)) && (g_scan_enable & kPageScanEnable);
         if (ok) {
             g_wiimotes[index].baseband = Baseband::Complete;
+            g_wiimotes[index].real = real_wiimote::present(static_cast<uint32_t>(index));
             g_wiimotes[index].linking = true;
             g_wiimotes[index].host_ready = false;
             g_wiimotes[index].link_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
@@ -576,6 +588,7 @@ void execute_command(uint32_t data) {
         if (index >= 0) {
             g_wiimotes[index] = Wiimote{};
             wiimote::reset(static_cast<uint32_t>(index));
+            real_wiimote::reset(static_cast<uint32_t>(index));
         }
         break;
     }
@@ -654,7 +667,8 @@ void execute_command(uint32_t data) {
 
 void update_wiimote(uint32_t index) {
     Wiimote& wiimote = g_wiimotes[index];
-    if (wiimote.baseband != Baseband::Inactive && !input::connected(index)) {
+    bool real = real_wiimote::present(index);
+    if (wiimote.baseband != Baseband::Inactive && (!attached(index) || wiimote.real != real)) {
         if (wiimote.baseband == Baseband::Complete) {
             std::vector<uint8_t> body = {0x00};
             put16(body, connection_handle(index));
@@ -663,10 +677,13 @@ void update_wiimote(uint32_t index) {
         }
         wiimote = Wiimote{};
         wiimote::reset(index);
+        real_wiimote::reset(index);
         return;
     }
-    if (wiimote.baseband == Baseband::Inactive && input::connected(index) && input::wakes_remote(index)) {
+    bool wakes = real ? real_wiimote::take_wake(index) : input::connected(index) && input::wakes_remote(index);
+    if (wiimote.baseband == Baseband::Inactive && wakes) {
         wiimote.baseband = Baseband::RequestConnection;
+        wiimote.real = real;
     }
     if (wiimote.baseband == Baseband::RequestConnection && (g_scan_enable & kPageScanEnable)) {
         std::vector<uint8_t> body;
@@ -697,7 +714,12 @@ void update_wiimote(uint32_t index) {
     }
     Channel* interrupt = channel_with_psm(wiimote, kPsmHidInterrupt);
     if (interrupt != nullptr && channel_ready(*interrupt)) {
-        wiimote::update(index, [index](const std::vector<uint8_t>& frame) { send_interrupt(index, frame); });
+        auto sender = [index](const std::vector<uint8_t>& frame) { send_interrupt(index, frame); };
+        if (wiimote.real) {
+            real_wiimote::update(index, sender);
+        } else {
+            wiimote::update(index, sender);
+        }
     }
 }
 
@@ -722,6 +744,7 @@ void start() {
         return;
     }
     g_started = true;
+    real_wiimote::start();
     for (uint32_t i = 0; i < kWiimoteCount; i++) {
         wiimote::reset(i);
         if (input::connected(i)) {

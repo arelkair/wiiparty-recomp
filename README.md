@@ -3,7 +3,7 @@
 Static recompilation of Wii Party for native PC.
 
 > [!NOTE]
-> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **84%** overall.
+> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **85%** overall.
 
 ![Project progress](docs/progress.svg)
 
@@ -28,7 +28,7 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 | Component | Progress | Basis |
 | :--- | :--- | :--- |
 | **Recompilation Toolchain** | **100%** | The DOL and all 115 REL modules translate and build; every instruction kind the game uses is checked by 4,152 tests against an independent model. |
-| **System Runtime** | **92%** | OS, threads, interrupts, IPC, DVD, NAND and Bluetooth work, with no known blockers. |
+| **System Runtime** | **97%** | OS, threads, interrupts, IPC, DVD, NAND, Bluetooth, the EXI bus and the SI ports work, with no known blockers. |
 | **Graphics (GX to D3D11)** | **90%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies; no known fault in any minigame. |
 | **Audio Pipeline** | **83%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music. |
 | **Game Flow** | **90%** | A full 17-round Board Game Island game; every Free Play minigame played by hand, all 79 without faults. |
@@ -62,8 +62,8 @@ The launcher downloads any missing build tools from their official sites and che
 ### Linux (experimental)
 
 1. Install the build tools with your package manager:
-   - Debian and Ubuntu: `sudo apt install g++ cmake ninja-build python3 curl libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgl-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev`
-   - Fedora: `sudo dnf install gcc-c++ cmake ninja-build python3 curl libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel wayland-protocols-devel libdecor-devel mesa-libEGL-devel mesa-libGL-devel pulseaudio-libs-devel alsa-lib-devel systemd-devel dbus-devel`
+   - Debian and Ubuntu: `sudo apt install g++ cmake ninja-build python3 curl libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgl-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev`
+   - Fedora: `sudo dnf install gcc-c++ cmake ninja-build python3 curl libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXScrnSaver-devel libXtst-devel libxkbcommon-devel wayland-devel wayland-protocols-devel libdecor-devel mesa-libEGL-devel mesa-libGL-devel pulseaudio-libs-devel alsa-lib-devel systemd-devel dbus-devel`
    - Arch: `sudo pacman -S --needed gcc cmake ninja python curl sdl3`
 2. Download `wiipartyrecomp-launcher-x86_64.AppImage`, make it executable (`chmod +x wiipartyrecomp-launcher-x86_64.AppImage`, or Properties > Permissions in your file manager) and open it.
 3. Choose your disc and press **Install**, then **Play**. The launcher downloads only nodtool; the game is installed in `~/.local/share/WiiPartyRecomp`.

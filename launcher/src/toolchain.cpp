@@ -105,13 +105,19 @@ std::string Toolchain::python() const {
     return kPython;
 }
 
+#ifdef _WIN32
+constexpr int kCompilerMajor = 13;
+#else
+constexpr int kCompilerMajor = 10;
+#endif
+
 std::vector<ToolStatus> Toolchain::inspect() const {
     const Requirement requirements[] = {
         {"nodtool", "--version", R"(nodtool)", 0, 0},
         {kPython, "--version", R"(Python (\d+)\.(\d+))", 3, 11},
         {"cmake", "--version", R"(cmake version (\d+)\.(\d+))", 3, 20},
         {"ninja", "--version", R"((\d+)\.(\d+))", 1, 10},
-        {kCompiler, "-dumpfullversion", R"((\d+)\.(\d+))", 13, 0},
+        {kCompiler, "-dumpfullversion", R"((\d+)\.(\d+))", kCompilerMajor, 0},
     };
     std::vector<ToolStatus> tools;
     for (const Requirement& requirement : requirements) {

@@ -7,6 +7,7 @@
 
 #include "wp/format.h"
 #include "wp/threads.h"
+#include "wp/runtime.h"
 
 namespace wp {
 
@@ -33,14 +34,6 @@ void return_zero(Cpu& c) {
     c.r[3] = 0;
 }
 
-void return_one(Cpu& c) {
-    c.r[3] = 1;
-}
-
-void os_report(Cpu& c) {
-    std::fputs(format_guest(c, c.r[3], 4).c_str(), stderr);
-}
-
 void os_panic(Cpu& c) {
     std::string message = "PANIC in " + read_guest_string(c.r[3]) + " on line " + std::to_string(c.r[4]) + ": " +
                           format_guest(c, c.r[5], 6);
@@ -54,13 +47,7 @@ void switch_fiber(Cpu& c) {
 }
 
 const Replacement kReplacements[] = {
-    {"EXIInit", do_nothing},
-    {"EXILock", return_zero},
-    {"EXIUnlock", return_one},
-    {"EXIProbe", return_zero},
-    {"EXIGetID", return_zero},
     {"OSRealModeCall", do_nothing},
-    {"OSReport", os_report},
     {"OSPanic", os_panic},
     {"OSLoadContext", load_context},
     {"OSSwitchFiber", switch_fiber},

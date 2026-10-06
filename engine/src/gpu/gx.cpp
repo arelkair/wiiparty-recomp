@@ -965,6 +965,9 @@ void execute_copy(uint32_t value) {
                 uint32_t vertices = 0;
                 double batch_seconds = 0.0;
                 render::take_statistics(batches, vertices, batch_seconds);
+                uint32_t write_backs = 0;
+                double write_back_seconds = 0.0;
+                render::take_copy_statistics(write_backs, write_back_seconds);
                 if (g_log_fps) {
                     std::fprintf(stderr, "fps %.1f batches %u vertices %u cpu-side draw time %.0f ms", g_frames / seconds, batches, vertices, batch_seconds * 1000.0);
                     std::fputc(10, stderr);
@@ -976,7 +979,13 @@ void execute_copy(uint32_t value) {
                 double cpu = g_cpu_clock_known.load() ? thread_seconds(g_cpu_clock) : 0.0;
                 static const ThreadClock gpu_clock = current_thread_clock();
                 double gpu = thread_seconds(gpu_clock);
-                log::write("threads", "CPU thread busy %.0f%% (guest idle %.0f%%), GPU thread busy %.0f%%", (cpu - previous_cpu) * 100.0 / seconds, idle_share() * 100.0, (gpu - previous_gpu) * 100.0 / seconds);
+                log::write("copies", "%u EFB copies written back to RAM, %.1f ms waiting for the GPU", write_backs, write_back_seconds * 1000.0);
+                double idle = idle_share();
+                if (idle >= 0.0) {
+                    log::write("threads", "CPU thread busy %.0f%% (guest idle %.0f%%), GPU thread busy %.0f%%", (cpu - previous_cpu) * 100.0 / seconds, idle * 100.0, (gpu - previous_gpu) * 100.0 / seconds);
+                } else {
+                    log::write("threads", "CPU thread busy %.0f%%, GPU thread busy %.0f%%", (cpu - previous_cpu) * 100.0 / seconds, (gpu - previous_gpu) * 100.0 / seconds);
+                }
                 previous_cpu = cpu;
                 previous_gpu = gpu;
                 g_indirect_draws = 0;
@@ -1026,6 +1035,7 @@ void load_bp(uint32_t word) {
     }
     g_bp[reg] = (g_bp[reg] & ~mask) | (value & mask);
     if (reg == kBpDrawDone && (value & 2)) {
+        render::finish_copies();
         g_finish_pending = true;
     } else if (reg == kBpCopyExecute) {
         execute_copy(g_bp[reg]);
@@ -1179,28 +1189,41 @@ const uint32_t* xf_registers() {
     return g_xf;
 }
 
-bool record_display_list(uint64_t value, unsigned bytes) {
-    uint32_t pi_base = rd32(kPiFifoBase) & kFifoPhysicalMask;
-    uint32_t cp_base = (rd16(kCpFifoBaseLow) | (static_cast<uint32_t>(rd16(kCpFifoBaseHigh)) << 16)) & kFifoPhysicalMask;
+uint32_t register32(uint32_t address) {
+    uint32_t value;
+    std::memcpy(&value, host(address), sizeof value);
+    return __builtin_bswap32(value);
+}
+
+uint16_t register16(uint32_t address) {
+    uint16_t value;
+    std::memcpy(&value, host(address), sizeof value);
+    return __builtin_bswap16(value);
+}
+
+bool record_display_list(const uint8_t* data, unsigned bytes) {
+    uint32_t pi_base = register32(kPiFifoBase) & kFifoPhysicalMask;
+    uint32_t cp_base = (register16(kCpFifoBaseLow) | (static_cast<uint32_t>(register16(kCpFifoBaseHigh)) << 16)) & kFifoPhysicalMask;
     if (cp_base == 0 || pi_base == cp_base) {
         return false;
     }
-    uint32_t pointer = rd32(kPiFifoWritePointer);
+    uint32_t pointer = register32(kPiFifoWritePointer);
     uint32_t address = pointer & kFifoPhysicalMask;
     for (unsigned i = 0; i < bytes; i++) {
-        *host(kRamBase | (address + i)) = static_cast<uint8_t>(value >> (8 * (bytes - 1 - i)));
+        *host(kRamBase | (address + i)) = data[i];
     }
-    wr32(kPiFifoWritePointer, (pointer & ~kFifoPhysicalMask) | (address + bytes));
+    uint32_t written = __builtin_bswap32((pointer & ~kFifoPhysicalMask) | (address + bytes));
+    std::memcpy(host(kPiFifoWritePointer), &written, sizeof written);
     return true;
 }
 
 void push(uint64_t value, unsigned bytes) {
-    if (record_display_list(value, bytes)) {
+    uint64_t swapped = __builtin_bswap64(value << (8 * (8 - bytes)));
+    const uint8_t* data = reinterpret_cast<const uint8_t*>(&swapped);
+    if (record_display_list(data, bytes)) {
         return;
     }
-    for (unsigned i = 0; i < bytes; i++) {
-        g_fifo.push_back(static_cast<uint8_t>(value >> (8 * (bytes - 1 - i))));
-    }
+    g_fifo.insert(g_fifo.end(), data, data + bytes);
     if (g_fifo.size() >= kFlushThreshold) {
         process();
     }

@@ -68,8 +68,7 @@ void apply_title_bar_theme(HWND window) {
 }
 
 void apply_interface_language() {
-    bool spanish = settings::text("system.interface_language", "WP_INTERFACE_LANGUAGE") == "es";
-    ui::set_language(spanish ? ui::Language::Spanish : ui::Language::English);
+    ui::set_language(settings::text("system.interface_language", "WP_INTERFACE_LANGUAGE"));
 }
 
 WINDOWPLACEMENT g_placement{};

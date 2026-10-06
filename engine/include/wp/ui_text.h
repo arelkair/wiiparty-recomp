@@ -1,10 +1,11 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 
 namespace wp::ui {
 
-enum class Language { English, Spanish };
+enum class Language { English, Spanish, Galician };
 
 struct Label {
     const char* key;
@@ -29,6 +30,7 @@ struct Text {
 };
 
 void set_language(Language language);
+void set_language(const std::string& code);
 const Text& text();
 const char* label(const char* key);
 

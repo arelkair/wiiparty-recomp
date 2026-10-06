@@ -32,5 +32,6 @@ Outcome back_up(const std::filesystem::path& nand_root, const std::filesystem::p
 Outcome restore(const std::filesystem::path& nand_root, const std::filesystem::path& backups_root, const Backup& backup, int keep,
                 std::time_t now);
 void rotate(const std::filesystem::path& backups_root, int keep);
+std::vector<std::string> adopt_root_files(const std::filesystem::path& nand_root, const std::filesystem::path& relative);
 
 }

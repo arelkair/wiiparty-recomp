@@ -4,6 +4,8 @@
 
 #include <atomic>
 #include <filesystem>
+#include <map>
+#include <set>
 #include <mutex>
 #include <thread>
 #include <string>
@@ -23,7 +25,22 @@ struct TexturePack {
     uintmax_t bytes = 0;
 };
 
-enum class Page { Game, Settings, Saves, Controls, Textures, Licenses, Count };
+struct DolphinFind {
+    std::filesystem::path wii;
+    bool has_save = false;
+    int miis = 0;
+    bool scanned = false;
+};
+
+struct Capture {
+    std::filesystem::path path;
+    SDL_Texture* texture = nullptr;
+    int width = 0;
+    int height = 0;
+    bool tried = false;
+};
+
+enum class Page { Game, Settings, Saves, Controls, Textures, Captures, System, Licenses, Count };
 
 class App {
 public:
@@ -59,6 +76,26 @@ private:
     void textures_page(float width);
     void versions_section(float width);
     void gamepads_section(float width);
+    void wiimotes_section(float width);
+    void tester_section(float width);
+    void dolphin_section(float width);
+    void captures_page(float width);
+    void list_captures();
+    void load_capture(Capture& capture);
+    void release_captures();
+    void system_page(float width);
+    std::vector<std::pair<std::string, std::string>> diagnostics();
+    int recommended_scale(bool& slowed);
+    void toggle_portable(bool on);
+    void move_next_to_launcher();
+    void uninstall(bool keep_data);
+    void uninstall_modal();
+    void scan_dolphin();
+    void import_dolphin();
+    void pad_map_section(float width);
+    void track_held(const SDL_Event& event);
+    uint32_t keyboard_buttons();
+    uint32_t gamepad_buttons(SDL_Gamepad* pad);
     void whats_new_card(float width);
     void create_report();
     void choose_added_disc();
@@ -124,6 +161,31 @@ private:
     std::atomic<int> launcher_state_{0};
     std::string launcher_error_;
     bool swap_pending_ = false;
+    std::thread pair_thread_;
+    std::atomic<int> pair_state_{0};
+    std::atomic<int> pair_count_{0};
+    int access_result_ = 0;
+    std::set<int> held_codes_;
+    DolphinFind dolphin_;
+    std::vector<Capture> captures_;
+    size_t captures_total_ = 0;
+    bool captures_listed_ = false;
+    std::vector<std::pair<std::string, std::string>> system_lines_;
+    int system_scale_ = 1;
+    bool system_slowed_ = false;
+    bool system_ready_ = false;
+    bool diagnostics_copied_ = false;
+    std::string system_message_;
+    std::thread task_thread_;
+    std::mutex task_mutex_;
+    std::atomic<int> task_state_{0};
+    std::atomic<int> task_percent_{0};
+    std::string task_error_;
+    bool uninstall_confirm_ = false;
+    bool uninstall_keep_ = true;
+    std::string picked_dolphin_;
+    std::map<SDL_JoystickID, SDL_Gamepad*> tester_pads_;
 };
 
 void wake_main_loop();
+SDL_JoystickID* gamepads(int& count);

@@ -11,7 +11,9 @@
 #include "wp/fiber.h"
 #include "wp/function_table.h"
 #include "wp/hle.h"
+#include "wp/log.h"
 #include "wp/modules.h"
+#include "wp/runtime.h"
 
 namespace wp {
 
@@ -188,6 +190,11 @@ void discard_fiber(void* fiber) {
     fiber::destroy(fiber);
 }
 
+using Function = void (*)(Cpu&);
+
+Function find_resume(uint32_t address);
+void continue_at(Cpu& c, uint32_t address);
+
 void start_thread(void* parameter) {
     uint32_t context = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(parameter));
     Cpu& c = *g_cpu;
@@ -195,13 +202,18 @@ void start_thread(void* parameter) {
     c.msr = rd32(context + kSrr1Offset);
     uint32_t entry = rd32(context + kSrr0Offset);
     uint32_t exit_function = c.lr;
+    if (find_resume(entry)) {
+        log::write("threads", "context %08x resumed at %08x from its guest stack, without its saved host stack", context, entry);
+        c.r[3] = 1;
+        continue_at(c, entry);
+        std::fprintf(stderr, "resumed context %08x returned without exiting\n", context);
+        std::abort();
+    }
     call(c, entry);
     call(c, exit_function);
     std::fprintf(stderr, "thread function %08x returned without exiting (exit function %08x)\n", entry, exit_function);
     std::abort();
 }
-
-using Function = void (*)(Cpu&);
 
 Function find_resume(uint32_t address) {
     if (address < 0x80000000u) {
@@ -217,10 +229,9 @@ void continue_at(Cpu& c, uint32_t address) {
     while (address != 0) {
         Function function = find_resume(address);
         if (!function) {
-            std::fprintf(stderr, "cannot continue at return address %08x", address);
-            std::fputc(10, stderr);
-            describe_loaded_modules(address);
-            std::abort();
+            call(c, address);
+            address = c.lr;
+            continue;
         }
         g_resume_address = address;
         function(c);

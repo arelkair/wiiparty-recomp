@@ -16,6 +16,8 @@ constexpr Label kEnglishLabels[] = {
     {"input.gamepads", "Gamepads"},
     {"input.auto_grip", "Automatic grip"},
     {"input.joycon_pairs", "Join Joy-Con pairs"},
+    {"input.real_wiimotes", "Real Wii Remotes"},
+    {"input.real_wiimote_mouse", "Aim Wii Remote 1 with the mouse"},
     {"input.wake_on_mouse", "Reconnect with the mouse"},
     {"input.hide_cursor", "Hide the mouse cursor"},
     {"system.interface_language", "Interface language"},
@@ -36,6 +38,8 @@ constexpr Label kSpanishLabels[] = {
     {"input.gamepads", "Mandos"},
     {"input.auto_grip", "Agarre automático"},
     {"input.joycon_pairs", "Unir parejas de Joy-Con"},
+    {"input.real_wiimotes", "Wii Remotes reales"},
+    {"input.real_wiimote_mouse", "Apuntar el Wii Remote 1 con el ratón"},
     {"input.wake_on_mouse", "Reconectar con el ratón"},
     {"input.hide_cursor", "Ocultar el cursor del ratón"},
     {"system.interface_language", "Idioma de la interfaz"},
@@ -45,6 +49,28 @@ constexpr Label kSpanishLabels[] = {
     {"system.options_menu", "Menú de opciones (F10)"},
     {"audio.mute", "Silenciar"},
     {"saves.backups", "Copias de la partida"},
+};
+
+constexpr Label kGalicianLabels[] = {
+    {"video.scale", "Resolución interna"},
+    {"video.fullscreen", "Pantalla completa"},
+    {"video.copy_filter", "Filtro antiparpadeo"},
+    {"video.custom_textures", "Texturas personalizadas"},
+    {"video.dump_textures", "Envorcar texturas"},
+    {"input.gamepads", "Mandos"},
+    {"input.auto_grip", "Agarre automático"},
+    {"input.joycon_pairs", "Unir parellas de Joy-Con"},
+    {"input.real_wiimotes", "Wii Remotes reais"},
+    {"input.real_wiimote_mouse", "Apuntar o Wii Remote 1 co rato"},
+    {"input.wake_on_mouse", "Reconectar co rato"},
+    {"input.hide_cursor", "Agochar o cursor do rato"},
+    {"system.interface_language", "Idioma da interface"},
+    {"system.language", "Idioma da consola"},
+    {"system.pal60", "60 Hz (PAL60)"},
+    {"system.skip_notices", "Saltar o aviso da correa"},
+    {"system.options_menu", "Menú de opcións (F10)"},
+    {"audio.mute", "Silenciar"},
+    {"saves.backups", "Copias da partida"},
 };
 
 constexpr Text kEnglish{"FPS",
@@ -77,6 +103,21 @@ constexpr Text kSpanish{"FPS",
                         kSpanishLabels,
                         sizeof(kSpanishLabels) / sizeof(kSpanishLabels[0])};
 
+constexpr Text kGalician{"FPS",
+                         "DSP",
+                         "NATIVO",
+                         "INTERP",
+                         "APAGADO",
+                         "Opcións",
+                         "Arriba/Abaixo: escoller     Esquerda/Dereita/Intro: cambiar     Esc: pechar",
+                         "aplícase ao reiniciar",
+                         "Si",
+                         "Non",
+                         "Nativa",
+                         "Sistema",
+                         kGalicianLabels,
+                         sizeof(kGalicianLabels) / sizeof(kGalicianLabels[0])};
+
 std::atomic<const Text*> g_text{&kEnglish};
 
 }
@@ -89,7 +130,14 @@ void set_language(Language language) {
     case Language::Spanish:
         g_text = &kSpanish;
         break;
+    case Language::Galician:
+        g_text = &kGalician;
+        break;
     }
+}
+
+void set_language(const std::string& code) {
+    set_language(code == "es" ? Language::Spanish : code == "gl" ? Language::Galician : Language::English);
 }
 
 const Text& text() {

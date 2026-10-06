@@ -18,10 +18,15 @@ add_custom_command(OUTPUT "${WP_PAYLOAD}"
     DEPENDS "${WP_PAYLOAD_LIST}" ${WP_SOURCE_FILES}
     VERBATIM)
 
+foreach(WP_FONT Regular SemiBold)
+    file(ARCHIVE_CREATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/Inter-${WP_FONT}.ttf.gz" PATHS "${inter_SOURCE_DIR}/extras/ttf/Inter-${WP_FONT}.ttf"
+         FORMAT raw COMPRESSION GZip COMPRESSION_LEVEL 9)
+endforeach()
+
 set(WP_BLOBS
     payload "${WP_PAYLOAD}"
-    font_regular "${inter_SOURCE_DIR}/extras/ttf/Inter-Regular.ttf"
-    font_semibold "${inter_SOURCE_DIR}/extras/ttf/Inter-SemiBold.ttf"
+    font_regular "${CMAKE_CURRENT_BINARY_DIR}/Inter-Regular.ttf.gz"
+    font_semibold "${CMAKE_CURRENT_BINARY_DIR}/Inter-SemiBold.ttf.gz"
     license_project "${WP_ROOT}/LICENSE"
     license_notices "${WP_ROOT}/THIRD_PARTY_NOTICES.md"
     license_sdl "${sdl3_SOURCE_DIR}/LICENSE.txt"

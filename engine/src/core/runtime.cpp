@@ -1,6 +1,17 @@
 #include "wp/cpu.h"
 #include "wp/profile.h"
 
+#ifndef WP_TRACE
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <execinfo.h>
+#endif
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -8,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <iterator>
 #include <map>
 #include <string>
 #include <thread>
@@ -16,6 +28,7 @@
 #include "wp/function_table.h"
 #include "wp/modules.h"
 #include "wp/watch.h"
+#include "wp/runtime.h"
 
 namespace wp {
 
@@ -159,7 +172,67 @@ void print_profile() {
     }
 }
 #else
-void print_call_stack() {}
+namespace {
+
+constexpr size_t kHostFrames = 64;
+constexpr uintptr_t kLongestFunction = 0x100000;
+
+struct HostFunction {
+    uintptr_t start;
+    uint32_t guest;
+    const char* module;
+};
+
+std::vector<HostFunction> host_functions() {
+    std::vector<HostFunction> functions;
+    for (size_t i = 0; i < g_function_count; i++) {
+        functions.push_back({reinterpret_cast<uintptr_t>(g_function_table[i].function), g_function_table[i].address, nullptr});
+    }
+    for (size_t m = 0; m < g_module_count; m++) {
+        const ModuleDescriptor* module = g_module_table[m];
+        for (size_t i = 0; i < module->function_count; i++) {
+            const ModuleFunction& function = module->functions[i];
+            functions.push_back({reinterpret_cast<uintptr_t>(function.function), function.section << 24 | function.offset, module->name});
+        }
+    }
+    std::sort(functions.begin(), functions.end(), [](const HostFunction& a, const HostFunction& b) { return a.start < b.start; });
+    return functions;
+}
+
+size_t capture_host_frames(void** frames) {
+#ifdef _WIN32
+    return RtlCaptureStackBackTrace(0, kHostFrames, frames, nullptr);
+#else
+    return static_cast<size_t>(backtrace(frames, static_cast<int>(kHostFrames)));
+#endif
+}
+
+}
+
+void print_call_stack() {
+    void* frames[kHostFrames];
+    size_t count = capture_host_frames(frames);
+    static const std::vector<HostFunction> functions = host_functions();
+    std::fprintf(stderr, "call stack from the host stack (innermost first):");
+    size_t shown = 0;
+    for (size_t i = 0; i < count && shown < kReportedFrames; i++) {
+        uintptr_t address = reinterpret_cast<uintptr_t>(frames[i]);
+        auto next = std::upper_bound(functions.begin(), functions.end(), address, [](uintptr_t value, const HostFunction& function) { return value < function.start; });
+        if (next == functions.begin() || address - std::prev(next)->start > kLongestFunction) {
+            continue;
+        }
+        const HostFunction& function = *std::prev(next);
+        if (function.module) {
+            std::fprintf(stderr, " %s:%08x", function.module, function.guest);
+        } else {
+            const char* name = find_name(function.guest);
+            std::fprintf(stderr, " %08x%s%s%s", function.guest, *name ? "(" : "", name, *name ? ")" : "");
+        }
+        shown++;
+    }
+    std::fputc(10, stderr);
+}
+
 void start_profiler() {}
 double idle_share() {
     return -1.0;

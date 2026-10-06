@@ -5,6 +5,7 @@
 
 namespace wp::gx {
 
+void push(uint64_t value, unsigned bytes);
 void process();
 bool take_finish_interrupt();
 void request_capture();

@@ -15,7 +15,7 @@ namespace {
 
 constexpr const char* kLiveKeys[] = {
     "video.scale",         "video.fullscreen",    "video.copy_filter",   "input.gamepads", "input.auto_grip",
-    "input.wake_on_mouse", "input.hide_cursor",   "system.skip_notices", "system.options_menu", "audio.mute", "saves.backups", "system.interface_language",
+    "input.real_wiimote_mouse", "input.wake_on_mouse", "input.hide_cursor",   "system.skip_notices", "system.options_menu", "audio.mute", "saves.backups", "system.interface_language",
 };
 
 struct Language {
@@ -64,7 +64,7 @@ std::vector<std::string> choices(const std::string& key) {
         return scales;
     }
     if (key == "system.interface_language") {
-        return {"en", "es"};
+        return {"en", "es", "gl"};
     }
     if (key == "system.language") {
         std::vector<std::string> codes;
@@ -88,7 +88,7 @@ std::string shown_value(const std::string& key, const std::string& value) {
         return value == "1" ? text.menu_native : value + "x";
     }
     if (key == "system.interface_language") {
-        return value == "es" ? "Español" : "English";
+        return value == "es" ? "Español" : value == "gl" ? "Galego" : "English";
     }
     if (key == "system.language") {
         for (const Language& language : kLanguages) {

@@ -2,9 +2,11 @@
 #include <SDL3/SDL_main.h>
 
 #include <cstring>
+#include <functional>
 #include <string>
 
 #include "app.h"
+#include "titlebar.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 #include "payload.h"
@@ -66,7 +68,7 @@ int main(int argc, char** argv) {
     SDL_SetAppMetadata("Wii Party Recomp", WP_LAUNCHER_VERSION, "io.github.arelkair.wiipartyrecomp");
     SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON, "1");
     SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON_SMALL, "1");
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wii Party Recomp", SDL_GetError(), nullptr);
         return 1;
     }
@@ -74,15 +76,19 @@ int main(int argc, char** argv) {
     if (scale <= 0.0f) {
         scale = 1.0f;
     }
-    SDL_Window* window = SDL_CreateWindow("Wii Party Recomp", static_cast<int>(1040 * scale), static_cast<int>(680 * scale),
-                                          SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    SDL_Window* window = SDL_CreateWindow("Wii Party Recomp", static_cast<int>(1040 * scale), static_cast<int>(712 * scale),
+                                          SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     SDL_Renderer* renderer = window ? SDL_CreateRenderer(window, nullptr) : nullptr;
     if (!renderer) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Wii Party Recomp", SDL_GetError(), nullptr);
         return 1;
     }
-    SDL_SetWindowMinimumSize(window, static_cast<int>(820 * scale), static_cast<int>(560 * scale));
-    SDL_SetRenderVSync(renderer, 1);
+    SDL_SetWindowMinimumSize(window, static_cast<int>(820 * scale), static_cast<int>(592 * scale));
+    titlebar::install(window);
+    bool synced = SDL_SetRenderVSync(renderer, 1);
+    bool software = std::strcmp(SDL_GetRendererName(renderer), SDL_SOFTWARE_RENDERER) == 0;
+    ui::set_software_rendering(software);
+    const Uint64 shortest_frame = software ? SDL_NS_PER_SECOND / 30 : SDL_NS_PER_SECOND / 60;
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 
     IMGUI_CHECKVERSION();
@@ -109,10 +115,54 @@ int main(int argc, char** argv) {
     int shot_page = 0;
     int shot_frames = 0;
     bool running = true;
+    bool drawing = false;
+    int drawn_width = 0;
+    int drawn_height = 0;
+    auto draw_frame = [&]() {
+        drawing = true;
+        SDL_GetWindowSizeInPixels(window, &drawn_width, &drawn_height);
+        Uint64 now = SDL_GetTicksNS();
+        ui::begin_frame(static_cast<float>(now - previous) / 1e9f);
+        previous = now;
+        ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+        if (!screenshot_prefix.empty() && shot_frames == 0) {
+            app.set_page(static_cast<Page>(shot_page));
+        }
+        app.frame();
+        render(renderer, ui::palette());
+        if (!screenshot_prefix.empty() && ++shot_frames == 45) {
+            save_picture(renderer, screenshot_prefix + std::to_string(shot_page) + ".png");
+            shot_frames = 0;
+            if (++shot_page == static_cast<int>(Page::Count)) {
+                running = false;
+            }
+        }
+        SDL_RenderPresent(renderer);
+        drawing = false;
+    };
+    std::function<void()> redraw = [&]() {
+        int width = 0;
+        int height = 0;
+        SDL_GetWindowSizeInPixels(window, &width, &height);
+        if (!drawing && (width != drawn_width || height != drawn_height)) {
+            draw_frame();
+        }
+    };
+    SDL_AddEventWatch([](void* data, SDL_Event* event) {
+        if (event->type == SDL_EVENT_WINDOW_EXPOSED) {
+            (*static_cast<std::function<void()>*>(data))();
+        }
+        return true;
+    }, &redraw);
     while (running) {
         bool idle = screenshot_prefix.empty() && !ui::animating() && !app.busy();
         SDL_Event event;
-        if (idle && SDL_WaitEventTimeout(&event, 500)) {
+        if (idle) {
+            if (!SDL_WaitEventTimeout(&event, 500)) {
+                continue;
+            }
             if (!app.consume(event)) {
                 ImGui_ImplSDL3_ProcessEvent(&event);
             }
@@ -133,24 +183,13 @@ int main(int argc, char** argv) {
             continue;
         }
         Uint64 now = SDL_GetTicksNS();
-        ui::begin_frame(static_cast<float>(now - previous) / 1e9f);
-        previous = now;
-        ImGui_ImplSDLRenderer3_NewFrame();
-        ImGui_ImplSDL3_NewFrame();
-        ImGui::NewFrame();
-        if (!screenshot_prefix.empty() && shot_frames == 0) {
-            app.set_page(static_cast<Page>(shot_page));
-        }
-        app.frame();
-        render(renderer, ui::palette());
-        if (!screenshot_prefix.empty() && ++shot_frames == 45) {
-            save_picture(renderer, screenshot_prefix + std::to_string(shot_page) + ".png");
-            shot_frames = 0;
-            if (++shot_page == static_cast<int>(Page::Count)) {
-                running = false;
+        draw_frame();
+        if (!synced || software) {
+            Uint64 spent = SDL_GetTicksNS() - now;
+            if (spent < shortest_frame) {
+                SDL_DelayNS(shortest_frame - spent);
             }
         }
-        SDL_RenderPresent(renderer);
         if (app.quit()) {
             running = false;
         }

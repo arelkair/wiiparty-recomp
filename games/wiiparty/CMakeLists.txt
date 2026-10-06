@@ -16,7 +16,7 @@ if(NOT WP_DOL_SOURCES)
 endif()
 
 add_library(wiiparty_code STATIC game.cpp ${WP_DOL_SOURCES})
-set_source_files_properties(${WP_DOL_SOURCES} ${WP_MODULE_SOURCES} PROPERTIES COMPILE_OPTIONS ${WP_CODE_OPT})
+set_source_files_properties(${WP_DOL_SOURCES} ${WP_MODULE_SOURCES} PROPERTIES COMPILE_OPTIONS "${WP_CODE_OPT}")
 target_include_directories(wiiparty_code PUBLIC "${WP_GENERATED}/dol")
 if(WP_MODULE_SOURCES)
     target_sources(wiiparty_code PRIVATE ${WP_MODULE_SOURCES})

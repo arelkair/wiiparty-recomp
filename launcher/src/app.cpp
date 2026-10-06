@@ -1,4 +1,5 @@
 #include "app.h"
+#include "titlebar.h"
 
 #include <algorithm>
 #include <atomic>
@@ -9,6 +10,7 @@
 
 #include "embedded.h"
 #include "keys.h"
+#include "layout.h"
 #include "payload.h"
 #include "prefs.h"
 #include "sha256.h"
@@ -16,6 +18,7 @@
 #include "wp/screenshot.h"
 #include "subprocess.h"
 #include "texts.h"
+#include "wiimote_pairing.h"
 #include "wp/keymap.h"
 #include "wp/options.h"
 #include "wp/settings.h"
@@ -97,55 +100,6 @@ struct License {
     const char* name;
 };
 
-class Card {
-public:
-    explicit Card(float width) : list_(ImGui::GetWindowDrawList()), start_(ImGui::GetCursorScreenPos()), width_(width) {
-        list_->ChannelsSplit(2);
-        list_->ChannelsSetCurrent(1);
-    }
-
-    void end() {
-        float bottom = ImGui::GetCursorScreenPos().y;
-        list_->ChannelsSetCurrent(0);
-        list_->AddRectFilled(start_, ImVec2(start_.x + width_, bottom), ui::palette().surface, px(14));
-        list_->ChannelsMerge();
-    }
-
-private:
-    ImDrawList* list_;
-    ImVec2 start_;
-    float width_;
-};
-
-template <typename Control>
-void row(float width, const char* label, const char* detail, float control_width, float control_height, Control control) {
-    const ui::Palette& p = ui::palette();
-    ImVec2 top = ImGui::GetCursorScreenPos();
-    float pad = px(18);
-    ImGui::SetCursorScreenPos(top + ImVec2(pad, px(14)));
-    ImGui::BeginGroup();
-    float text_width = width - pad * 2 - px(control_width) - px(24);
-    ui::text(label, Font::Regular, ui::size::kBody, p.text, text_width);
-    if (detail && *detail) {
-        ui::gap(3);
-        ui::text(detail, Font::Regular, ui::size::kDetail, p.secondary, text_width);
-    }
-    ImGui::EndGroup();
-    float bottom = ImGui::GetItemRectMax().y + px(14);
-    float height = bottom - top.y;
-    ImGui::SetCursorScreenPos(ImVec2(top.x + width - pad - px(control_width), top.y + std::round((height - px(control_height)) * 0.5f)));
-    control();
-    ImGui::SetCursorScreenPos(ImVec2(top.x, bottom));
-    ImGui::Dummy(ImVec2(width, 0));
-}
-
-void inset_separator(float width) {
-    ImVec2 at = ImGui::GetCursorScreenPos();
-    float thickness = std::max(1.0f, std::floor(ui::scale()));
-    ImGui::GetWindowDrawList()->AddRectFilled(at + ImVec2(px(18), 0), at + ImVec2(width - px(18), thickness), ui::palette().separator);
-    ImGui::Dummy(ImVec2(width, thickness));
-}
-
 std::string first_disc(const std::filesystem::path& folder) {
     std::error_code error;
     std::vector<std::string> found;
@@ -170,10 +124,11 @@ std::string backup_date(const std::string& name) {
         return name;
     }
     static const char* english[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+    static const char* galician[] = {"xaneiro", "febreiro", "marzo", "abril", "maio", "xuño", "xullo", "agosto", "setembro", "outubro", "novembro", "decembro"};
     static const char* spanish[] = {"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
     char buffer[96];
-    if (std::string(texts().game) == "Juego") {
-        std::snprintf(buffer, sizeof(buffer), "%d de %s de %d, %02d:%02d", day, spanish[month - 1], year, hour, minute);
+    if (language_is("es") || language_is("gl")) {
+        std::snprintf(buffer, sizeof(buffer), "%d de %s de %d, %02d:%02d", day, language_is("es") ? spanish[month - 1] : galician[month - 1], year, hour, minute);
     } else {
         std::snprintf(buffer, sizeof(buffer), "%d %s %d, %02d:%02d", day, english[month - 1], year, hour, minute);
     }
@@ -210,9 +165,8 @@ int compile_jobs() {
 }
 
 void apply_interface_language(const std::string& value) {
-    bool spanish = value == "es";
-    use_spanish(spanish);
-    wp::ui::set_language(spanish ? wp::ui::Language::Spanish : wp::ui::Language::English);
+    use_language(value);
+    wp::ui::set_language(value);
 }
 
 void state_icon(StepState state, ImVec2 center) {
@@ -250,6 +204,13 @@ void wake_main_loop() {
     }
 }
 
+SDL_JoystickID* gamepads(int& count) {
+    if (!(SDL_WasInit(SDL_INIT_GAMEPAD) & SDL_INIT_GAMEPAD)) {
+        SDL_InitSubSystem(SDL_INIT_GAMEPAD);
+    }
+    return SDL_GetGamepads(&count);
+}
+
 App::App(SDL_Window* window, Project project, bool install_mode)
     : window_(window), project_(std::move(project)), toolchain_(project_.root / "build" / "deps" / "toolchain", launcher_path().parent_path() / "tools"), install_mode_(install_mode) {
     use_root(project_.root);
@@ -270,6 +231,13 @@ App::~App() {
     if (download_thread_.joinable()) {
         download_thread_.join();
     }
+    if (pair_thread_.joinable()) {
+        pair_thread_.join();
+    }
+    if (task_thread_.joinable()) {
+        task_thread_.join();
+    }
+    release_captures();
 }
 
 void App::start_update_check() {
@@ -408,10 +376,10 @@ void App::apply_theme() {
 #ifdef _WIN32
     HWND hwnd = static_cast<HWND>(SDL_GetPointerProperty(SDL_GetWindowProperties(window_), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
     if (hwnd) {
-        BOOL dark = ui::dark();
-        DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
-        COLORREF caption = ui::dark() ? RGB(26, 26, 29) : RGB(245, 245, 247);
-        DwmSetWindowAttribute(hwnd, 35, &caption, sizeof(caption));
+        int corners = 2;
+        DwmSetWindowAttribute(hwnd, 33, &corners, sizeof(corners));
+        MARGINS shadow = {0, 0, 1, 0};
+        DwmExtendFrameIntoClientArea(hwnd, &shadow);
     }
 #endif
     ui::request_frames(2);
@@ -455,10 +423,15 @@ void App::set_page(Page page) {
     ui::set_value(ImHashStr("page-transition"), 0.0f);
     if (page == Page::Saves) {
         refresh_backups();
+        dolphin_.scanned = false;
     }
+    release_captures();
+    system_ready_ = false;
+    diagnostics_copied_ = false;
 }
 
 bool App::consume(const SDL_Event& event) {
+    track_held(event);
     if (event.type == g_wake_event) {
         g_wake_pending = false;
         return true;
@@ -595,12 +568,14 @@ void App::frame() {
     ImGui::Begin("##root", nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
                      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
+    float bar = titlebar::height();
     float height = viewport->Size.y;
     ImGui::GetWindowDrawList()->AddRectFilled(viewport->Pos, viewport->Pos + ImVec2(px(kSidebarWidth), height), p.sidebar);
     ImGui::GetWindowDrawList()->AddRectFilled(viewport->Pos + ImVec2(px(kSidebarWidth) - 1.0f, 0), viewport->Pos + ImVec2(px(kSidebarWidth), height), p.separator);
-    sidebar(height);
-    ImGui::SetCursorScreenPos(viewport->Pos + ImVec2(px(kSidebarWidth), 0));
-    page(viewport->Size.x - px(kSidebarWidth), height);
+    sidebar(height - bar);
+    ImGui::SetCursorScreenPos(viewport->Pos + ImVec2(px(kSidebarWidth), bar));
+    page(viewport->Size.x - px(kSidebarWidth), height - bar);
+    titlebar::draw(window_, viewport->Pos, viewport->Size.x);
     restore_modal();
     repair_modal();
     ImGui::End();
@@ -608,7 +583,7 @@ void App::frame() {
 
 void App::sidebar(float height) {
     const ui::Palette& p = ui::palette();
-    ImVec2 origin = ImGui::GetMainViewport()->Pos;
+    ImVec2 origin = ImGui::GetMainViewport()->Pos + ImVec2(0, titlebar::height());
     float inner = kSidebarWidth - 40.0f;
     ui::die(origin + ImVec2(px(24), px(28)), px(40));
     ImGui::SetCursorScreenPos(origin + ImVec2(px(76), px(30)));
@@ -616,7 +591,7 @@ void App::sidebar(float height) {
     ImGui::SetCursorScreenPos(origin + ImVec2(px(76), px(51)));
     ui::text("Recomp", Font::Regular, ui::size::kDetail, p.secondary);
     const Texts& t = texts();
-    const char* names[] = {t.game, t.settings, t.saves, t.controls, t.page_textures, t.licenses};
+    const char* names[] = {t.game, t.settings, t.saves, t.controls, t.page_textures, t.page_captures, t.page_system, t.licenses};
     float top = px(100);
     float step = px(36) + px(2);
     ImGuiID indicator = ImHashStr("nav-indicator");
@@ -642,7 +617,8 @@ void App::page(float width, float height) {
     ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(kPagePaddingX), px(kPagePaddingTop) + std::round((1.0f - shown) * px(10))));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ui::palette().background);
-    bool scrolls = page_ == Page::Settings || page_ == Page::Saves || page_ == Page::Controls || page_ == Page::Textures;
+    bool scrolls = page_ == Page::Settings || page_ == Page::Saves || page_ == Page::Controls || page_ == Page::Textures || page_ == Page::Captures ||
+                   page_ == Page::System;
     ImGui::BeginChild(static_cast<int>(page_) + 100, ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding,
                       scrolls ? ImGuiWindowFlags_None : ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     float content = std::min(width - px(kPagePaddingX) * 2, px(kContentMaxWidth));
@@ -662,6 +638,12 @@ void App::page(float width, float height) {
         break;
     case Page::Textures:
         textures_page(content);
+        break;
+    case Page::Captures:
+        captures_page(content);
+        break;
+    case Page::System:
+        system_page(content);
         break;
     case Page::Licenses:
         licenses_page(content, available);
@@ -1144,6 +1126,7 @@ void App::saves_page(float width) {
         SDL_OpenURL(url.c_str());
     }
     ImGui::SetCursorScreenPos(after);
+    dolphin_section(width);
     Card card(width);
     if (backups_.empty()) {
         bool disabled = value("saves.backups") == "0";
@@ -1246,7 +1229,10 @@ void App::controls_page(float width) {
         }
     }
     ImGui::SetCursorScreenPos(after);
+    tester_section(width);
     gamepads_section(width);
+    pad_map_section(width);
+    wiimotes_section(width);
     Card card(width);
     for (size_t i = 0; i < wp::keymap::kActionCount; i++) {
         if (i > 0) {
@@ -1425,7 +1411,7 @@ void App::gamepads_section(float width) {
     ui::gap(10);
     Card card(width);
     int count = 0;
-    SDL_JoystickID* pads = SDL_GetGamepads(&count);
+    SDL_JoystickID* pads = gamepads(count);
     if (count == 0) {
         row(width, t.gamepads_none, "", 0.0f, 0.0f, [] {});
     }
@@ -1442,6 +1428,49 @@ void App::gamepads_section(float width) {
         ImGui::PopID();
     }
     SDL_free(pads);
+    card.end();
+    ui::gap(28);
+}
+
+void App::wiimotes_section(float width) {
+    static const bool supported = wiimote_pairing_supported();
+    if (!supported) {
+        return;
+    }
+    const ui::Palette& p = ui::palette();
+    const Texts& t = texts();
+    ui::text(t.wiimotes_title, Font::Semibold, ui::size::kDetail, p.secondary);
+    ui::gap(10);
+    Card card(width);
+    int state = pair_state_;
+    row(width, t.wiimote_pair_label, t.wiimote_pair_detail, 150.0f, 36.0f, [&] {
+        if (ui::button(state == 1 ? t.wiimote_searching : t.wiimote_pair, Kind::Secondary, 150.0f, state != 1)) {
+            if (pair_thread_.joinable()) {
+                pair_thread_.join();
+            }
+            pair_state_ = 1;
+            pair_thread_ = std::thread([this] {
+                pair_count_ = pair_wiimotes();
+                pair_state_ = 2;
+                wake_main_loop();
+            });
+        }
+    });
+    if (state == 2) {
+        inset_separator(width);
+        std::string result = pair_count_ > 0 ? format(t.wiimote_paired, std::to_string(pair_count_.load())) : std::string(t.wiimote_none);
+        row(width, result.c_str(), "", 0.0f, 0.0f, [] {});
+    }
+    static const bool access = wiimote_access_supported();
+    if (access) {
+        inset_separator(width);
+        row(width, t.wiimote_access_label, access_result_ == 0 ? t.wiimote_access_detail : access_result_ == 1 ? t.wiimote_access_done : t.wiimote_access_failed,
+            150.0f, 36.0f, [&] {
+                if (ui::button(t.wiimote_access, Kind::Secondary, 150.0f)) {
+                    access_result_ = grant_wiimote_access() ? 1 : 2;
+                }
+            });
+    }
     card.end();
     ui::gap(28);
 }
@@ -1503,7 +1532,7 @@ void App::create_report() {
     out << "Install folder: " << utf8_of(project_.root) << "\n";
     out << "Game built: " << (project_.built() ? "yes" : "no") << "\n";
     int count = 0;
-    SDL_JoystickID* pads = SDL_GetGamepads(&count);
+    SDL_JoystickID* pads = gamepads(count);
     for (int i = 0; i < count; i++) {
         const char* name = SDL_GetGamepadNameForID(pads[i]);
         out << "Gamepad " << i + 1 << ": " << (name ? name : "?") << "\n";
@@ -1805,6 +1834,10 @@ void App::play() {
         std::string error;
         swap_pending_ = !project_.install_game(error);
     }
+#ifndef _WIN32
+    std::filesystem::permissions(project_.executable(), std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec | std::filesystem::perms::others_exec,
+                                 std::filesystem::perm_options::add, logs);
+#endif
     if (!start_detached(utf8_of(project_.executable()), project_.root)) {
         result_ = texts().start_failed;
         outcome_ = Outcome::Failure;

@@ -4,6 +4,7 @@
 
 #include "embedded.h"
 #include "payload.h"
+#include "prefs.h"
 #include "sha256.h"
 #include "subprocess.h"
 
@@ -149,6 +150,10 @@ bool find_checkout(std::filesystem::path& root) {
 }
 
 std::filesystem::path default_install_folder() {
+    std::filesystem::path portable = portable_folder();
+    if (!portable.empty()) {
+        return portable / "game";
+    }
 #ifdef _WIN32
     std::string local = environment_value("LOCALAPPDATA");
     if (!local.empty()) {

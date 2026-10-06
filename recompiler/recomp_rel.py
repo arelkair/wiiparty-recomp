@@ -8,7 +8,7 @@ from pathlib import Path
 import game
 import rel
 from ppc.decoder import Instr
-from ppc.emit import resume_label, u32
+from ppc.emit import declarations, resume_label, u32
 from ppc.module_emit import ModuleEmitter, split, synthetic
 
 GAME = game.load()
@@ -258,14 +258,8 @@ def write_module(name, module, bodies, chunks, resumes):
     header += [f"void f_{name}_{a:08x}(wp::Cpu& c);" for a in sorted(bodies)]
     emit(f"{name}.h", "\n".join(header) + "\n")
     for index, chunk in enumerate(chunks):
-        text = [
-            '#include "wp/cpu.h"',
-            '#include "wp/modules.h"',
-            '#include "wp/threads.h"',
-            '#include "functions.h"',
-            f'#include "{name}.h"',
-            "",
-        ] + chunk
+        text = ['#include "wp/cpu.h"', '#include "wp/modules.h"', '#include "wp/threads.h"', "", f"extern uint32_t g_{name}_bases[{section_count}];"]
+        text += declarations(chunk) + [""] + chunk
         emit(f"{name}_{index:03d}.cpp", "\n".join(text) + "\n")
     table = ['#include "wp/modules.h"', f'#include "{name}.h"', "", f"uint32_t g_{name}_bases[{section_count}];", "", "namespace wp {", ""]
     table.append(f"const ModuleFunction g_{name}_functions[] = {{")

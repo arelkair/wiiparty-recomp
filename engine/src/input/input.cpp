@@ -18,6 +18,7 @@
 #include "wp/modules.h"
 #include "wp/settings.h"
 #include "wp/video.h"
+#include "wp/runtime.h"
 
 namespace wp::input {
 

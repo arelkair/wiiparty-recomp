@@ -1,11 +1,15 @@
 #include "wp/modules.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "wp/log.h"
+#include "wp/runtime.h"
 
 namespace wp {
 
@@ -61,13 +65,35 @@ void update_bases(const ModuleDescriptor& descriptor, uint32_t info) {
     }
 }
 
-const ModuleFunction* find_function(const ModuleDescriptor& descriptor, uint32_t section, uint32_t offset) {
-    for (size_t i = 0; i < descriptor.function_count; i++) {
-        if (descriptor.functions[i].section == section && descriptor.functions[i].offset == offset) {
-            return &descriptor.functions[i];
+struct LoadedModule {
+    uint32_t info = 0;
+    uint32_t identifier = 0;
+    const ModuleDescriptor* descriptor = nullptr;
+};
+
+std::vector<LoadedModule> g_loaded;
+
+const ModuleDescriptor* descriptor_at(uint32_t info) {
+    uint32_t identifier = rd32(info + kInfoIdentifier);
+    for (LoadedModule& loaded : g_loaded) {
+        if (loaded.info == info) {
+            if (loaded.identifier != identifier || !loaded.descriptor) {
+                loaded.identifier = identifier;
+                loaded.descriptor = find_descriptor(signature_of(info));
+            }
+            return loaded.descriptor;
         }
     }
-    return nullptr;
+    g_loaded.push_back({info, identifier, find_descriptor(signature_of(info))});
+    return g_loaded.back().descriptor;
+}
+
+const ModuleFunction* find_function(const ModuleDescriptor& descriptor, uint32_t section, uint32_t offset) {
+    const ModuleFunction* end = descriptor.functions + descriptor.function_count;
+    const ModuleFunction* found = std::lower_bound(descriptor.functions, end, std::make_pair(section, offset), [](const ModuleFunction& function, const std::pair<uint32_t, uint32_t>& key) {
+        return function.section != key.first ? function.section < key.first : function.offset < key.second;
+    });
+    return found != end && found->section == section && found->offset == offset ? found : nullptr;
 }
 
 }
@@ -75,7 +101,7 @@ const ModuleFunction* find_function(const ModuleDescriptor& descriptor, uint32_t
 bool call_module_function(Cpu& c, uint32_t address) {
     uint32_t info = rd32(kModuleListHead);
     for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
-        const ModuleDescriptor* descriptor = find_descriptor(signature_of(info));
+        const ModuleDescriptor* descriptor = descriptor_at(info);
         if (!descriptor) {
             continue;
         }
@@ -102,7 +128,7 @@ void (*find_module_resume(uint32_t address))(Cpu&) {
     int matches = 0;
     uint32_t info = rd32(kModuleListHead);
     for (uint32_t guard = 0; info != 0 && guard < kMaxModules; guard++, info = rd32(info + kInfoNext)) {
-        const ModuleDescriptor* descriptor = find_descriptor(signature_of(info));
+        const ModuleDescriptor* descriptor = descriptor_at(info);
         if (!descriptor) {
             continue;
         }

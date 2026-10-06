@@ -7,6 +7,7 @@
 #include <map>
 
 #include "subprocess.h"
+#include "updater.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -15,11 +16,23 @@
 namespace {
 
 std::filesystem::path prefs_file() {
+    std::filesystem::path portable = portable_folder();
+    if (!portable.empty()) {
+        return portable / "launcher.ini";
+    }
+    return installed_prefs_file();
+}
+
+}
+
+std::filesystem::path installed_prefs_file() {
     char* folder = SDL_GetPrefPath("wiiparty-recomp", "launcher");
     std::filesystem::path path = folder ? path_from(folder) / "launcher.ini" : std::filesystem::path("launcher.ini");
     SDL_free(folder);
     return path;
 }
+
+namespace {
 
 std::string registry_value(const char* key) {
 #ifdef _WIN32
@@ -54,12 +67,30 @@ std::map<std::string, std::string>& values() {
 
 }
 
+std::filesystem::path portable_folder() {
+    static const std::filesystem::path folder = [] {
+        std::filesystem::path beside = launcher_path().parent_path();
+        std::error_code error;
+        return std::filesystem::exists(beside / "portable.txt", error) ? beside : std::filesystem::path();
+    }();
+    return folder;
+}
+
 std::string pref(const char* key) {
     auto it = values().find(key);
     if (it != values().end()) {
         return it->second;
     }
-    return registry_value(key);
+    return portable_folder().empty() ? registry_value(key) : std::string();
+}
+
+void export_prefs(const std::filesystem::path& file) {
+    std::error_code error;
+    std::filesystem::create_directories(file.parent_path(), error);
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    for (const auto& [name, text] : values()) {
+        out << name << '=' << text << '\n';
+    }
 }
 
 void set_pref(const char* key, const std::string& value) {

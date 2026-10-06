@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "wp/keymap.h"
+#include "wp/padmap.h"
 
 namespace wp::settings {
 
@@ -29,6 +30,8 @@ const Option kBaseOptions[] = {
     {"input.gamepads", "1"},
     {"input.auto_grip", "1"},
     {"input.joycon_pairs", "1"},
+    {"input.real_wiimotes", "1"},
+    {"input.real_wiimote_mouse", "1"},
     {"input.wake_on_mouse", "1"},
     {"input.hide_cursor", "0"},
     {"system.interface_language", "en"},
@@ -45,6 +48,9 @@ const std::vector<Option>& options() {
         std::vector<Option> result(std::begin(kBaseOptions), std::end(kBaseOptions));
         for (size_t i = 0; i < keymap::kActionCount; i++) {
             result.push_back({keymap::setting_key(i), keymap::action(i).defaults});
+        }
+        for (size_t i = 0; i < padmap::kActionCount; i++) {
+            result.push_back({padmap::setting_key(i), "auto"});
         }
         return result;
     }();

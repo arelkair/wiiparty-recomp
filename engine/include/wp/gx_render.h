@@ -32,9 +32,11 @@ struct CopyFilter {
 
 bool guest_range_valid(uint32_t address, size_t size);
 void take_statistics(uint32_t& batches, uint32_t& vertices, double& seconds);
+void take_copy_statistics(uint32_t& write_backs, double& wait_seconds);
 
 const char* api_name();
 void draw(const ScreenVertex* vertices, uint32_t count);
+void finish_copies();
 void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const CopyFilter& filter);
 bool present_frame(void* window, double aspect);
 bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height);

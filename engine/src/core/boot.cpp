@@ -21,6 +21,9 @@ constexpr uint32_t kCpuClock = 729000000;
 constexpr uint32_t kPalVideoMode = 1;
 constexpr uint32_t kNtscVideoMode = 0;
 constexpr uint32_t kVideoControlRegister = 0xCC002002;
+constexpr uint32_t kVideoClockRegister = 0xCC00206C;
+constexpr uint32_t kVideoDtvStatusRegister = 0xCC00206E;
+constexpr uint32_t kDiConfigRegister = 0xCD006024;
 constexpr uint16_t kVideoControlPal = 0x0101;
 constexpr uint16_t kVideoControlNtsc = 0x0001;
 constexpr uint32_t kVideoInterruptRegisters[] = {0xCC002030, 0xCC002034};
@@ -69,6 +72,9 @@ bool init_boot_memory(const std::string& extracted_directory) {
     bool ntsc = region == 'E' || region == 'J' || region == 'K' || region == 'W';
     wr32(0x800000CC, ntsc ? kNtscVideoMode : kPalVideoMode);
     wr16(kVideoControlRegister, ntsc ? kVideoControlNtsc : kVideoControlPal);
+    wr16(kVideoClockRegister, ntsc ? 1 : 0);
+    wr16(kVideoDtvStatusRegister, region == 'J' ? 2 : 0);
+    wr32(kDiConfigRegister, 1);
     for (uint32_t address : kVideoInterruptRegisters) {
         wr16(address, kVideoInterruptEnabled);
     }
