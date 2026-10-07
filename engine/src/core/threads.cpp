@@ -86,23 +86,23 @@ struct ContextEvent {
 };
 
 constexpr size_t kHistorySize = 64;
-constexpr unsigned kMaxFallbackResumes = 32;
+constexpr unsigned kMaxFallbackResumes = 100;
+constexpr unsigned kLoggedFallbackHistories = 3;
 ContextEvent g_history[kHistorySize];
 size_t g_history_next = 0;
 unsigned g_fallback_resumes = 0;
+unsigned g_logged_histories = 0;
 
 void note(char kind, uint32_t context, uint32_t detail) {
     g_history[g_history_next++ % kHistorySize] = ContextEvent{kind, context, detail};
 }
 
 void print_history() {
-    std::fprintf(stderr, "recent thread context events, oldest first (s save, l load, n load without a record, d discard, f forget):");
-    std::fputc(10, stderr);
+    log::write("threads", "recent thread context events, oldest first (s save, l load, n load without a record, d discard, f forget)");
     for (size_t i = 0; i < kHistorySize; i++) {
         const ContextEvent& event = g_history[(g_history_next + i) % kHistorySize];
         if (event.kind) {
-            std::fprintf(stderr, "  %c context %08x %08x", event.kind, event.context, event.detail);
-            std::fputc(10, stderr);
+            log::write("threads", "  %c context %08x %08x", event.kind, event.context, event.detail);
         }
     }
 }
@@ -232,10 +232,14 @@ void start_thread(void* parameter) {
     uint32_t exit_function = c.lr;
     if (find_resume(entry)) {
         log::write("threads", "context %08x resumed at %08x from its guest stack, without its saved host stack", context, entry);
+        if (g_logged_histories < kLoggedFallbackHistories) {
+            g_logged_histories++;
+            print_history();
+        }
         if (++g_fallback_resumes > kMaxFallbackResumes) {
             print_history();
-            log::write("threads", "context %08x was resumed from its guest stack %u times in a row", context, g_fallback_resumes);
-            fatal_error("a guest thread context was resumed from its guest stack over and over; stopping before the memory runs out");
+            log::write("threads", "guest thread contexts were resumed from their guest stacks %u times", g_fallback_resumes);
+            fatal_error("guest thread contexts were resumed without their saved host stacks over and over; stopping before the memory runs out");
         }
         c.r[3] = 1;
         continue_at(c, entry);
@@ -334,7 +338,6 @@ void load_context(Cpu& c) {
     SavedContext saved = it->second;
     g_saved.erase(it);
     note('l', context, saved.resume);
-    g_fallback_resumes = 0;
     g_resume_point = saved.point;
     g_resume_context = context;
     if (saved.fiber != fiber::current()) {
