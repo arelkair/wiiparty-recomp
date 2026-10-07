@@ -22,6 +22,7 @@ const char* module_name_at(uint32_t address);
 bool module_loaded(const char* name);
 void init_threads(Cpu& c);
 void load_context(Cpu& c);
+void enter_exception_context(uint32_t context);
 void forget_saved_context(uint32_t context, std::jmp_buf* point);
 void long_jump(Cpu& c);
 void print_thread_stacks();

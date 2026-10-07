@@ -32,11 +32,40 @@
 #include "wp/settings.h"
 #include "wp/video.h"
 
+#ifdef _WIN32
+#define PSAPI_VERSION 2
+#include <psapi.h>
+#endif
+
 namespace wp::gx {
 
 namespace {
 
 constexpr size_t kFlushThreshold = 1u << 20;
+constexpr size_t kMaxQueuedBytes = size_t{64} << 20;
+std::atomic<size_t> g_queued_bytes{0};
+
+size_t private_memory_mb() {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof counters;
+    if (K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof counters)) {
+        return counters.PrivateUsage >> 20;
+    }
+    return 0;
+#else
+    std::FILE* file = std::fopen("/proc/self/statm", "r");
+    unsigned long long pages = 0;
+    unsigned long long resident = 0;
+    if (file) {
+        if (std::fscanf(file, "%llu %llu", &pages, &resident) != 2) {
+            resident = 0;
+        }
+        std::fclose(file);
+    }
+    return static_cast<size_t>(resident * 4096ull >> 20);
+#endif
+}
 constexpr uint8_t kCommandNop = 0x00;
 constexpr uint8_t kCommandLoadCp = 0x08;
 constexpr uint8_t kCommandLoadXf = 0x10;
@@ -980,6 +1009,7 @@ void execute_copy(uint32_t value) {
                 static const ThreadClock gpu_clock = current_thread_clock();
                 double gpu = thread_seconds(gpu_clock);
                 log::write("copies", "%u EFB copies written back to RAM, %.1f ms waiting for the GPU", write_backs, write_back_seconds * 1000.0);
+                log::write("memory", "%zu MB private memory, %zu KB of graphics commands queued", private_memory_mb(), g_queued_bytes.load() >> 10);
                 double idle = idle_share();
                 if (idle >= 0.0) {
                     log::write("threads", "CPU thread busy %.0f%% (guest idle %.0f%%), GPU thread busy %.0f%%", (cpu - previous_cpu) * 100.0 / seconds, idle * 100.0, (gpu - previous_gpu) * 100.0 / seconds);
@@ -1254,6 +1284,7 @@ struct GpuItem {
 struct GpuQueue {
     std::mutex lock;
     std::condition_variable work;
+    std::condition_variable space;
     std::deque<GpuItem> items;
     int frames = 0;
     bool started = false;
@@ -1278,7 +1309,9 @@ void gpu_thread() {
         g_gpu.work.wait(hold, [] { return !g_gpu.items.empty(); });
         GpuItem item = std::move(g_gpu.items.front());
         g_gpu.items.pop_front();
+        g_queued_bytes -= item.bytes.size();
         hold.unlock();
+        g_gpu.space.notify_all();
         if (!item.bytes.empty()) {
             buffer.insert(buffer.end(), item.bytes.begin(), item.bytes.end());
             size_t used = parse(buffer.data(), buffer.size(), false);
@@ -1308,6 +1341,8 @@ void enqueue(GpuItem item) {
         }
         g_gpu.frames++;
     }
+    g_gpu.space.wait(hold, [] { return g_queued_bytes.load() < kMaxQueuedBytes; });
+    g_queued_bytes += item.bytes.size();
     g_gpu.items.push_back(std::move(item));
     hold.unlock();
     g_gpu.work.notify_one();

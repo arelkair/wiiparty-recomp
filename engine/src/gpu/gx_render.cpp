@@ -1,4 +1,5 @@
 #include "wp/gx_render.h"
+#include "wp/log.h"
 
 #include "gx_render_common.h"
 
@@ -1475,10 +1476,16 @@ ID3D11Texture2D* take_staging() {
     return texture;
 }
 
+constexpr size_t kMaxPendingWriteBacks = 32;
+void complete_write_backs(bool wait);
+
 bool queue_write_back(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
                       bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
     if (!g_device.write_back && !create_copy_texture(g_device.write_back, g_device.write_back_view, g_device.write_back_target, kEfbWidth, kEfbHeight)) {
         return false;
+    }
+    if (g_device.write_backs.size() >= kMaxPendingWriteBacks) {
+        complete_write_backs(true);
     }
     uint32_t texture_format = copy_texture_format(format);
     Layout layout = layout_for(texture_format);
@@ -1944,7 +1951,13 @@ bool present_frame(void* window_handle, double aspect) {
     ID3D11ShaderResourceView* none = nullptr;
     context->PSSetShaderResources(0, 1, &none);
     draw_overlay(client);
-    g_device.swapchain->Present(0, 0);
+    HRESULT presented = g_device.swapchain->Present(0, 0);
+    static bool logged_present_failure = false;
+    if (FAILED(presented) && !logged_present_failure) {
+        logged_present_failure = true;
+        HRESULT removed = g_device.device->GetDeviceRemovedReason();
+        log::write("video", "Present failed with %08lx, device removed reason %08lx", static_cast<unsigned long>(presented), static_cast<unsigned long>(removed));
+    }
     apply_scale();
     return true;
 }

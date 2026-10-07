@@ -1512,10 +1512,16 @@ GLuint take_buffer() {
     return buffer;
 }
 
+constexpr size_t kMaxPendingWriteBacks = 32;
+void complete_write_backs(bool wait);
+
 bool queue_write_back(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
                       bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
     if (!g_device.write_back.framebuffer && !create_render_texture(g_device.write_back, kEfbWidth, kEfbHeight)) {
         return false;
+    }
+    if (g_device.write_backs.size() >= kMaxPendingWriteBacks) {
+        complete_write_backs(true);
     }
     uint32_t texture_format = copy_texture_format(format);
     Layout layout = layout_for(texture_format);

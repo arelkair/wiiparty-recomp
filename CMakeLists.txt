@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(WP_GAME "wiiparty" CACHE STRING "Game folder under games/ to build")
-set(WP_BUILD "2610-003" CACHE STRING "Build number shown in the window title")
+set(WP_BUILD "2610-004" CACHE STRING "Build number shown in the window title")
 option(WP_TRACE_CALLS "Record every guest function entry for diagnostics (slower)" OFF)
 option(WP_CONSOLE "Build the game as a console program" OFF)
 set(WP_CODE_OPT "-O1" CACHE STRING "Optimization flag for the translated game code")

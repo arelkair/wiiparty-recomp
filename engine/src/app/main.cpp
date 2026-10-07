@@ -1,10 +1,9 @@
 #ifdef _WIN32
 #include <windows.h>
-#else
-#include <csignal>
 #endif
 
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -33,6 +32,8 @@ namespace {
 #ifdef _WIN32
 LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
+    wp::log::write("crash", "exception %08lx at host address %p (module offset %llx)", record->ExceptionCode, record->ExceptionAddress,
+                   static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(record->ExceptionAddress) - reinterpret_cast<uintptr_t>(GetModuleHandle(nullptr))));
     std::fprintf(stderr, "crash: exception %08lx at host address %p (module offset %llx)", record->ExceptionCode, record->ExceptionAddress,
                  static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(record->ExceptionAddress) - reinterpret_cast<uintptr_t>(GetModuleHandle(nullptr))));
     if (record->NumberParameters >= 2 && (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)) {
@@ -46,7 +47,8 @@ LONG WINAPI report_crash(EXCEPTION_POINTERS* info) {
     std::fflush(stderr);
     return EXCEPTION_EXECUTE_HANDLER;
 }
-#else
+#endif
+
 void report_crash(int signal) {
     std::fprintf(stderr, "crash: signal %d", signal);
     std::fputc(10, stderr);
@@ -57,7 +59,6 @@ void report_crash(int signal) {
     std::fflush(stderr);
     std::_Exit(128 + signal);
 }
-#endif
 
 void report_terminate() {
     try {
@@ -143,8 +144,16 @@ int run(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     std::set_terminate(report_terminate);
+    if (const char* log_path = std::getenv("WP_LOG_FILE")) {
+        wp::log::write("boot", "log started");
+        std::freopen(log_path, "a", stderr);
+    }
 #ifdef _WIN32
     SetUnhandledExceptionFilter(report_crash);
+    std::signal(SIGSEGV, report_crash);
+    std::signal(SIGILL, report_crash);
+    std::signal(SIGFPE, report_crash);
+    std::signal(SIGABRT, report_crash);
     return run(argc, argv);
 #else
     std::signal(SIGSEGV, report_crash);

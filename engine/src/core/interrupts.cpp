@@ -79,6 +79,7 @@ void deliver_decrementer(Cpu& c) {
     std::jmp_buf point;
     c.r[3] = context;
     save_context(c, &point);
+    enter_exception_context(context);
     if (setjmp(point) == 0) {
         c = interrupted;
         c.spr[26] = interrupted.lr;

@@ -40,6 +40,8 @@ constexpr uint32_t kJumpFpscrOffset = 0x180;
 constexpr uint32_t kFirstSavedRegister = 13;
 constexpr uint32_t kFirstSavedFloat = 14;
 constexpr size_t kFiberStackSize = 4u << 20;
+constexpr uint32_t kStateOffset = 0x1A2;
+constexpr uint16_t kStateException = 2;
 
 struct SavedContext {
     void* fiber;
@@ -317,6 +319,7 @@ void resume_context(Cpu& c) {
 
 void load_context(Cpu& c) {
     uint32_t context = c.r[3];
+    wr16(context + kStateOffset, rd16(context + kStateOffset) & ~kStateException);
     auto it = g_saved.find(context);
     if (it != g_saved.end() && rd32(context + kSrr0Offset) != it->second.resume) {
         note('d', context, it->second.resume);
@@ -348,7 +351,12 @@ void load_context(Cpu& c) {
     }
 }
 
+void enter_exception_context(uint32_t context) {
+    wr16(context + kStateOffset, rd16(context + kStateOffset) | kStateException);
+}
+
 void forget_saved_context(uint32_t context, std::jmp_buf* point) {
+    wr16(context + kStateOffset, rd16(context + kStateOffset) & ~kStateException);
     auto it = g_saved.find(context);
     if (it != g_saved.end() && it->second.point == point) {
         note('f', context, it->second.resume);
