@@ -1270,6 +1270,11 @@ void gpu_thread() {
     std::vector<uint8_t> buffer;
     while (true) {
         std::unique_lock<std::mutex> hold(g_gpu.lock);
+        if (g_gpu.items.empty()) {
+            hold.unlock();
+            render::finish_copies();
+            hold.lock();
+        }
         g_gpu.work.wait(hold, [] { return !g_gpu.items.empty(); });
         GpuItem item = std::move(g_gpu.items.front());
         g_gpu.items.pop_front();

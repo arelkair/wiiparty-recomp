@@ -79,6 +79,34 @@ void switch_to(void* fiber) {
     fiber::switch_to(fiber);
 }
 
+struct ContextEvent {
+    char kind;
+    uint32_t context;
+    uint32_t detail;
+};
+
+constexpr size_t kHistorySize = 64;
+constexpr unsigned kMaxFallbackResumes = 32;
+ContextEvent g_history[kHistorySize];
+size_t g_history_next = 0;
+unsigned g_fallback_resumes = 0;
+
+void note(char kind, uint32_t context, uint32_t detail) {
+    g_history[g_history_next++ % kHistorySize] = ContextEvent{kind, context, detail};
+}
+
+void print_history() {
+    std::fprintf(stderr, "recent thread context events, oldest first (s save, l load, n load without a record, d discard, f forget):");
+    std::fputc(10, stderr);
+    for (size_t i = 0; i < kHistorySize; i++) {
+        const ContextEvent& event = g_history[(g_history_next + i) % kHistorySize];
+        if (event.kind) {
+            std::fprintf(stderr, "  %c context %08x %08x", event.kind, event.context, event.detail);
+            std::fputc(10, stderr);
+        }
+    }
+}
+
 std::map<uint32_t, SavedContext> g_saved;
 std::map<uint32_t, SavedJump> g_jumps;
 uint32_t g_jump_buffer = 0;
@@ -204,6 +232,11 @@ void start_thread(void* parameter) {
     uint32_t exit_function = c.lr;
     if (find_resume(entry)) {
         log::write("threads", "context %08x resumed at %08x from its guest stack, without its saved host stack", context, entry);
+        if (++g_fallback_resumes > kMaxFallbackResumes) {
+            print_history();
+            log::write("threads", "context %08x was resumed from its guest stack %u times in a row", context, g_fallback_resumes);
+            fatal_error("a guest thread context was resumed from its guest stack over and over; stopping before the memory runs out");
+        }
         c.r[3] = 1;
         continue_at(c, entry);
         std::fprintf(stderr, "resumed context %08x returned without exiting\n", context);
@@ -268,6 +301,7 @@ void init_threads(Cpu& c) {
 void save_context(Cpu& c, std::jmp_buf* point) {
     uint32_t context = c.r[3];
     store(c, context);
+    note('s', context, c.lr);
     g_saved[context] = SavedContext{fiber::current(), point, c.lr};
     c.r[3] = 0;
 }
@@ -281,10 +315,12 @@ void load_context(Cpu& c) {
     uint32_t context = c.r[3];
     auto it = g_saved.find(context);
     if (it != g_saved.end() && rd32(context + kSrr0Offset) != it->second.resume) {
+        note('d', context, it->second.resume);
         discard_fiber(it->second.fiber);
         it = g_saved.find(context);
     }
     if (it == g_saved.end()) {
+        note('n', context, rd32(context + kSrr0Offset));
         void* fiber = fiber::create(kFiberStackSize, start_thread, reinterpret_cast<void*>(static_cast<uintptr_t>(context)));
 #ifdef WP_TRACE
         register_trace(fiber);
@@ -297,6 +333,8 @@ void load_context(Cpu& c) {
     }
     SavedContext saved = it->second;
     g_saved.erase(it);
+    note('l', context, saved.resume);
+    g_fallback_resumes = 0;
     g_resume_point = saved.point;
     g_resume_context = context;
     if (saved.fiber != fiber::current()) {
@@ -304,6 +342,14 @@ void load_context(Cpu& c) {
     }
     if (g_resume_point) {
         resume_pending();
+    }
+}
+
+void forget_saved_context(uint32_t context, std::jmp_buf* point) {
+    auto it = g_saved.find(context);
+    if (it != g_saved.end() && it->second.point == point) {
+        note('f', context, it->second.resume);
+        g_saved.erase(it);
     }
 }
 

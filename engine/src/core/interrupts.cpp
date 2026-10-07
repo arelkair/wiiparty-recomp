@@ -89,6 +89,7 @@ void deliver_decrementer(Cpu& c) {
         g_in_interrupt = true;
         call(c, handler);
     }
+    forget_saved_context(context, &point);
     c = interrupted;
 #ifdef WP_TRACE
     g_call_depth = trace_depth;

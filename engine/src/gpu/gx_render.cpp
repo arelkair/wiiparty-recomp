@@ -1640,7 +1640,7 @@ void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width,
 
 void finish_copies() {
     if (g_device.ready) {
-        complete_write_backs(false);
+        complete_write_backs(true);
     }
 }
 
