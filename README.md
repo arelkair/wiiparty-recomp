@@ -3,7 +3,7 @@
 Static recompilation of Wii Party for native PC.
 
 > [!NOTE]
-> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **89%** overall.
+> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **91%** overall.
 
 ![Project progress](docs/progress.svg)
 
@@ -28,13 +28,13 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 | **Graphics (GX to D3D11)** | **100%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies; no known fault in any minigame. |
 | **Audio Pipeline** | **100%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music; Wii Remote speaker sound is played. |
 | **Game Flow** | **90%** | A full 17-round Board Game Island game; every Free Play minigame played by hand, all 79 without faults. |
-| **Input System** | **66%** | Emulated Wii Remote over emulated Bluetooth; keyboard, mouse and up to four gamepads. |
-| **PC Features** | **66%** | Single-file launcher, in-game options menu (F10), key bindings, save backups, custom textures. |
+| **Input System** | **75%** | Emulated Wii Remote over emulated Bluetooth; keyboard, mouse, up to four gamepads and real Wii Remotes. |
+| **PC Features** | **75%** | Single-file launcher, in-game options menu (F10), key bindings, save backups, custom textures; ultrawide and online are still planned. |
 
 ### Known Limitations
 
 - The modes other than Board Game Island and Free Play have been tried but not played through in full.
-- Real Wii Remotes are not supported yet.
+- Real Wii Remotes paired with the PC are used by the game, but pointing with a physical sensor bar has not been tested.
 - Some PCs reach less than 60 fps on the Board Game Island and in minigames; performance work is in progress.
 - The launcher is not code-signed, so Windows Defender may flag it as a false positive. Every release lists its SHA-256 on GitHub, and the source code of the launcher is in this repository.
 
@@ -99,7 +99,16 @@ Every key can be changed on the launcher's **Controls** page or in `games/wiipar
 | **Beta** | Every mode and all 80 minigames are checked, including the pair minigames; no known crashes; the known graphics faults in `docs/MINIGAMES.md` are fixed; the install is tested on several different PCs. |
 | **1.0** | No known bugs, overall progress around 95%, and a period of use by players without serious problems. |
 
-The project's scope is the original game, faithful and optimized. Online play, ultrawide support and a Mii editor are not planned.
+The project's scope is the original game, faithful and optimized.
+
+### Planned features
+
+| Feature | Notes |
+| :--- | :--- |
+| **Ultrawide support** | Wider-than-16:9 windows without stretching the picture. Not started. |
+| **Online play with friends** | A fourth, green **Online** button next to the three buttons at the bottom of the main menu. There is no server: players connect directly, and the game exchanges only each player's inputs in lockstep. Not started. |
+
+A Mii editor is not planned.
 
 ### Platforms
 
