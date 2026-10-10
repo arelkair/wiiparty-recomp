@@ -41,11 +41,10 @@ add_library(wp_engine STATIC
     src/platform/options_window.cpp
 )
 if(WIN32)
-    target_sources(wp_engine PRIVATE src/gpu/gx_render.cpp src/platform/video.cpp src/platform/options_render_gdi.cpp)
-else()
-    target_sources(wp_engine PRIVATE src/platform/options_render_stb.cpp)
-    target_include_directories(wp_engine SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/third_party/stb")
+    target_sources(wp_engine PRIVATE src/gpu/gx_render.cpp src/platform/video.cpp)
 endif()
+target_sources(wp_engine PRIVATE src/platform/options_render_stb.cpp)
+target_include_directories(wp_engine SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/third_party/stb")
 target_include_directories(wp_engine PUBLIC include)
 target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}"
     WP_DSP_IROM_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin"

@@ -13,7 +13,9 @@ constexpr int kEfbWidth = 640;
 constexpr int kEfbHeight = 528;
 constexpr uint32_t kMaxStages = 16;
 constexpr uint32_t kTextureMaps = 8;
-constexpr float kScissorOffset = 342.0f;
+constexpr uint32_t kBpScissorOffset = 0x59;
+inline int scissor_offset_x(uint32_t reg) { return static_cast<int>((reg & 0x3FF) * 2); }
+inline int scissor_offset_y(uint32_t reg) { return static_cast<int>(((reg >> 10) & 0x3FF) * 2); }
 constexpr uint32_t kTlutSize = 0x100000;
 constexpr uint32_t kTlutMask = 0x7FE00;
 constexpr uint32_t kXfbFormat = 13;

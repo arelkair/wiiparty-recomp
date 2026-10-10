@@ -3,7 +3,7 @@
 Static recompilation of Wii Party for native PC.
 
 > [!NOTE]
-> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **85%** overall.
+> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **89%** overall.
 
 ![Project progress](docs/progress.svg)
 
@@ -25,8 +25,8 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 | :--- | :--- | :--- |
 | **Recompilation Toolchain** | **100%** | The DOL and all 115 REL modules translate and build; every instruction kind the game uses is checked by 4,152 tests against an independent model. |
 | **System Runtime** | **100%** | OS, threads, interrupts, IPC, DVD, NAND, Bluetooth, the EXI bus, the SI ports, the GPU command FIFO and the pixel engine interrupts work, with no known unemulated parts. |
-| **Graphics (GX to D3D11)** | **90%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies; no known fault in any minigame. |
-| **Audio Pipeline** | **83%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music. |
+| **Graphics (GX to D3D11)** | **100%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies; no known fault in any minigame. |
+| **Audio Pipeline** | **100%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music; Wii Remote speaker sound is played. |
 | **Game Flow** | **90%** | A full 17-round Board Game Island game; every Free Play minigame played by hand, all 79 without faults. |
 | **Input System** | **66%** | Emulated Wii Remote over emulated Bluetooth; keyboard, mouse and up to four gamepads. |
 | **PC Features** | **66%** | Single-file launcher, in-game options menu (F10), key bindings, save backups, custom textures. |

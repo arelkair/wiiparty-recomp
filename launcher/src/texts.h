@@ -249,10 +249,22 @@ struct Texts {
     const char* wiimote_access;
     const char* wiimote_access_done;
     const char* wiimote_access_failed;
+    const char* captures_select_all;
+    const char* captures_select_none;
+    const char* captures_delete;
+    const char* captures_crop;
+    const char* captures_delete_title;
+    const char* captures_delete_question;
+    const char* captures_crop_hint;
+    const char* captures_view_hint;
+    const char* captures_close;
+    const char* captures_save_crops;
+    const char* captures_clear_area;
 };
 
 void use_language(const std::string& code);
 bool language_is(const char* code);
+const char* language_code();
 const Texts& texts();
 std::string format(const char* pattern, const std::string& first, const std::string& second = {});
 const char* option_detail(const std::string& key);

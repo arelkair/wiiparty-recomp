@@ -211,6 +211,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         note_press(message == WM_LBUTTONDOWN ? VK_LBUTTON : VK_RBUTTON);
         return DefWindowProc(window, message, wparam, lparam);
+    case WM_MOUSEMOVE:
+        if (options::menu_open()) {
+            options::menu_hover(window, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            return 0;
+        }
+        return DefWindowProc(window, message, wparam, lparam);
     case WM_MBUTTONDOWN:
         if (!options::menu_open()) {
             note_press(VK_MBUTTON);

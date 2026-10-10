@@ -184,7 +184,7 @@ void App::pad_map_section(float width) {
     ImVec2 at = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos(at + ImVec2(px(18), px(14)));
     ui::text(t.pad_map_detail, Font::Regular, ui::size::kDetail, p.secondary, width - px(36));
-    ImGui::SetCursorScreenPos(ImVec2(at.x, ImGui::GetCursorScreenPos().y + px(4)));
+    ImGui::SetCursorScreenPos(ImVec2(at.x, ImGui::GetCursorScreenPos().y + px(14)));
     std::vector<std::string> labels = {t.pad_auto};
     for (int i = 0; i < wp::padmap::kPhysicalCount; i++) {
         labels.push_back(physical_label(i));

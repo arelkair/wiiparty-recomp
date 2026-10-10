@@ -106,7 +106,6 @@ int main(int argc, char** argv) {
         app.add_on_start(added_disc);
     }
     app.apply_theme();
-    SDL_ShowWindow(window);
 
     if (!used_version.empty()) {
         return app.use_version_now(used_version) ? 0 : 1;
@@ -150,6 +149,10 @@ int main(int argc, char** argv) {
             draw_frame();
         }
     };
+    if (screenshot_prefix.empty()) {
+        draw_frame();
+    }
+    SDL_ShowWindow(window);
     SDL_AddEventWatch([](void* data, SDL_Event* event) {
         if (event->type == SDL_EVENT_WINDOW_EXPOSED) {
             (*static_cast<std::function<void()>*>(data))();

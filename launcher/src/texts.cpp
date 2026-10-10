@@ -250,6 +250,17 @@ constexpr Texts kEnglish = {
     "Allow",
     "Done. Wii Remotes connected from now on can be used by the game.",
     "The rule was not added.",
+    "Select all",
+    "Select none",
+    "Delete %1",
+    "Crop %1",
+    "Delete captures",
+    "%1 captures will be deleted from the disk. This cannot be undone.",
+    "Drag over the picture to choose the area to keep. The cropped copy is saved next to the original, which stays as it is.",
+    "Click a capture to select it, double-click to view it.",
+    "Close",
+    "Save cropped copy (%1)",
+    "Clear area",
 };
 
 constexpr Texts kSpanish = {
@@ -498,6 +509,17 @@ constexpr Texts kSpanish = {
     "Permitir",
     "Hecho. El juego podrá usar los Wii Remote que se conecten a partir de ahora.",
     "No se ha añadido la regla.",
+    "Seleccionar todas",
+    "Quitar selección",
+    "Borrar %1",
+    "Recortar %1",
+    "Borrar capturas",
+    "Se borrarán %1 capturas del disco. No se puede deshacer.",
+    "Arrastra sobre la imagen para elegir la zona que quieres conservar. La copia recortada se guarda junto a la original, que no cambia.",
+    "Pulsa una captura para seleccionarla, doble clic para verla.",
+    "Cerrar",
+    "Guardar copia recortada (%1)",
+    "Quitar zona",
 };
 
 constexpr Texts kGalician = {
@@ -747,6 +769,17 @@ constexpr Texts kGalician = {
     "Permitir",
     "Feito. O xogo poderá usar os Wii Remote que se conecten a partir de agora.",
     "Non se engadiu a regra.",
+    "Seleccionar todas",
+    "Quitar selección",
+    "Borrar %1",
+    "Recortar %1",
+    "Borrar capturas",
+    "Borraranse %1 capturas do disco. Non se pode desfacer.",
+    "Arrastra sobre a imaxe para escoller a zona que queres conservar. A copia recortada gárdase xunto á orixinal, que non cambia.",
+    "Preme unha captura para seleccionala, dobre clic para vela.",
+    "Pechar",
+    "Gardar copia recortada (%1)",
+    "Quitar zona",
 };
 
 struct Detail {
@@ -811,6 +844,9 @@ constexpr Detail kDetails[] = {
     {"audio.mute", "Silences the game's sound.",
      "Quita el sonido del juego.",
      "Quita o son do xogo."},
+    {"audio.wiimote_speaker", "Plays the sound the game sends to the Wii Remote speaker through the computer's speakers.",
+     "Reproduce por los altavoces del ordenador el sonido que el juego envía al altavoz del Wii Remote.",
+     "Reproduce polos altofalantes do ordenador o son que o xogo envía ao altofalante do Wii Remote."},
     {"saves.backups", "Copies of the save to keep. One is made at every start when the save changed, and at most once a minute after the game saves.",
      "Copias de la partida que se guardan. Se hace una al abrir el juego si la partida ha cambiado, y como mucho una por minuto después de que el juego guarde.",
      "Copias da partida que se gardan. Faise unha ao abrir o xogo se a partida cambiou, e como moito unha por minuto despois de que o xogo garde."},
@@ -869,6 +905,11 @@ void use_language(const std::string& code) {
 bool language_is(const char* code) {
     const char* codes[] = {"en", "es", "gl"};
     return std::strcmp(codes[g_language], code) == 0;
+}
+
+const char* language_code() {
+    const char* codes[] = {"en", "es", "gl"};
+    return codes[g_language];
 }
 
 const Texts& texts() {

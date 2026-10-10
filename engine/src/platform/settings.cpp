@@ -40,6 +40,7 @@ const Option kBaseOptions[] = {
     {"system.skip_notices", "1"},
     {"system.options_menu", "1"},
     {"audio.mute", "0"},
+    {"audio.wiimote_speaker", "1"},
     {"saves.backups", "5"},
 };
 

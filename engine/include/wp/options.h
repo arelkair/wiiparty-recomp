@@ -9,11 +9,23 @@ namespace wp::options {
 
 enum class Action { Up, Down, Previous, Next, Close };
 
+enum class Part { None, Label, Previous, Value, Next, Close };
+
+struct Hover {
+    int row = -1;
+    Part part = Part::None;
+
+    bool operator==(const Hover& other) const { return row == other.row && part == other.part; }
+    bool operator!=(const Hover& other) const { return !(*this == other); }
+};
+
 struct Row {
     std::string key;
     std::string label;
     std::string value;
     bool live = false;
+    bool toggle = false;
+    bool on = false;
 };
 
 bool live(const std::string& key);
@@ -29,10 +41,13 @@ public:
     void select(size_t index);
     std::vector<Row> rows() const;
     std::string handle(Action action);
+    const Hover& hover() const { return hover_; }
+    bool set_hover(const Hover& hover);
 
 private:
     bool open_ = false;
     size_t selection_ = 0;
+    Hover hover_;
 };
 
 class Repeat {
@@ -69,6 +84,9 @@ struct Rect {
 Layout layout(int client_height, size_t rows);
 Rect place(int client_width, int client_height, int width, int height);
 int row_at(const Layout& layout, const Rect& placed, int x, int y);
+Rect control_rect(const Layout& layout, size_t row);
+Rect close_rect(const Layout& layout);
+Hover hit_test(const Layout& layout, const Rect& placed, int x, int y);
 
 struct Image {
     std::vector<uint32_t> pixels;

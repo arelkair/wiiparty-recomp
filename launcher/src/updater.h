@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 
 struct Release {
@@ -9,6 +10,12 @@ struct Release {
     std::string sha256;
     std::string summary;
     std::string page;
+    std::map<std::string, std::string> localized;
+
+    const std::string& summary_for(const char* language) const {
+        auto found = localized.find(language);
+        return found == localized.end() || found->second.empty() ? summary : found->second;
+    }
 };
 
 bool newer_version(const std::string& candidate, const std::string& current);

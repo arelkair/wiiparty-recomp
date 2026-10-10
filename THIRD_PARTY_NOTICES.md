@@ -42,10 +42,11 @@ All components adapted from the **Dolphin Emulator** originate from a source sna
 - **Upstream Origin:** `Source/Core/Core/HW/WiimoteEmu/EmuSubroutines.cpp`, `WiimoteEmu.cpp`, and `Camera.cpp`.
 - **Copyright:** Copyright 2010/2019 Dolphin Emulator Project.
 - **License Compliance:** `SPDX-License-Identifier: GPL-2.0-or-later`.
-- **IP Isolation Note:** Upstream motion simulation (`Dynamics.cpp`), extensions, MotionPlus, speaker decoders, and cryptography layers were completely omitted.
+- **IP Isolation Note:** Upstream motion simulation (`Dynamics.cpp`), extensions, MotionPlus and cryptography layers were completely omitted.
 - **Engineering Changes (2026-09-23):** 
   - Implemented a clean-room custom mapping math from PC pointer to dual IR coordinates, calibrated directly against native KPAD reports.
   - Linked reporting events back into the Bluetooth interface via lightweight callbacks.
+  - Added the speaker stream decoder (2026-10-10) after `Source/Core/Core/HW/WiimoteEmu/Speaker.cpp`: 4-bit Yamaha ADPCM (two 16-entry lookup tables and the predictor/step update, which upstream marks as based on the ffmpeg project's decoder, copyright 2001-2003 its authors) and signed 8-bit PCM, with the register layout, sample-rate formula and volume scaling of the upstream file. Output goes to this project's own mixer (`engine/src/audio/audio.cpp`).
 
 ### 4. DSP Hardware Core & Free Interpreter ROMs
 - **Repository Files:** Full tree under `third_party/dolphin/` (Maintains upstream structural isolation).

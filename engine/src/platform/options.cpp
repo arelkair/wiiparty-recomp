@@ -15,7 +15,7 @@ namespace {
 
 constexpr const char* kLiveKeys[] = {
     "video.scale",         "video.fullscreen",    "video.copy_filter",   "input.gamepads", "input.auto_grip",
-    "input.real_wiimote_mouse", "input.wake_on_mouse", "input.hide_cursor",   "system.skip_notices", "system.options_menu", "audio.mute", "saves.backups", "system.interface_language",
+    "input.real_wiimote_mouse", "input.wake_on_mouse", "input.hide_cursor",   "system.skip_notices", "system.options_menu", "audio.mute", "audio.wiimote_speaker", "saves.backups", "system.interface_language",
 };
 
 struct Language {
@@ -131,6 +131,15 @@ std::string step_value(const std::string& key, const std::string& value, int ste
 
 void Menu::set_open(bool open) {
     open_ = open;
+    hover_ = Hover{};
+}
+
+bool Menu::set_hover(const Hover& hover) {
+    if (hover_ == hover) {
+        return false;
+    }
+    hover_ = hover;
+    return true;
 }
 
 void Menu::select(size_t index) {
@@ -148,6 +157,9 @@ std::vector<Row> Menu::rows() const {
         row.label = ui::label(key.c_str());
         row.value = shown_value(key, settings::text(key.c_str(), nullptr));
         row.live = live(key);
+        std::vector<std::string> options = choices(key);
+        row.toggle = options.size() == 2 && options[0] == "0" && options[1] == "1";
+        row.on = row.toggle && enabled_text(settings::text(key.c_str(), nullptr));
         result.push_back(row);
     }
     return result;
@@ -238,6 +250,55 @@ int row_at(const Layout& layout, const Rect& placed, int x, int y) {
     }
     int64_t index = (by - top) / layout.row_height;
     return index < static_cast<int64_t>(layout.rows) ? static_cast<int>(index) : -1;
+}
+
+Rect control_rect(const Layout& layout, size_t row) {
+    Rect result;
+    int unit = layout.unit;
+    int rows_top = layout.padding + layout.title_height;
+    result.width = unit * 10;
+    result.height = unit * 3 / 2;
+    result.x = layout.width - layout.padding - unit / 2 - result.width;
+    result.y = rows_top + static_cast<int>(row) * layout.row_height + (layout.row_height - result.height) / 2;
+    return result;
+}
+
+Rect close_rect(const Layout& layout) {
+    Rect result;
+    int unit = layout.unit;
+    result.width = unit * 2;
+    result.height = unit * 2;
+    result.x = layout.width - layout.padding - result.width;
+    result.y = layout.padding + (layout.title_height - unit / 2 - result.height) / 2;
+    return result;
+}
+
+Hover hit_test(const Layout& layout, const Rect& placed, int x, int y) {
+    Hover result;
+    if (placed.width <= 0 || placed.height <= 0 || x < placed.x || y < placed.y || x >= placed.x + placed.width || y >= placed.y + placed.height) {
+        return result;
+    }
+    int64_t bx = static_cast<int64_t>(x - placed.x) * layout.width / placed.width;
+    int64_t by = static_cast<int64_t>(y - placed.y) * layout.height / placed.height;
+    Rect close = close_rect(layout);
+    int margin = layout.unit / 2;
+    if (bx >= close.x - margin && bx < close.x + close.width + margin && by >= close.y - margin && by < close.y + close.height + margin) {
+        result.part = Part::Close;
+        return result;
+    }
+    int row = row_at(layout, placed, x, y);
+    if (row < 0) {
+        return result;
+    }
+    result.row = row;
+    result.part = Part::Label;
+    Rect control = control_rect(layout, static_cast<size_t>(row));
+    int top = layout.padding + layout.title_height + row * layout.row_height;
+    if (bx >= control.x - margin && bx < control.x + control.width + margin && by >= top && by < top + layout.row_height) {
+        int arrow = layout.unit * 2;
+        result.part = bx < control.x + arrow ? Part::Previous : bx >= control.x + control.width - arrow ? Part::Next : Part::Value;
+    }
+    return result;
 }
 
 void show_overlay(Image image) {

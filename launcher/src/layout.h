@@ -34,17 +34,21 @@ inline void row(float width, const char* label, const char* detail, float contro
     const ui::Palette& p = ui::palette();
     ImVec2 top = ImGui::GetCursorScreenPos();
     float pad = px(18);
-    ImGui::SetCursorScreenPos(top + ImVec2(pad, px(14)));
-    ImGui::BeginGroup();
     float text_width = width - pad * 2 - px(control_width) - px(24);
+    float content = ui::text_size(label, Font::Regular, ui::size::kBody, text_width).y;
+    if (detail && *detail) {
+        content += px(3) + ui::text_size(detail, Font::Regular, ui::size::kDetail, text_width).y;
+    }
+    float height = std::max(content + px(28), px(control_height) + px(26));
+    ImGui::SetCursorScreenPos(top + ImVec2(pad, std::round((height - content) * 0.5f)));
+    ImGui::BeginGroup();
     ui::text(label, Font::Regular, ui::size::kBody, p.text, text_width);
     if (detail && *detail) {
         ui::gap(3);
         ui::text(detail, Font::Regular, ui::size::kDetail, p.secondary, text_width);
     }
     ImGui::EndGroup();
-    float bottom = ImGui::GetItemRectMax().y + px(14);
-    float height = bottom - top.y;
+    float bottom = top.y + height;
     ImGui::SetCursorScreenPos(ImVec2(top.x + width - pad - px(control_width), top.y + std::round((height - px(control_height)) * 0.5f)));
     control();
     ImGui::SetCursorScreenPos(ImVec2(top.x, bottom));

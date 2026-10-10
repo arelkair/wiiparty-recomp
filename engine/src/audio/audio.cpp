@@ -58,6 +58,13 @@ struct Frame {
 
 std::mutex g_queue_mutex;
 std::deque<Frame> g_queue;
+constexpr uint32_t kSpeakerChannels = 4;
+struct SpeakerChannel {
+    std::deque<float> queue;
+    double phase = 0.0;
+    float last = 0.0f;
+};
+SpeakerChannel g_speakers[kSpeakerChannels];
 uint32_t g_source_rate = 32000;
 bool muted() {
     static const settings::LiveFlag value("audio.mute", "WP_MUTE");
@@ -141,6 +148,13 @@ public:
                         if (!g_queue.empty()) {
                             history_[kTaps - 1] = g_queue.front();
                             g_queue.pop_front();
+                            for (SpeakerChannel& speaker : g_speakers) {
+                                if (!speaker.queue.empty()) {
+                                    history_[kTaps - 1].left += speaker.queue.front();
+                                    history_[kTaps - 1].right += speaker.queue.front();
+                                    speaker.queue.pop_front();
+                                }
+                            }
                         } else {
                             missing_++;
                             primed_ = false;
@@ -351,6 +365,27 @@ void update() {
 
 void start_output() {
     std::thread(output_thread).detach();
+}
+
+void push_speaker(uint32_t channel, const int16_t* samples, size_t count, uint32_t rate, float volume) {
+    if (channel >= kSpeakerChannels || rate == 0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_queue_mutex);
+    SpeakerChannel& speaker = g_speakers[channel];
+    double step = static_cast<double>(rate) / g_source_rate;
+    size_t limit = static_cast<size_t>(kMaxLatency * g_source_rate);
+    for (size_t i = 0; i < count; i++) {
+        float next = samples[i] / 32768.0f * volume;
+        while (speaker.phase < 1.0) {
+            if (speaker.queue.size() < limit) {
+                speaker.queue.push_back(speaker.last + (next - speaker.last) * static_cast<float>(speaker.phase));
+            }
+            speaker.phase += step;
+        }
+        speaker.phase -= 1.0;
+        speaker.last = next;
+    }
 }
 
 void push(const int16_t* frames, size_t count, uint32_t rate) {

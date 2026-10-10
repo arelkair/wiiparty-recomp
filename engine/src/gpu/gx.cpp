@@ -172,6 +172,15 @@ std::atomic<uint64_t> g_frames_drawn{0};
 int g_log_from = std::getenv("WP_LOG_FROM") ? std::atoi(std::getenv("WP_LOG_FROM")) : 0;
 const char* g_log_level = std::getenv("WP_LOG_GX");
 bool g_log = g_log_level != nullptr;
+bool g_seen_register[3][0x1100] = {};
+
+void note_register(int kind, uint32_t index, uint32_t value) {
+    if (g_log && index < 0x1100 && !g_seen_register[kind][index]) {
+        g_seen_register[kind][index] = true;
+        log::write("gx", "register %s %04x first value %08x", kind == 0 ? "bp" : (kind == 1 ? "cp" : "xf"), index, value);
+    }
+}
+
 bool g_log_draws = g_log_level != nullptr && g_log_level[0] == '2';
 int g_logged_draws = 0;
 int g_logged_prepared = 0;
@@ -1149,6 +1158,7 @@ void load_bp(uint32_t word) {
     uint32_t reg = word >> 24;
     uint32_t value = word & 0xFFFFFF;
     g_stats.bp_writes++;
+    note_register(0, reg, value);
     if (reg == kBpMask) {
         g_bp_mask = value;
         return;
@@ -1175,6 +1185,7 @@ void load_bp(uint32_t word) {
 
 void load_cp(uint8_t reg, uint32_t value) {
     g_stats.cp_writes++;
+    note_register(1, reg, value);
     if (reg == 0x50) {
         g_vcd_low = value;
     } else if (reg == 0x60) {
@@ -1190,6 +1201,9 @@ void load_cp(uint8_t reg, uint32_t value) {
 
 void write_xf(uint32_t address, uint32_t value) {
     if (address < kXfSize) {
+        if (address >= 0x1000) {
+            note_register(2, address, value);
+        }
         g_xf[address] = value;
     }
 }

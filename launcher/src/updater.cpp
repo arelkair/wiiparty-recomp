@@ -383,6 +383,28 @@ bool newer_version(const std::string& candidate, const std::string& current) {
     return compare(parse_version(candidate), parse_version(current)) > 0;
 }
 
+void read_summary(const std::string& body, Release& release) {
+    std::string first = body.substr(0, body.find_first_of("\r\n"));
+    size_t dash = first.find("** - ");
+    release.summary = dash == std::string::npos ? first : first.substr(dash + 5);
+    release.localized.clear();
+    const std::string marker = "<!-- summary.";
+    size_t at = 0;
+    while ((at = body.find(marker, at)) != std::string::npos) {
+        size_t colon = body.find(':', at);
+        size_t close = body.find(" -->", at);
+        if (colon == std::string::npos || close == std::string::npos || colon > close) {
+            break;
+        }
+        std::string code = body.substr(at + marker.size(), colon - at - marker.size());
+        size_t start = body.find_first_not_of(' ', colon + 1);
+        if (start != std::string::npos && start < close) {
+            release.localized[code] = body.substr(start, close - start);
+        }
+        at = close;
+    }
+}
+
 bool latest_release(Release& release, Release& current, const std::string& current_version, std::string& error) {
     std::string body;
     if (!fetch_text(kReleasesUrl, body, error)) {
@@ -401,12 +423,9 @@ bool latest_release(Release& release, Release& current, const std::string& curre
         std::string tag = entry["tag_name"].text;
         std::string version = tag.rfind('v', 0) == 0 ? tag.substr(1) : tag;
         if (version == current_version) {
-            std::string body = entry["body"].text;
-            std::string first = body.substr(0, body.find_first_of("\r\n"));
-            size_t dash = first.find("** - ");
             current.version = version;
             current.page = entry["html_url"].text;
-            current.summary = dash == std::string::npos ? first : first.substr(dash + 5);
+            read_summary(entry["body"].text, current);
         }
         if (found && !newer_version(tag, release.version)) {
             continue;
@@ -418,10 +437,7 @@ bool latest_release(Release& release, Release& current, const std::string& curre
                 release.url = asset["browser_download_url"].text;
                 release.sha256 = digest.substr(7);
                 release.page = entry["html_url"].text;
-                std::string body = entry["body"].text;
-                std::string first = body.substr(0, body.find_first_of("\r\n"));
-                size_t dash = first.find("** - ");
-                release.summary = dash == std::string::npos ? first : first.substr(dash + 5);
+                read_summary(entry["body"].text, release);
                 found = true;
             }
         }

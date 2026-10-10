@@ -13,8 +13,10 @@
 #include <cstring>
 #include <numeric>
 
+#include "wp/audio.h"
 #include "wp/gamepad.h"
 #include "wp/input.h"
+#include "wp/settings.h"
 
 namespace wp::wiimote {
 
@@ -100,6 +102,7 @@ struct State {
     std::array<uint8_t, kEepromSize> eeprom{};
     std::array<uint8_t, 0x100> camera{};
     std::array<uint8_t, 0x100> speaker_registers{};
+    SpeakerDecoder decoder;
     ReadRequest read;
     std::chrono::steady_clock::time_point next_report{};
     double roll = 0.0;
@@ -434,6 +437,32 @@ void send_data_report(State& state, const Sender& send, const input::Sample& sam
 
 }
 
+constexpr int kYamahaScale[16] = {230, 230, 230, 230, 307, 409, 512, 614, 230, 230, 230, 230, 307, 409, 512, 614};
+constexpr int kYamahaDifference[16] = {1, 3, 5, 7, 9, 11, 13, 15, -1, -3, -5, -7, -9, -11, -13, -15};
+
+uint32_t SpeakerDecoder::decode(bool pcm, const uint8_t* data, uint32_t size, int16_t* out) {
+    if (pcm) {
+        for (uint32_t i = 0; i < size; i++) {
+            out[i] = static_cast<int16_t>(static_cast<int8_t>(data[i]) * 256);
+        }
+        return size;
+    }
+    auto expand = [this](uint32_t nibble) {
+        predictor = std::clamp(predictor + step * kYamahaDifference[nibble] / 8, -32768, 32767);
+        step = std::clamp((step * kYamahaScale[nibble]) >> 8, 127, 24576);
+        return static_cast<int16_t>(predictor);
+    };
+    for (uint32_t i = 0; i < size; i++) {
+        out[2 * i] = expand((data[i] >> 4) & 0x0F);
+        out[2 * i + 1] = expand(data[i] & 0x0F);
+    }
+    return size * 2;
+}
+
+uint32_t speaker_rate(bool pcm, uint16_t divisor) {
+    return divisor == 0 ? 0 : (pcm ? 12000000u : 6000000u) / divisor * 2;
+}
+
 void reset(uint32_t index) {
     if (index >= kMaxWiimotes) {
         return;
@@ -558,8 +587,30 @@ void output_report(uint32_t index, const uint8_t* data, uint32_t size, const Sen
         process_read(state, send);
         break;
     }
-    case kReportSpeakerData:
+    case kReportSpeakerData: {
+        static const settings::LiveFlag enabled("audio.wiimote_speaker", nullptr);
+        uint32_t bytes = body[0] >> 3;
+        if (!state.speaker || bytes > 20 || bytes + 1 > length) {
+            break;
+        }
+        uint8_t format = state.speaker_registers[2];
+        bool pcm = format == 0x40;
+        uint16_t divisor = static_cast<uint16_t>(state.speaker_registers[3] | (state.speaker_registers[4] << 8));
+        uint32_t rate = speaker_rate(pcm, divisor);
+        if (rate == 0 || bytes == 0 || (format != 0x00 && format != 0x40)) {
+            break;
+        }
+        int16_t samples[40];
+        uint32_t count = state.decoder.decode(pcm, body + 1, bytes, samples);
+        if (state.speaker_mute || !enabled()) {
+            break;
+        }
+        uint32_t level = state.speaker_registers[5];
+        uint32_t divisor_max = pcm ? 0xFF : 0x7F;
+        uint32_t gain = std::min<uint32_t>(level * 256 / std::max(level, divisor_max), 255);
+        audio::push_speaker(index, samples, count, rate, gain / 256.0f);
         break;
+    }
     default:
         if (g_log) {
             std::fprintf(stderr, "WIIMOTE %u unknown output report %02x\n", index, id);

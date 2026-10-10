@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -27,6 +28,13 @@ constexpr uint32_t kSeparator = 0x3A3A3E;
 constexpr uint32_t kText = 0xFFFFFF;
 constexpr uint32_t kMuted = 0xA1A1A6;
 constexpr uint32_t kAccent = 0xD4146F;
+constexpr uint32_t kAccentHover = 0xE8307F;
+constexpr uint32_t kHover = 0x202023;
+constexpr uint32_t kControl = 0x1E1E21;
+constexpr uint32_t kControlHover = 0x2A2A2E;
+constexpr uint32_t kOff = 0x4A4A50;
+constexpr uint32_t kOffHover = 0x5C5C63;
+constexpr uint32_t kDanger = 0xC42B1C;
 constexpr uint32_t kPanelAlpha = 236;
 constexpr char32_t kEllipsis = 0x2026;
 
@@ -39,6 +47,10 @@ struct Font {
 };
 
 std::string matched_font(const char* pattern) {
+#ifdef _WIN32
+    (void)pattern;
+    return "";
+#else
     std::string command = std::string("fc-match -f '%{file}' '") + pattern + "' 2>/dev/null";
     FILE* pipe = popen(command.c_str(), "r");
     if (!pipe) {
@@ -51,6 +63,7 @@ std::string matched_font(const char* pattern) {
     }
     pclose(pipe);
     return path;
+#endif
 }
 
 Font load_font(bool bold) {
@@ -62,6 +75,12 @@ Font load_font(bool bold) {
         "/System/Library/Fonts/Supplemental/Arial.ttf",      "/Library/Fonts/Arial.ttf",
     };
     candidates.insert(candidates.end(), std::begin(fallbacks), std::end(fallbacks));
+    if (const char* windows = std::getenv("WINDIR")) {
+        std::string folder = std::string(windows) + "/Fonts/";
+        candidates.insert(candidates.begin(), folder + (bold ? "seguisb.ttf" : "segoeui.ttf"));
+        candidates.push_back(folder + "segoeui.ttf");
+        candidates.push_back(folder + "arial.ttf");
+    }
     Font font;
     for (const std::string& path : candidates) {
         std::error_code error;
@@ -152,6 +171,42 @@ struct Canvas {
         }
     }
 
+    void fill_round(int left, int top, int right, int bottom, int radius, uint32_t color) {
+        radius = std::max(0, std::min({radius, (right - left) / 2, (bottom - top) / 2}));
+        for (int y = std::max(top, 0); y < std::min(bottom, height); y++) {
+            for (int x = std::max(left, 0); x < std::min(right, width); x++) {
+                double cx = x + 0.5;
+                double cy = y + 0.5;
+                double ox = cx < left + radius ? left + radius - cx : cx > right - radius ? cx - (right - radius) : 0.0;
+                double oy = cy < top + radius ? top + radius - cy : cy > bottom - radius ? cy - (bottom - radius) : 0.0;
+                double coverage = 1.0;
+                if (ox > 0.0 && oy > 0.0) {
+                    coverage = std::clamp(radius - std::sqrt(ox * ox + oy * oy) + 0.5, 0.0, 1.0);
+                }
+                blend(x, y, color, static_cast<unsigned>(coverage * 255.0 + 0.5));
+            }
+        }
+    }
+
+    void dot(int x, int y, int stroke, uint32_t color) {
+        fill(x - stroke / 2, y - stroke / 2, x - stroke / 2 + stroke, y - stroke / 2 + stroke, color);
+    }
+
+    void cross(int cx, int cy, int half, int stroke, uint32_t color) {
+        for (int k = -half; k <= half; k++) {
+            dot(cx + k, cy + k, stroke, color);
+            dot(cx + k, cy - k, stroke, color);
+        }
+    }
+
+    void chevron(int cx, int cy, int half, int direction, int stroke, uint32_t color) {
+        for (int k = 0; k <= half; k++) {
+            int x = cx + direction * (half / 2 - k);
+            dot(x, cy - half + k, stroke, color);
+            dot(x, cy + half - k, stroke, color);
+        }
+    }
+
     void blend(int x, int y, uint32_t color, unsigned coverage) {
         if (x < 0 || y < 0 || x >= width || y >= height || coverage == 0) {
             return;
@@ -234,23 +289,56 @@ Image render(const Menu& menu, int client_height) {
     Face row_face = make_face(false, unit);
     Face small_face = make_face(false, unit * 4 / 5);
     const ui::Text& strings = ui::text();
+    const Hover& hover = menu.hover();
     int left = frame.padding;
     int right = frame.width - frame.padding;
+    int stroke = std::max(2, unit / 7);
     canvas.text(title_face, kText, strings.menu_title, left, frame.padding, right, frame.padding + frame.title_height - unit / 2, Align::Left, false);
+    Rect close = close_rect(frame);
+    bool close_hover = hover.part == Part::Close;
+    if (close_hover) {
+        canvas.fill_round(close.x, close.y, close.x + close.width, close.y + close.height, unit / 2, kDanger);
+    }
+    canvas.cross(close.x + close.width / 2, close.y + close.height / 2, unit / 3, stroke, close_hover ? kText : kMuted);
     int rows_top = frame.padding + frame.title_height;
     canvas.fill(left, rows_top - unit / 2, right, rows_top - unit / 2 + 1, kSeparator);
-    int value_width = unit * 9;
     for (size_t i = 0; i < rows.size(); i++) {
         const Row& row = rows[i];
         bool selected = i == menu.selection();
+        bool hovered = hover.row == static_cast<int>(i);
         int top = rows_top + static_cast<int>(i) * frame.row_height;
         int bottom = top + frame.row_height;
-        if (selected) {
-            canvas.fill(left - unit / 2, top, right + unit / 2, bottom, kSelected);
-            canvas.fill(left - unit / 2, top, left - unit / 2 + std::max(3, unit / 5), bottom, kAccent);
+        if (selected || hovered) {
+            canvas.fill_round(left - unit / 2, top + 2, right + unit / 2, bottom - 2, unit / 2, selected ? kSelected : kHover);
         }
-        int value_left = right - value_width;
-        canvas.text(row_face, selected ? kAccent : kText, row.value, value_left, top, right, bottom, Align::Right, false);
+        if (selected) {
+            canvas.fill_round(left - unit / 2 + unit / 4, top + unit / 2, left - unit / 2 + unit / 4 + std::max(3, unit / 5), bottom - unit / 2, std::max(2, unit / 10), kAccent);
+        }
+        Rect control = control_rect(frame, i);
+        int value_left = control.x;
+        if (row.toggle) {
+            int width = unit * 3;
+            int switch_left = control.x + control.width - width;
+            value_left = switch_left;
+            uint32_t track = row.on ? kAccent : kOff;
+            if (hovered && hover.part != Part::Label) {
+                track = row.on ? kAccentHover : kOffHover;
+            }
+            canvas.fill_round(switch_left, control.y, switch_left + width, control.y + control.height, control.height / 2, track);
+            int knob = control.height - unit / 2;
+            int knob_left = row.on ? switch_left + width - knob - unit / 4 : switch_left + unit / 4;
+            canvas.fill_round(knob_left, control.y + unit / 4, knob_left + knob, control.y + unit / 4 + knob, knob / 2, kText);
+        } else {
+            canvas.fill_round(control.x, control.y, control.x + control.width, control.y + control.height, control.height / 2, hovered ? kControlHover : kControl);
+            int arrow = unit * 2;
+            uint32_t previous_color = hovered && hover.part == Part::Previous ? kAccent : kMuted;
+            uint32_t next_color = hovered && hover.part == Part::Next ? kAccent : kMuted;
+            int cy = control.y + control.height / 2;
+            canvas.chevron(control.x + arrow / 2, cy, unit / 3, 1, stroke, previous_color);
+            canvas.chevron(control.x + control.width - arrow / 2, cy, unit / 3, -1, stroke, next_color);
+            canvas.text(row_face, selected ? kAccent : kText, row.value, control.x + arrow, control.y, control.x + control.width - arrow, control.y + control.height,
+                        Align::Center, true);
+        }
         int label_right = value_left - unit / 2;
         if (!row.live) {
             int note_width = static_cast<int>(std::ceil(text_width(small_face, decode(strings.menu_restart))));

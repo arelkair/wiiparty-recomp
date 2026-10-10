@@ -121,12 +121,35 @@ std::string menu_click(void* handle, int x, int y, bool right) {
         return "";
     }
     Layout frame = layout(height, settings::keys().size());
-    int row = row_at(frame, place(width, height, frame.width, frame.height), x, y);
-    if (row < 0) {
+    Hover hit = hit_test(frame, place(width, height, frame.width, frame.height), x, y);
+    if (hit.part == Part::Close) {
+        return act(handle, Action::Close);
+    }
+    if (hit.row < 0) {
         return "";
     }
-    g_menu.select(static_cast<size_t>(row));
-    return act(handle, Action::Next);
+    g_menu.select(static_cast<size_t>(hit.row));
+    if (hit.part == Part::Label) {
+        sync(handle);
+        return "";
+    }
+    return act(handle, hit.part == Part::Previous ? Action::Previous : Action::Next);
+}
+
+void menu_hover(void* handle, int x, int y) {
+    if (!g_menu.open()) {
+        return;
+    }
+    int width = 0;
+    int height = 0;
+    Hover hit;
+    if (video::client_size(width, height)) {
+        Layout frame = layout(height, settings::keys().size());
+        hit = hit_test(frame, place(width, height, frame.width, frame.height), x, y);
+    }
+    if (g_menu.set_hover(hit)) {
+        sync(handle);
+    }
 }
 
 std::string poll_gamepads(void* window) {

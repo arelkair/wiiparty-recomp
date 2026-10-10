@@ -326,6 +326,7 @@ void App::uninstall_modal() {
     ImGui::SetNextWindowSize(ImVec2(px(480), 0));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(24), px(22)));
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, px(16));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, px(16));
     if (ImGui::BeginPopupModal("uninstall", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
         float inner = px(480) - px(48);
         ui::text(t.uninstall_label, Font::Semibold, 17.0f, p.text);
@@ -354,7 +355,7 @@ void App::uninstall_modal() {
         }
         ImGui::EndPopup();
     }
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar(3);
 }
 
 void App::system_page(float width) {

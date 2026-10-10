@@ -31,6 +31,7 @@
 #include "wp/settings.h"
 #include "wp/ui_text.h"
 #include "wp/video.h"
+#include "wp/wiimote.h"
 
 namespace {
 
@@ -929,6 +930,27 @@ void test_options_repeat_and_layout() {
     CHECK(wp::options::row_at(frame, placed, middle, top + frame.row_height * 12) == -1);
     CHECK(wp::options::row_at(frame, placed, placed.x + 1, top) == -1);
     CHECK(wp::options::row_at(frame, placed, placed.x - 100, top) == -1);
+    wp::options::Rect control = wp::options::control_rect(frame, 2);
+    int control_y = placed.y + control.y + control.height / 2;
+    wp::options::Hover hit = wp::options::hit_test(frame, placed, middle, control_y);
+    CHECK(hit.row == 2 && hit.part == wp::options::Part::Label);
+    hit = wp::options::hit_test(frame, placed, placed.x + control.x + frame.unit / 2, control_y);
+    CHECK(hit.row == 2 && hit.part == wp::options::Part::Previous);
+    hit = wp::options::hit_test(frame, placed, placed.x + control.x + control.width / 2, control_y);
+    CHECK(hit.row == 2 && hit.part == wp::options::Part::Value);
+    hit = wp::options::hit_test(frame, placed, placed.x + control.x + control.width - frame.unit / 2, control_y);
+    CHECK(hit.row == 2 && hit.part == wp::options::Part::Next);
+    wp::options::Rect close = wp::options::close_rect(frame);
+    hit = wp::options::hit_test(frame, placed, placed.x + close.x + close.width / 2, placed.y + close.y + close.height / 2);
+    CHECK(hit.row == -1 && hit.part == wp::options::Part::Close);
+    hit = wp::options::hit_test(frame, placed, placed.x - 5, top);
+    CHECK(hit.row == -1 && hit.part == wp::options::Part::None);
+    wp::options::Menu hovering;
+    CHECK(hovering.set_hover(hit) == false);
+    CHECK(hovering.set_hover(wp::options::Hover{3, wp::options::Part::Next}) == true);
+    CHECK(hovering.set_hover(wp::options::Hover{3, wp::options::Part::Next}) == false);
+    hovering.set_open(true);
+    CHECK(hovering.hover().row == -1);
 
     uint64_t version = 0;
     wp::options::Image image;
@@ -1025,6 +1047,35 @@ void test_hollywood_registers() {
     }
 }
 
+void test_wiimote_speaker_decoder() {
+    wp::wiimote::SpeakerDecoder adpcm;
+    const uint8_t adpcm_data[3] = {0x80, 0x00, 0x77};
+    int16_t out[8] = {};
+    CHECK(adpcm.decode(false, adpcm_data, 3, out) == 6);
+    CHECK(out[0] == -15);
+    CHECK(out[1] == 0);
+    CHECK(out[2] == 15);
+    CHECK(out[3] == 30);
+    CHECK(out[4] > out[3]);
+    CHECK(out[5] > out[4]);
+    wp::wiimote::SpeakerDecoder big;
+    const uint8_t loud[40] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77,
+                              0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77, 0x77};
+    int16_t wide[80];
+    CHECK(big.decode(false, loud, 40, wide) == 80);
+    CHECK(wide[79] == 32767);
+    CHECK(big.step <= 24576);
+    wp::wiimote::SpeakerDecoder pcm;
+    const uint8_t samples[3] = {0x7F, 0x80, 0x00};
+    CHECK(pcm.decode(true, samples, 3, out) == 3);
+    CHECK(out[0] == 127 * 256);
+    CHECK(out[1] == -128 * 256);
+    CHECK(out[2] == 0);
+    CHECK(wp::wiimote::speaker_rate(false, 2000) == 6000);
+    CHECK(wp::wiimote::speaker_rate(true, 6000) == 4000);
+    CHECK(wp::wiimote::speaker_rate(false, 0) == 0);
+}
+
 void test_linked_fifo_registers() {
     constexpr uint32_t kBase = 0x00200000;
     constexpr uint32_t kRawEnd = kBase + 0x7C;
@@ -1094,6 +1145,7 @@ int main() {
     test_software_fma();
     test_hollywood_registers();
     test_linked_fifo_registers();
+    test_wiimote_speaker_decoder();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");

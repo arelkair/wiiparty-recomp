@@ -273,6 +273,13 @@ void handle_event(SDL_Window* window, const SDL_Event& event) {
         note_press(vk);
         return;
     }
+    case SDL_EVENT_MOUSE_MOTION: {
+        if (options::menu_open()) {
+            float density = SDL_GetWindowPixelDensity(window);
+            options::menu_hover(window, static_cast<int>(event.motion.x * density), static_cast<int>(event.motion.y * density));
+        }
+        return;
+    }
     case SDL_EVENT_MOUSE_WHEEL: {
         int delta = static_cast<int>(event.wheel.y * 120.0f);
         if (options::menu_open()) {

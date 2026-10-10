@@ -729,6 +729,7 @@ struct PendingBatch {
     bool early_depth = false;
     uint32_t top_left = 0;
     uint32_t bottom_right = 0;
+    uint32_t scissor_offset = 0;
 };
 
 Device g_device;
@@ -1255,10 +1256,10 @@ void flush_pending() {
     D3D11_VIEWPORT viewport{0, 0, static_cast<float>(scaled(kEfbWidth)), static_cast<float>(scaled(kEfbHeight)), 0.0f, 1.0f};
     context->RSSetViewports(1, &viewport);
     D3D11_RECT scissor;
-    scissor.left = static_cast<LONG>(((pending.top_left >> 12) & 0x7FF) - kScissorOffset);
-    scissor.top = static_cast<LONG>((pending.top_left & 0x7FF) - kScissorOffset);
-    scissor.right = static_cast<LONG>(((pending.bottom_right >> 12) & 0x7FF) - kScissorOffset + 1);
-    scissor.bottom = static_cast<LONG>((pending.bottom_right & 0x7FF) - kScissorOffset + 1);
+    scissor.left = static_cast<LONG>(((pending.top_left >> 12) & 0x7FF) - scissor_offset_x(pending.scissor_offset));
+    scissor.top = static_cast<LONG>((pending.top_left & 0x7FF) - scissor_offset_y(pending.scissor_offset));
+    scissor.right = static_cast<LONG>(((pending.bottom_right >> 12) & 0x7FF) - scissor_offset_x(pending.scissor_offset) + 1);
+    scissor.bottom = static_cast<LONG>((pending.bottom_right & 0x7FF) - scissor_offset_y(pending.scissor_offset) + 1);
     scissor.left = std::max<LONG>(scissor.left, 0);
     scissor.top = std::max<LONG>(scissor.top, 0);
     scissor.right = std::min<LONG>(scissor.right, kEfbWidth);
@@ -1337,7 +1338,7 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
     bool early_depth = (depth & 1) != 0 && (bp[0x43] & (1u << 6)) != 0 && alpha_test.can_pass && alpha_test.can_fail;
     PendingBatch& pending = g_pending;
     bool same = !pending.vertices.empty() && pending.blend == blend && pending.depth == depth && pending.early_depth == early_depth && pending.top_left == bp[0x20] &&
-                pending.bottom_right == bp[0x21] && std::memcmp(&pending.constants, &constants, sizeof constants) == 0 &&
+                pending.bottom_right == bp[0x21] && pending.scissor_offset == bp[kBpScissorOffset] && std::memcmp(&pending.constants, &constants, sizeof constants) == 0 &&
                 std::memcmp(pending.views, views, sizeof views) == 0 && std::memcmp(pending.samplers, samplers, sizeof samplers) == 0;
     if (!same) {
         flush_pending();
@@ -1349,6 +1350,7 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
         pending.early_depth = early_depth;
         pending.top_left = bp[0x20];
         pending.bottom_right = bp[0x21];
+        pending.scissor_offset = bp[kBpScissorOffset];
     }
     pending.vertices.insert(pending.vertices.end(), vertices, vertices + count);
 }

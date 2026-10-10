@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <memory>
@@ -335,7 +336,7 @@ void App::launcher_update_card(float width) {
     float text_width = width - px(release.page.empty() ? 230 : 420);
     if (!failed && !release.summary.empty()) {
         ui::gap(4);
-        ui::text(release.summary.c_str(), Font::Regular, ui::size::kDetail, p.text, text_width);
+        ui::text(release.summary_for(language_code()).c_str(), Font::Regular, ui::size::kDetail, p.text, text_width);
     }
     ui::gap(4);
     ui::text(detail.c_str(), Font::Regular, ui::size::kDetail, failed ? p.danger : p.secondary, text_width);
@@ -1078,6 +1079,7 @@ void App::repair_modal() {
     ImGui::SetNextWindowSize(ImVec2(px(440), 0));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(24), px(22)));
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, px(16));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, px(16));
     if (ImGui::BeginPopupModal("repair", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
         float inner = px(440) - px(48);
         int jobs = compile_jobs();
@@ -1100,7 +1102,7 @@ void App::repair_modal() {
         }
         ImGui::EndPopup();
     }
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar(3);
 }
 
 void App::refresh_backups() {
@@ -1169,6 +1171,7 @@ void App::restore_modal() {
     float shown = ui::ease_out(ui::animate(ImHashStr("restore-fade"), 1.0f, 16.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(24), px(22)));
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, px(16));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, px(16));
     if (ImGui::BeginPopupModal("restore", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
         if (restore_index_ < 0 || restore_index_ >= static_cast<int>(backups_.size())) {
             restore_index_ = -1;
@@ -1213,7 +1216,7 @@ void App::restore_modal() {
         }
         ImGui::EndPopup();
     }
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar(3);
 }
 
 void App::controls_page(float width) {
@@ -1263,6 +1266,88 @@ void App::controls_page(float width) {
     card.end();
 }
 
+namespace {
+
+std::string plain_markdown(const std::string& line) {
+    std::string out;
+    for (size_t i = 0; i < line.size(); i++) {
+        if (line.compare(i, 2, "**") == 0) {
+            i++;
+        } else if (line[i] == '`') {
+        } else if (line[i] == '[' && line.find("](", i) != std::string::npos && line.find(')', line.find("](", i)) != std::string::npos) {
+            size_t middle = line.find("](", i);
+            out += line.substr(i + 1, middle - i - 1);
+            i = line.find(')', middle);
+        } else {
+            out += line[i];
+        }
+    }
+    return out;
+}
+
+void markdown_body(std::string_view body, float width) {
+    const ui::Palette& p = ui::palette();
+    size_t position = 0;
+    bool blank = true;
+    while (position < body.size()) {
+        size_t end = body.find('\n', position);
+        std::string line(body.substr(position, end == std::string_view::npos ? std::string_view::npos : end - position));
+        position = end == std::string_view::npos ? body.size() : end + 1;
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
+            line.pop_back();
+        }
+        if (line.empty()) {
+            if (!blank) {
+                ui::gap(6);
+            }
+            blank = true;
+            continue;
+        }
+        blank = false;
+        if (line == "---") {
+            ui::gap(4);
+            ui::separator(width);
+            ui::gap(8);
+            continue;
+        }
+        size_t level = 0;
+        while (level < line.size() && line[level] == '#') {
+            level++;
+        }
+        if (level > 0 && level < line.size() && line[level] == ' ') {
+            ui::gap(level == 1 ? 6 : 4);
+            ui::text(plain_markdown(line.substr(level + 1)).c_str(), Font::Semibold, level == 1 ? ui::size::kLead : ui::size::kBody, p.text, width);
+            ui::gap(4);
+            continue;
+        }
+        float indent = 0.0f;
+        std::string text = line;
+        if (text.rfind("> ", 0) == 0) {
+            text = text.substr(2);
+            if (text.rfind("[!", 0) == 0) {
+                continue;
+            }
+            indent = 14.0f;
+        }
+        size_t spaces = text.find_first_not_of(' ');
+        if (spaces != std::string::npos && text.compare(spaces, 2, "- ") == 0) {
+            indent += 14.0f + static_cast<float>(spaces) * 5.0f;
+            text = "\xE2\x80\xA2 " + text.substr(spaces + 2);
+        }
+        text = plain_markdown(text);
+        if (indent > 0.0f) {
+            ImGui::Indent(px(indent));
+        }
+        ui::text(text.c_str(), Font::Regular, ui::size::kDetail, p.text, width - px(indent));
+        if (indent > 0.0f) {
+            ImGui::Unindent(px(indent));
+        }
+        ui::gap(2);
+    }
+}
+
+}
+
 void App::licenses_page(float width, float height) {
     const ui::Palette& p = ui::palette();
     const Texts& t = texts();
@@ -1291,13 +1376,17 @@ void App::licenses_page(float width, float height) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, p.surface);
     ImGui::BeginChild(license_ + 500, ImVec2(width - px(list_width) - px(20), room), ImGuiChildFlags_AlwaysUseWindowPadding);
     std::string_view body = blob(licenses[license_].blob);
-    ui::push_font(Font::Regular, ui::size::kDetail);
-    ImGui::PushStyleColor(ImGuiCol_Text, p.text);
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(body.data(), body.data() + body.size());
-    ImGui::PopTextWrapPos();
-    ImGui::PopStyleColor();
-    ui::pop_font();
+    if (std::strcmp(licenses[license_].blob, "license_notices") == 0) {
+        markdown_body(body, width - px(list_width) - px(60));
+    } else {
+        ui::push_font(Font::Regular, ui::size::kDetail);
+        ImGui::PushStyleColor(ImGuiCol_Text, p.text);
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextUnformatted(body.data(), body.data() + body.size());
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+        ui::pop_font();
+    }
     ImGui::EndChild();
     ImGui::PopStyleColor();
     ImGui::PopStyleVar(2);
@@ -1493,7 +1582,7 @@ void App::whats_new_card(float width) {
     ImGui::BeginGroup();
     ui::text(title.c_str(), Font::Semibold, ui::size::kBody, p.text);
     ui::gap(4);
-    ui::text(current.summary.c_str(), Font::Regular, ui::size::kDetail, p.secondary, width - px(330));
+    ui::text(current.summary_for(language_code()).c_str(), Font::Regular, ui::size::kDetail, p.secondary, width - px(330));
     ImGui::EndGroup();
     float bottom = ImGui::GetItemRectMax().y + px(18);
     float middle = top.y + std::round((bottom - top.y - px(36)) * 0.5f);

@@ -38,6 +38,7 @@ struct Capture {
     int width = 0;
     int height = 0;
     bool tried = false;
+    bool selected = false;
 };
 
 enum class Page { Game, Settings, Saves, Controls, Textures, Captures, System, Licenses, Count };
@@ -83,6 +84,12 @@ private:
     void list_captures();
     void load_capture(Capture& capture);
     void release_captures();
+    void capture_viewer();
+    void capture_delete_modal();
+    void open_capture_view(const std::vector<std::filesystem::path>& targets, size_t index);
+    void load_view_texture();
+    void close_capture_view();
+    bool crop_target(const std::filesystem::path& path);
     void system_page(float width);
     std::vector<std::pair<std::string, std::string>> diagnostics();
     int recommended_scale(bool& slowed);
@@ -170,6 +177,18 @@ private:
     std::vector<Capture> captures_;
     size_t captures_total_ = 0;
     bool captures_listed_ = false;
+    bool capture_view_open_ = false;
+    bool captures_selected_mode_ = false;
+    std::vector<std::filesystem::path> capture_targets_;
+    size_t capture_target_ = 0;
+    SDL_Texture* view_texture_ = nullptr;
+    int view_width_ = 0;
+    int view_height_ = 0;
+    ImVec2 crop_from_{0.0f, 0.0f};
+    ImVec2 crop_to_{0.0f, 0.0f};
+    bool crop_dragging_ = false;
+    bool captures_delete_open_ = false;
+    std::vector<std::filesystem::path> captures_delete_paths_;
     std::vector<std::pair<std::string, std::string>> system_lines_;
     int system_scale_ = 1;
     bool system_slowed_ = false;
