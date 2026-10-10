@@ -81,7 +81,21 @@ constexpr uint32_t kBpInvalidateTexture = 0x66;
 constexpr uint32_t kCpFifoBaseLow = 0xCC000020;
 constexpr uint32_t kCpFifoBaseHigh = 0xCC000022;
 constexpr uint32_t kPiFifoBase = 0xCC00300C;
+constexpr uint32_t kPiFifoEnd = 0xCC003010;
 constexpr uint32_t kPiFifoWritePointer = 0xCC003014;
+constexpr uint32_t kCpControl = 0xCC000002;
+constexpr uint32_t kPeControl = 0xCC00100A;
+constexpr uint16_t kPeTokenEnable = 0x0001;
+constexpr uint16_t kPeFinishEnable = 0x0002;
+constexpr uint16_t kPeFinishClear = 0x0008;
+constexpr uint32_t kCpFifoEndLow = 0xCC000024;
+constexpr uint32_t kCpDistanceLow = 0xCC000030;
+constexpr uint32_t kCpWritePointerLow = 0xCC000034;
+constexpr uint32_t kCpReadPointerLow = 0xCC000038;
+constexpr uint16_t kCpReadEnable = 0x0001;
+constexpr uint16_t kCpLinkEnable = 0x0010;
+constexpr unsigned kGatherPipeSize = 32;
+constexpr uint32_t kFifoPointerMask = 0x03FFFFE0;
 constexpr uint32_t kFifoPhysicalMask = 0x03FFFFFF;
 constexpr uint32_t kCopyToFramebuffer = 1u << 14;
 constexpr uint32_t kBpDrawDone = 0x45;
@@ -380,7 +394,28 @@ void read_color(const uint8_t* p, uint32_t format, float* out) {
     out[3] = a;
 }
 
-const uint8_t* array_element(uint32_t array, uint32_t index) {
+struct ArrayState {
+    uint32_t address;
+    size_t stride;
+    const uint8_t* base;
+};
+
+ArrayState g_arrays[kArrayCount];
+uint32_t g_default_texture_matrix[kTexCoordCount];
+
+void begin_vertex_arrays() {
+    for (uint32_t i = 0; i < kArrayCount; i++) {
+        uint32_t address = kRamBase | (g_array_base[i] & kArrayAddressMask);
+        g_arrays[i].address = address;
+        g_arrays[i].stride = g_array_stride[i];
+        g_arrays[i].base = host(address);
+    }
+    for (uint32_t i = 0; i < kTexCoordCount; i++) {
+        g_default_texture_matrix[i] = i < 4 ? (g_xf[0x1018] >> (6 + 6 * i)) & 0x3F : (g_xf[0x1019] >> (6 * (i - 4))) & 0x3F;
+    }
+}
+
+const uint8_t* array_element_live(uint32_t array, uint32_t index) {
     uint32_t address = kRamBase | (g_array_base[array] & kArrayAddressMask);
     size_t offset = static_cast<size_t>(index) * g_array_stride[array];
     if (!render::guest_range_valid(address + offset, kArrayReadMargin)) {
@@ -388,6 +423,16 @@ const uint8_t* array_element(uint32_t array, uint32_t index) {
         return zeros;
     }
     return host(address) + offset;
+}
+
+const uint8_t* array_element(uint32_t array, uint32_t index) {
+    const ArrayState& state = g_arrays[array];
+    size_t offset = static_cast<size_t>(index) * state.stride;
+    if (static_cast<size_t>((state.address + offset) & kAddressMask) + kArrayReadMargin > kPhysicalSize) {
+        static const uint8_t zeros[kArrayReadMargin] = {};
+        return zeros;
+    }
+    return state.base + offset;
 }
 
 const uint8_t* fetch(const Element& element, uint32_t array, const uint8_t*& stream) {
@@ -415,7 +460,7 @@ Vertex decode_vertex(const Layout& layout, const uint8_t*& stream) {
         stream++;
     }
     for (uint32_t i = 0; i < kTexCoordCount; i++) {
-        vertex.texture_matrix[i] = i < 4 ? (g_xf[0x1018] >> (6 + 6 * i)) & 0x3F : (g_xf[0x1019] >> (6 * (i - 4))) & 0x3F;
+        vertex.texture_matrix[i] = g_default_texture_matrix[i];
         if (layout.texture_matrices & (1u << i)) {
             vertex.texture_matrix[i] = stream[0] & 0x3F;
             stream++;
@@ -472,7 +517,7 @@ void rasterize_colors(const Vertex& vertex, const float* eye, float out[2][4]) {
         lighting::transform_normal(g_xf, vertex.position_matrix, vertex.normal, normal);
     }
     uint8_t result[2][4];
-    lighting::light_channels(g_xf, eye, normal, vertex_color, result);
+    lighting::light_channels(eye, normal, vertex_color, result);
     for (uint32_t k = 0; k < 2; k++) {
         for (uint32_t i = 0; i < 4; i++) {
             out[k][i] = static_cast<float>(result[k][i]) / 255.0f;
@@ -491,14 +536,38 @@ void transform_position(const Vertex& vertex, float* eye) {
     }
 }
 
-void generate_texture_coordinates(const Vertex& vertex, float out[8][3]) {
-    uint32_t count = g_bp[0x00] & 15;
-    bool dual = (g_xf[0x1012] & 1) != 0;
-    for (uint32_t i = 0; i < count && i < kTexCoordCount; i++) {
+struct TexGenUnit {
+    uint32_t source;
+    bool projected;
+    bool abc1;
+    uint32_t post;
+};
+
+struct TexGenState {
+    uint32_t count;
+    bool dual;
+    TexGenUnit unit[kTexCoordCount];
+};
+
+TexGenState g_texgen;
+
+void begin_texture_coordinates() {
+    g_texgen.count = std::min<uint32_t>(g_bp[0x00] & 15, kTexCoordCount);
+    g_texgen.dual = (g_xf[0x1012] & 1) != 0;
+    for (uint32_t i = 0; i < g_texgen.count; i++) {
         uint32_t info = g_xf[0x1040 + i];
-        uint32_t source = (info >> 7) & 31;
-        bool projected = ((info >> 1) & 1) != 0;
-        bool abc1 = ((info >> 2) & 1) != 0;
+        g_texgen.unit[i].source = (info >> 7) & 31;
+        g_texgen.unit[i].projected = ((info >> 1) & 1) != 0;
+        g_texgen.unit[i].abc1 = ((info >> 2) & 1) != 0;
+        g_texgen.unit[i].post = g_xf[0x1050 + i];
+    }
+}
+
+void generate_texture_coordinates(const Vertex& vertex, float out[8][3]) {
+    const bool dual = g_texgen.dual;
+    for (uint32_t i = 0; i < g_texgen.count; i++) {
+        const TexGenUnit& unit = g_texgen.unit[i];
+        uint32_t source = unit.source;
         float input[3] = {0, 0, 1};
         if (source == 0) {
             input[0] = vertex.position[0];
@@ -512,7 +581,7 @@ void generate_texture_coordinates(const Vertex& vertex, float out[8][3]) {
             input[0] = vertex.texture[source - 5][0];
             input[1] = vertex.texture[source - 5][1];
         }
-        if (!abc1) {
+        if (!unit.abc1) {
             input[2] = 1.0f;
         }
         uint32_t base = vertex.texture_matrix[i] * 4;
@@ -521,11 +590,11 @@ void generate_texture_coordinates(const Vertex& vertex, float out[8][3]) {
             uint32_t r = base + row * 4;
             coord[row] = xf_float(r) * input[0] + xf_float(r + 1) * input[1] + xf_float(r + 2) * input[2] + xf_float(r + 3);
         }
-        if (!projected) {
+        if (!unit.projected) {
             coord[2] = 1.0f;
         }
         if (dual) {
-            uint32_t post = g_xf[0x1050 + i];
+            uint32_t post = unit.post;
             if ((post >> 8) & 1) {
                 float length = std::sqrt(coord[0] * coord[0] + coord[1] * coord[1] + coord[2] * coord[2]);
                 if (length > 0.0f) {
@@ -555,24 +624,47 @@ void generate_texture_coordinates(const Vertex& vertex, float out[8][3]) {
     }
 }
 
+struct ProjectionState {
+    float a, b, c, d, e, f;
+    bool orthographic;
+    float x_scale, x_offset, y_scale, y_offset, z_scale, z_offset;
+};
+
+ProjectionState g_projection;
+
+void begin_projection() {
+    g_projection.a = xf_float(0x1020);
+    g_projection.b = xf_float(0x1021);
+    g_projection.c = xf_float(0x1022);
+    g_projection.d = xf_float(0x1023);
+    g_projection.e = xf_float(0x1024);
+    g_projection.f = xf_float(0x1025);
+    g_projection.orthographic = g_xf[0x1026] != 0;
+    g_projection.x_scale = 2.0f * xf_float(0x101A) / kEfbWidth;
+    g_projection.x_offset = 2.0f * (xf_float(0x101D) - kViewportOffset) / kEfbWidth - 1.0f;
+    g_projection.y_scale = -2.0f * xf_float(0x101B) / kEfbHeight;
+    g_projection.y_offset = 1.0f - 2.0f * (xf_float(0x101E) - kViewportOffset) / kEfbHeight;
+    g_projection.z_scale = xf_float(0x101C);
+    g_projection.z_offset = xf_float(0x101F);
+}
+
 bool project(const float* eye, float* screen) {
-    float a = xf_float(0x1020), b = xf_float(0x1021), c = xf_float(0x1022), d = xf_float(0x1023), e = xf_float(0x1024), f = xf_float(0x1025);
-    bool orthographic = g_xf[0x1026] != 0;
+    const ProjectionState& p = g_projection;
     float x, y, z, w;
-    if (orthographic) {
-        x = a * eye[0] + b;
-        y = c * eye[1] + d;
-        z = e * eye[2] + f;
+    if (p.orthographic) {
+        x = p.a * eye[0] + p.b;
+        y = p.c * eye[1] + p.d;
+        z = p.e * eye[2] + p.f;
         w = 1.0f;
     } else {
-        x = a * eye[0] + b * eye[2];
-        y = c * eye[1] + d * eye[2];
-        z = e * eye[2] + f;
+        x = p.a * eye[0] + p.b * eye[2];
+        y = p.c * eye[1] + p.d * eye[2];
+        z = p.e * eye[2] + p.f;
         w = -eye[2];
     }
-    screen[0] = x * (2.0f * xf_float(0x101A) / kEfbWidth) + w * (2.0f * (xf_float(0x101D) - kViewportOffset) / kEfbWidth - 1.0f);
-    screen[1] = y * (-2.0f * xf_float(0x101B) / kEfbHeight) + w * (1.0f - 2.0f * (xf_float(0x101E) - kViewportOffset) / kEfbHeight);
-    screen[2] = (z * xf_float(0x101C) + w * xf_float(0x101F)) / kDepthRange;
+    screen[0] = x * p.x_scale + w * p.x_offset;
+    screen[1] = y * p.y_scale + w * p.y_offset;
+    screen[2] = (z * p.z_scale + w * p.z_offset) / kDepthRange;
     screen[3] = w;
     return std::isfinite(screen[0]) && std::isfinite(screen[1]) && std::isfinite(screen[2]) && std::isfinite(w);
 }
@@ -803,6 +895,10 @@ void draw_primitive(uint8_t command, const uint8_t* data, uint32_t count) {
         return;
     }
     count_indirect();
+    begin_vertex_arrays();
+    lighting::begin(g_xf);
+    begin_texture_coordinates();
+    begin_projection();
     const Layout& layout = make_layout(command & 7);
     static std::vector<Prepared> vertices;
     vertices.clear();
@@ -1103,7 +1199,7 @@ void indexed_xf_load(uint8_t command, uint32_t word) {
     uint32_t index = word >> 16;
     uint32_t count = ((word >> 12) & 15) + 1;
     uint32_t address = word & 0xFFF;
-    const uint8_t* source = array_element(array, index);
+    const uint8_t* source = array_element_live(array, index);
     for (uint32_t i = 0; i < count; i++) {
         write_xf(address + i, be32(source + 4 * i));
     }
@@ -1247,11 +1343,71 @@ bool record_display_list(const uint8_t* data, unsigned bytes) {
     return true;
 }
 
+void store16(uint32_t address, uint16_t value) {
+    uint16_t stored = __builtin_bswap16(value);
+    std::memcpy(host(address), &stored, sizeof stored);
+}
+
+void store32(uint32_t address, uint32_t value) {
+    uint32_t stored = __builtin_bswap32(value);
+    std::memcpy(host(address), &stored, sizeof stored);
+}
+
+uint32_t cp_register(uint32_t low) {
+    return register16(low) | (static_cast<uint32_t>(register16(low + 2)) << 16);
+}
+
+void set_cp_register(uint32_t low, uint32_t value) {
+    store16(low, static_cast<uint16_t>(value));
+    store16(low + 2, static_cast<uint16_t>(value >> 16));
+}
+
+uint8_t g_gather_pipe[kGatherPipeSize];
+unsigned g_gather_count = 0;
+
+void gather_pipe_burst() {
+    uint32_t pi_write = register32(kPiFifoWritePointer);
+    uint32_t pi_end = register32(kPiFifoEnd) & kFifoPointerMask;
+    uint32_t pi_base = register32(kPiFifoBase) & kFifoPointerMask;
+    uint32_t address = pi_write & kFifoPointerMask;
+    if (address != 0 && render::guest_range_valid(kRamBase | address, kGatherPipeSize)) {
+        std::memcpy(host(kRamBase | address), g_gather_pipe, kGatherPipeSize);
+    }
+    uint32_t next = address == pi_end ? pi_base : address + kGatherPipeSize;
+    store32(kPiFifoWritePointer, (pi_write & ~kFifoPhysicalMask) | next);
+    uint32_t cp_end = cp_register(kCpFifoEndLow) & kFifoPointerMask;
+    uint32_t cp_base = cp_register(kCpFifoBaseLow) & kFifoPointerMask;
+    uint32_t cp_write = cp_register(kCpWritePointerLow) & kFifoPointerMask;
+    cp_write = cp_write == cp_end ? cp_base : cp_write + kGatherPipeSize;
+    set_cp_register(kCpWritePointerLow, cp_write);
+    set_cp_register(kCpReadPointerLow, cp_write);
+    set_cp_register(kCpDistanceLow, 0);
+}
+
+bool linked_mode() {
+    uint16_t control = register16(kCpControl);
+    if ((control & (kCpReadEnable | kCpLinkEnable)) != (kCpReadEnable | kCpLinkEnable)) {
+        return false;
+    }
+    uint32_t pi_base = register32(kPiFifoBase) & kFifoPhysicalMask;
+    uint32_t cp_base = cp_register(kCpFifoBaseLow) & kFifoPhysicalMask;
+    return cp_base != 0 && pi_base == cp_base;
+}
+
 void push(uint64_t value, unsigned bytes) {
     uint64_t swapped = __builtin_bswap64(value << (8 * (8 - bytes)));
     const uint8_t* data = reinterpret_cast<const uint8_t*>(&swapped);
     if (record_display_list(data, bytes)) {
         return;
+    }
+    if (linked_mode()) {
+        for (unsigned i = 0; i < bytes; i++) {
+            g_gather_pipe[g_gather_count++] = data[i];
+            if (g_gather_count == kGatherPipeSize) {
+                g_gather_count = 0;
+                gather_pipe_burst();
+            }
+        }
     }
     g_fifo.insert(g_fifo.end(), data, data + bytes);
     if (g_fifo.size() >= kFlushThreshold) {
@@ -1260,7 +1416,17 @@ void push(uint64_t value, unsigned bytes) {
 }
 
 bool take_finish_interrupt() {
+    if (!(register16(kPeControl) & kPeFinishEnable)) {
+        return false;
+    }
     return g_finish_pending.exchange(false);
+}
+
+void write_pixel_engine_control(uint16_t value) {
+    store16(kPeControl, value & (kPeTokenEnable | kPeFinishEnable));
+    if (value & kPeFinishClear) {
+        g_finish_pending = false;
+    }
 }
 
 uint64_t frames_drawn() {

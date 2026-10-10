@@ -405,54 +405,6 @@ uint32_t copy_texture_format(uint32_t format) {
     return kFormats[format];
 }
 
-uint32_t scale_bits(uint32_t value, int bits) {
-    return (value * ((1u << bits) - 1) + 127) / 255;
-}
-
-void encode_texel(uint8_t* block, uint32_t format, uint32_t index, const uint8_t* rgba) {
-    uint32_t r = rgba[0];
-    uint32_t g = rgba[1];
-    uint32_t b = rgba[2];
-    uint32_t a = rgba[3];
-    auto put16 = [&](uint32_t offset, uint32_t value) {
-        block[offset] = static_cast<uint8_t>(value >> 8);
-        block[offset + 1] = static_cast<uint8_t>(value);
-    };
-    switch (format) {
-    case 0: {
-        uint8_t& byte = block[index / 2];
-        uint32_t nibble = scale_bits(r, 4);
-        byte = (index & 1) ? static_cast<uint8_t>((byte & 0xF0) | nibble) : static_cast<uint8_t>((byte & 0x0F) | (nibble << 4));
-        break;
-    }
-    case 1:
-        block[index] = static_cast<uint8_t>(r);
-        break;
-    case 2:
-        block[index] = static_cast<uint8_t>((scale_bits(a, 4) << 4) | scale_bits(r, 4));
-        break;
-    case 3:
-        block[index * 2] = static_cast<uint8_t>(a);
-        block[index * 2 + 1] = static_cast<uint8_t>(r);
-        break;
-    case 4:
-        put16(index * 2, (scale_bits(r, 5) << 11) | (scale_bits(g, 6) << 5) | scale_bits(b, 5));
-        break;
-    case 5: {
-        uint32_t alpha = scale_bits(a, 3);
-        put16(index * 2, alpha == 7 ? 0x8000 | (scale_bits(r, 5) << 10) | (scale_bits(g, 5) << 5) | scale_bits(b, 5)
-                                    : (alpha << 12) | (scale_bits(r, 4) << 8) | (scale_bits(g, 4) << 4) | scale_bits(b, 4));
-        break;
-    }
-    default:
-        block[index * 2] = static_cast<uint8_t>(a);
-        block[index * 2 + 1] = static_cast<uint8_t>(r);
-        block[32 + index * 2] = static_cast<uint8_t>(g);
-        block[32 + index * 2 + 1] = static_cast<uint8_t>(b);
-        break;
-    }
-}
-
 uint32_t expand(uint32_t value, int bits) {
     return (value << (8 - bits)) | (value >> (2 * bits - 8));
 }

@@ -9,26 +9,22 @@ Static recompilation of Wii Party for native PC.
 
 **[Download the latest build](https://github.com/arelkair/wiiparty-recomp/releases)** · Windows 10 and 11 (64-bit) · Linux x86_64 (experimental)
 
----
-
 ## Overview
 
 Wii Party Recomp translates the game's PowerPC code into C++ and compiles it into a native Windows or Linux program. The game and Nintendo SDK code run translated; only what depends on the console hardware is replaced, and the hardware itself (GPU, DSP audio, Bluetooth, IOS, disc and NAND) is reimplemented underneath. The game's own audio microcode is recompiled too.
 
 No game files are distributed. The launcher builds the game on your PC from your own copy of the disc.
 
----
-
 ## Current State & Metrics
 
-The game runs at a locked **60 fps** (PAL60) at up to 6x the console's resolution, using about 1.5 CPU threads and 200 MB of RAM.
+The game runs at a locked **60 fps** (PAL60) at up to 6x the console's resolution, using about 1.5 CPU threads and about 600 MB of RAM.
 
 Tracked in `games/wiiparty/analysis/progress.csv`:
 
 | Component | Progress | Basis |
 | :--- | :--- | :--- |
 | **Recompilation Toolchain** | **100%** | The DOL and all 115 REL modules translate and build; every instruction kind the game uses is checked by 4,152 tests against an independent model. |
-| **System Runtime** | **97%** | OS, threads, interrupts, IPC, DVD, NAND, Bluetooth, the EXI bus and the SI ports work, with no known blockers. |
+| **System Runtime** | **100%** | OS, threads, interrupts, IPC, DVD, NAND, Bluetooth, the EXI bus, the SI ports, the GPU command FIFO and the pixel engine interrupts work, with no known unemulated parts. |
 | **Graphics (GX to D3D11)** | **90%** | Menus, text, 3D models, lit Miis, TEV, indirect textures, fog and EFB copies; no known fault in any minigame. |
 | **Audio Pipeline** | **83%** | Recompiled AX microcode; its output matches Dolphin's sample for sample on the title music. |
 | **Game Flow** | **90%** | A full 17-round Board Game Island game; every Free Play minigame played by hand, all 79 without faults. |
@@ -39,8 +35,8 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 
 - The modes other than Board Game Island and Free Play have been tried but not played through in full.
 - Real Wii Remotes are not supported yet.
-
----
+- Some PCs reach less than 60 fps on the Board Game Island and in minigames; performance work is in progress.
+- The launcher is not code-signed, so Windows Defender may flag it as a false positive. Every release lists its SHA-256 on GitHub, and the source code of the launcher is in this repository.
 
 ## Installing
 
@@ -72,8 +68,6 @@ The launcher needs glibc 2.38 or newer (Ubuntu 24.04, Debian 13, Fedora 39 or la
 
 The build runs once, at low priority, with as many parallel jobs as your memory allows. Updating to a newer launcher rebuilds the game and keeps your saves and settings.
 
----
-
 ## Controls
 
 Every key can be changed on the launcher's **Controls** page or in `games/wiiparty/settings.ini`. Up to four gamepads act as Wii Remotes 1 to 4, with gyroscope pointer, motion, rumble and player lights.
@@ -97,8 +91,6 @@ Every key can be changed on the launcher's **Controls** page or in `games/wiipar
 | F11 | Full screen |
 | F12 | Frame capture for debugging |
 
----
-
 ## Roadmap
 
 | Stage | When it is reached |
@@ -107,15 +99,13 @@ Every key can be changed on the launcher's **Controls** page or in `games/wiipar
 | **Beta** | Every mode and all 80 minigames are checked, including the pair minigames; no known crashes; the known graphics faults in `docs/MINIGAMES.md` are fixed; the install is tested on several different PCs. |
 | **1.0** | No known bugs, overall progress around 95%, and a period of use by players without serious problems. |
 
-Also planned: a Mii editor, ultrawide support and online play.
+The project's scope is the original game, faithful and optimized. Online play, ultrawide support and a Mii editor are not planned.
 
 ### Platforms
 
 - **Windows 10 and 11:** supported.
 - **Linux:** experimental. The launcher is an AppImage and the game plays with an OpenGL renderer, keyboard, mouse, audio, the F10 menu and custom texture packs (tested on Ubuntu 24.04; gamepad support is built in but not yet tested there). **Help wanted:** Linux testers with different GPUs and desktops, please open an issue or a discussion.
 - **macOS:** planned after Linux. **Help wanted:** if you have a Mac and would like to test builds in the future, please open an issue or a discussion.
-
----
 
 ## Repository Layout
 
@@ -128,8 +118,6 @@ Also planned: a Mii editor, ultrawide support and online play.
 ├── tests/              # Test suites
 └── docs/               # Technical notes and progress
 ```
-
----
 
 ## Building from Source
 
@@ -156,8 +144,6 @@ cmake --build build/launcher
 ```
 
 Technical notes and the history of every change are in `docs/DECOMP_PROGRESS.md`. See `CONTRIBUTING.md` before opening a pull request.
-
----
 
 ## Legal & Licensing
 

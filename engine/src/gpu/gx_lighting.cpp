@@ -181,24 +181,51 @@ void transform_normal(const uint32_t* xf, uint32_t position_matrix, const float*
     out[2] = result.z;
 }
 
-void light_channels(const uint32_t* xf, const float* position, const float* normal, const uint8_t vertex_color[2][4],
-                    uint8_t out[2][4]) {
+namespace {
+
+struct State {
+    Channel color[2];
+    Channel alpha[2];
+    uint8_t material[2][4];
+    uint8_t ambient[2][4];
+    Light lights[8];
+};
+
+State g_state;
+
+}
+
+void begin(const uint32_t* xf) {
+    uint32_t used = 0;
+    for (uint32_t k = 0; k < 2; k++) {
+        word_rgba(xf[kMaterialColor + k], g_state.material[k]);
+        word_rgba(xf[kAmbientColor + k], g_state.ambient[k]);
+        g_state.color[k] = decode_channel(xf[kColorControl + k]);
+        g_state.alpha[k] = decode_channel(xf[kAlphaControl + k]);
+        used |= g_state.color[k].mask | g_state.alpha[k].mask;
+    }
+    for (uint32_t i = 0; i < 8; i++) {
+        if (used & (1u << i)) {
+            g_state.lights[i] = read_light(xf, i);
+        }
+    }
+}
+
+void light_channels(const float* position, const float* normal, const uint8_t vertex_color[2][4], uint8_t out[2][4]) {
     Vec3 pos{position[0], position[1], position[2]};
     Vec3 nrm{normal[0], normal[1], normal[2]};
     for (uint32_t k = 0; k < 2; k++) {
-        uint8_t material[4];
-        uint8_t ambient[4];
-        word_rgba(xf[kMaterialColor + k], material);
-        word_rgba(xf[kAmbientColor + k], ambient);
+        const uint8_t* material = g_state.material[k];
+        const uint8_t* ambient = g_state.ambient[k];
 
-        Channel color = decode_channel(xf[kColorControl + k]);
+        const Channel& color = g_state.color[k];
         const uint8_t* color_material = color.material_from_vertex ? vertex_color[k] : material;
         if (color.enable_lighting) {
             const uint8_t* base = color.ambient_from_vertex ? vertex_color[k] : ambient;
             float light[3] = {static_cast<float>(base[0]), static_cast<float>(base[1]), static_cast<float>(base[2])};
             for (uint32_t i = 0; i < 8; i++) {
                 if (color.mask & (1u << i)) {
-                    Light source = read_light(xf, i);
+                    const Light& source = g_state.lights[i];
                     float factor = light_factor(source, pos, nrm, color);
                     for (uint32_t c = 0; c < 3; c++) {
                         light[c] += source.color[c] * factor;
@@ -214,13 +241,13 @@ void light_channels(const uint32_t* xf, const float* position, const float* norm
             }
         }
 
-        Channel alpha = decode_channel(xf[kAlphaControl + k]);
+        const Channel& alpha = g_state.alpha[k];
         uint8_t alpha_material = alpha.material_from_vertex ? vertex_color[k][3] : material[3];
         if (alpha.enable_lighting) {
             float light = alpha.ambient_from_vertex ? vertex_color[k][3] : ambient[3];
             for (uint32_t i = 0; i < 8; i++) {
                 if (alpha.mask & (1u << i)) {
-                    Light source = read_light(xf, i);
+                    const Light& source = g_state.lights[i];
                     light += source.color[3] * light_factor(source, pos, nrm, alpha);
                 }
             }

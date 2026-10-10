@@ -8,7 +8,7 @@
 namespace wp::gx::lighting {
 
 void transform_normal(const uint32_t* xf, uint32_t position_matrix, const float* normal, float* out);
-void light_channels(const uint32_t* xf, const float* position, const float* normal, const uint8_t vertex_color[2][4],
-                    uint8_t out[2][4]);
+void begin(const uint32_t* xf);
+void light_channels(const float* position, const float* normal, const uint8_t vertex_color[2][4], uint8_t out[2][4]);
 
 }

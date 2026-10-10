@@ -15,6 +15,7 @@
 #include "wp/custom_textures.h"
 #include "wp/function_table.h"
 #include "wp/hollywood.h"
+#include "wp/gx.h"
 #include "wp/gx_state.h"
 #include "wp/input.h"
 #include "wp/ios.h"
@@ -1024,6 +1025,45 @@ void test_hollywood_registers() {
     }
 }
 
+void test_linked_fifo_registers() {
+    constexpr uint32_t kBase = 0x00200000;
+    constexpr uint32_t kRawEnd = kBase + 0x7C;
+    auto cp = [](uint32_t low, uint32_t value) {
+        wp::mmio::write16(low, static_cast<uint16_t>(value));
+        wp::mmio::write16(low + 2, static_cast<uint16_t>(value >> 16));
+    };
+    auto cp_read = [](uint32_t low) { return static_cast<uint32_t>(wp::mmio::read16(low)) | (static_cast<uint32_t>(wp::mmio::read16(low + 2)) << 16); };
+    wp::mmio::write32(0xCC00300C, kBase);
+    wp::mmio::write32(0xCC003010, kRawEnd);
+    wp::mmio::write32(0xCC003014, kBase);
+    cp(0xCC000020, kBase);
+    cp(0xCC000024, kRawEnd);
+    cp(0xCC000034, kBase);
+    cp(0xCC000038, kBase);
+    cp(0xCC000030, 0);
+    wp::mmio::write16(0xCC000002, 0x0011);
+    auto burst = [&](uint8_t fill) {
+        for (int i = 0; i < 4; i++) {
+            wp::gx::push(0x0000000000000000ull, 8);
+        }
+        (void)fill;
+    };
+    burst(0);
+    CHECK(wp::mmio::read32(0xCC003014) == kBase + 0x20);
+    CHECK(cp_read(0xCC000034) == kBase + 0x20 && cp_read(0xCC000038) == kBase + 0x20 && cp_read(0xCC000030) == 0);
+    burst(0);
+    burst(0);
+    CHECK(wp::mmio::read32(0xCC003014) == kBase + 0x60);
+    burst(0);
+    CHECK(wp::mmio::read32(0xCC003014) == kBase);
+    CHECK(cp_read(0xCC000034) == kBase && cp_read(0xCC000038) == kBase);
+    wp::gx::push(0x0000000000000000ull, 8);
+    CHECK(wp::mmio::read32(0xCC003014) == kBase);
+    wp::mmio::write16(0xCC00100A, 0x000F);
+    CHECK(wp::mmio::read16(0xCC00100A) == 0x0003);
+    wp::mmio::write16(0xCC000002, 0);
+}
+
 int main() {
     wp::g_memory = static_cast<uint8_t*>(std::calloc(wp::kMemorySize, 1));
     test_memory();
@@ -1053,6 +1093,7 @@ int main() {
     test_options_render();
     test_software_fma();
     test_hollywood_registers();
+    test_linked_fifo_registers();
     std::free(wp::g_memory);
     if (failures == 0) {
         std::puts("all runtime tests passed");

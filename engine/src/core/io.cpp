@@ -102,6 +102,10 @@ void write16(uint32_t address, uint16_t value) {
         gx::push(value, 2);
         return;
     }
+    if (address == 0xCC00100A) {
+        gx::write_pixel_engine_control(value);
+        return;
+    }
     if (dsp_register(address)) {
         dsp::write16(address, value);
         return;
@@ -133,6 +137,11 @@ void write32(uint32_t address, uint32_t value) {
     }
     if (exi_register(address)) {
         exi::write32(address, value);
+        return;
+    }
+    if (address == 0xCC001008) {
+        write_memory<uint16_t>(address, static_cast<uint16_t>(value >> 16), [](uint16_t v) { return __builtin_bswap16(v); });
+        gx::write_pixel_engine_control(static_cast<uint16_t>(value));
         return;
     }
     write_memory<uint32_t>(address, value, [](uint32_t v) { return __builtin_bswap32(v); });
