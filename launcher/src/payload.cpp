@@ -91,6 +91,16 @@ std::string stored_revision(const std::filesystem::path& root) {
     return revision;
 }
 
+void store_revision(const std::filesystem::path& root, const std::string& revision) {
+    std::error_code error;
+    if (revision.empty()) {
+        std::filesystem::remove(root / kRevisionFile, error);
+        return;
+    }
+    std::ofstream file(root / kRevisionFile, std::ios::binary | std::ios::trunc);
+    file << revision << '\n';
+}
+
 bool stage_payload(const std::filesystem::path& root, std::string& message) {
     std::filesystem::path staging = root / kStagingFolder;
     if (stored_revision(staging) == payload_revision()) {

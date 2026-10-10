@@ -284,6 +284,8 @@ bool Project::store_active_version() const {
             std::filesystem::rename(parked / "extracted", extracted_folder(), ignored);
             return false;
         }
+        std::ofstream revision(parked / "bin-revision", std::ios::binary | std::ios::trunc);
+        revision << stored_revision(root) << '\n';
     }
     return true;
 }
@@ -300,6 +302,10 @@ bool Project::switch_version(const std::string& id) const {
     }
     if (std::filesystem::exists(stored / "bin", error)) {
         std::filesystem::rename(stored / "bin", installed_executable().parent_path(), error);
+        std::string revision;
+        std::ifstream file(stored / "bin-revision", std::ios::binary);
+        std::getline(file, revision);
+        store_revision(root, revision);
     }
     std::filesystem::remove_all(stored, error);
     return true;

@@ -12,6 +12,7 @@ struct PayloadChanges {
 
 bool payload_available();
 std::string stored_revision(const std::filesystem::path& root);
+void store_revision(const std::filesystem::path& root, const std::string& revision);
 const std::string& payload_revision();
 bool stage_payload(const std::filesystem::path& root, std::string& message);
 PayloadChanges payload_changes(const std::filesystem::path& root);

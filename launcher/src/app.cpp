@@ -1531,6 +1531,9 @@ void App::create_report() {
     }
     out << "Install folder: " << utf8_of(project_.root) << "\n";
     out << "Game built: " << (project_.built() ? "yes" : "no") << "\n";
+    if (project_.built()) {
+        out << "Game files: " << (project_.outdated() ? "outdated, the game must be rebuilt" : "up to date") << " (built from " << stored_revision(project_.root) << ")\n";
+    }
     int count = 0;
     SDL_JoystickID* pads = gamepads(count);
     for (int i = 0; i < count; i++) {
