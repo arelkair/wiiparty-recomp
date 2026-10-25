@@ -1438,3 +1438,14 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 
 - Build 2610-024 (game) and 2610-025 (launcher). Contents: the button names above.
 
+## Controller view on the Controls page (2026-10-22)
+
+- Request from the Parsec user, who had in mind a controller picture that shows what is pressed or moved (as in Citron's controller settings). New section "Controller view" (`App::pad_view_section`, `launcher/src/app_controls.cpp`), drawn with the launcher's own drawing calls, no images: an outline with Bezier curves, shoulder buttons and trigger bars (the trigger fills with its travel), two sticks whose knobs follow the axes and light when pressed, the D-pad, four face buttons, and back, start and guide. The first connected pad is used (opened by the tester section above it).
+- The layout and the labels follow the pad type: Xbox and others (LB, RB, LT, RT; A, B, X, Y), Nintendo (L, R, ZL, ZR; B, A, Y, X, as on the pad) and PlayStation (L1, R1, L2, R2; Cross, Circle, Square, Triangle drawn as shapes, D-pad on top left and left stick below). With no pad connected a dimmed controller and a short message are shown. Pressed parts take the accent color.
+- First attempt (separate round shapes) looked crude and was replaced by the outline at the user's request; the outline is original, not copied from any controller picture or from Citron.
+- Checked in the launcher screenshot with no pad connected. The lit states, the sticks and the Nintendo and PlayStation layouts have not been seen with a real pad. Not done: assigning a button by clicking on the picture, and the same picture for keyboard and mouse.
+
+## Version 0.1.19-alpha (2026-10-22)
+
+- Build 2610-026 (game) and 2610-027 (launcher). Contents: the controller view.
+

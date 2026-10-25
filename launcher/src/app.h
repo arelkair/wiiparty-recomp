@@ -83,6 +83,7 @@ private:
     void gamepads_section(float width);
     void wiimotes_section(float width);
     void tester_section(float width);
+    void pad_view_section(float width);
     void dolphin_section(float width);
     void captures_page(float width);
     void list_captures();

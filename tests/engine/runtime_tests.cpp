@@ -1025,7 +1025,7 @@ void test_pad_motion() {
     CHECK(list == "Pad B#1");
     CHECK(wp::padmap::toggled(list, "Pad B#1").empty());
     for (wp::ui::Language language : {wp::ui::Language::English, wp::ui::Language::Spanish, wp::ui::Language::Galician}) {
-        for (const char* key : {"input.player1_keyboard_only", "pad.use", "pad.cross", "pad.circle", "pad.square", "pad.triangle", "pad.right_stick_up", "pad.right_stick_down", "pad.right_stick_left", "pad.right_stick_right",
+        for (const char* key : {"input.player1_keyboard_only", "pad.use", "pad.view_title", "pad.view_none", "pad.cross", "pad.circle", "pad.square", "pad.triangle", "pad.right_stick_up", "pad.right_stick_down", "pad.right_stick_left", "pad.right_stick_right",
                                 "pad.motion_help"}) {
             CHECK(std::string(key) != wp::ui::label(key, language));
         }
