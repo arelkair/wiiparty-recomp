@@ -1,4 +1,5 @@
 #include "app.h"
+#include "embedded.h"
 
 #include <algorithm>
 #include <cmath>
@@ -230,35 +231,11 @@ void App::tester_section(float width) {
     ui::gap(28);
 }
 
-namespace {
-
-void draw_face_symbol(ImDrawList* list, int physical, ImVec2 center, float radius, ImU32 color, float thickness) {
-    float r = radius * 0.5f;
-    switch (physical) {
-    case wp::padmap::kSouth:
-        list->AddLine(center + ImVec2(-r, -r), center + ImVec2(r, r), color, thickness);
-        list->AddLine(center + ImVec2(-r, r), center + ImVec2(r, -r), color, thickness);
-        break;
-    case wp::padmap::kEast:
-        list->AddCircle(center, r * 1.1f, color, 24, thickness);
-        break;
-    case wp::padmap::kWest:
-        list->AddRect(center + ImVec2(-r, -r), center + ImVec2(r, r), color, 0.0f, thickness);
-        break;
-    default:
-        list->AddTriangle(center + ImVec2(0, -r * 1.15f), center + ImVec2(r * 1.1f, r * 0.85f), center + ImVec2(-r * 1.1f, r * 0.85f), color, thickness);
-        break;
-    }
-}
-
-}
-
 void App::pad_view_section(float width) {
     const ui::Palette& p = ui::palette();
     ui::text(wp::ui::label("pad.view_title"), Font::Semibold, ui::size::kDetail, p.secondary);
     ui::gap(10);
     Card card(width);
-    float height = px(300);
     ImVec2 at = ImGui::GetCursorScreenPos();
     ImDrawList* list = ImGui::GetWindowDrawList();
     SDL_Gamepad* pad = nullptr;
@@ -272,129 +249,28 @@ void App::pad_view_section(float width) {
     }
     SDL_free(ids);
     PadStyle style = pad_style();
-    bool nintendo = style == PadStyle::Nintendo;
-    bool playstation = style == PadStyle::PlayStation;
-    ImVec2 c(at.x + width * 0.5f, at.y + height * 0.5f + px(14));
-    auto pt = [&](float x, float y) { return c + ImVec2(px(x), px(y)); };
-    auto down = [&](SDL_GamepadButton button) { return pad && SDL_GetGamepadButton(pad, button); };
+    const char* svg_name = style == PadStyle::Nintendo ? "pad_switchpro" : style == PadStyle::PlayStation ? "pad_dualsense" : "pad_xbox";
+    float draw_width = std::min(px(440), width - px(40));
+    // Parts are drawn from the controller SVGs in the Gamepad Asset Pack; the pressed ones are tinted.
+    pad_svg_.build(SDL_GetRenderer(window_), blob(svg_name), draw_width, ui::palette().accent);
+    float height = (pad_svg_.ready() ? pad_svg_.size().y : px(300)) + px(48);
+    ImVec2 origin(at.x + (width - draw_width) * 0.5f, at.y + px(24));
+    auto down = [&](SDL_GamepadButton button) { return pad && SDL_GetGamepadButton(pad, button) ? 1.0f : 0.0f; };
     auto axis = [&](SDL_GamepadAxis which) { return pad ? SDL_GetGamepadAxis(pad, which) / 32767.0f : 0.0f; };
-    ImU32 body = p.control;
-    ImU32 edge = p.tertiary;
-    ImU32 idle = p.control_active;
-    ImU32 lit = p.accent;
-
-    struct Curve {
-        float c1x, c1y, c2x, c2y, x, y;
-    };
-    const Curve curves[5] = {{100, -58, 125, -72, 140, -60}, {158, -48, 172, 10, 176, 55}, {180, 95, 160, 112, 140, 108}, {118, 104, 108, 70, 92, 50}, {80, 36, 60, 34, 40, 34}};
-    const ImVec2 start(70, -58);
-    auto outline = [&]() {
-        list->PathClear();
-        list->PathLineTo(pt(0, -58));
-        list->PathLineTo(pt(start.x, start.y));
-        for (const Curve& k : curves) {
-            list->PathBezierCubicCurveTo(pt(k.c1x, k.c1y), pt(k.c2x, k.c2y), pt(k.x, k.y));
-        }
-        list->PathLineTo(pt(0, 34));
-        float from_x = 40;
-        float from_y = 34;
-        for (int i = 4; i >= 0; i--) {
-            const Curve& k = curves[i];
-            float to_x = i == 0 ? start.x : curves[i - 1].x;
-            float to_y = i == 0 ? start.y : curves[i - 1].y;
-            list->PathBezierCubicCurveTo(pt(-k.c2x, k.c2y), pt(-k.c1x, k.c1y), pt(-to_x, to_y));
-            from_x = to_x;
-            from_y = to_y;
-        }
-        (void)from_x;
-        (void)from_y;
-        list->PathLineTo(pt(0, -58));
-    };
-    outline();
-    list->PathFillConcave(body);
-    outline();
-    list->PathStroke(edge, px(1.5f), ImDrawFlags_Closed);
-
-    const char* shoulder_names[2] = {nintendo ? "L" : playstation ? "L1" : "LB", nintendo ? "R" : playstation ? "R1" : "RB"};
-    const char* trigger_names[2] = {nintendo ? "ZL" : playstation ? "L2" : "LT", nintendo ? "ZR" : playstation ? "R2" : "RT"};
-    float triggers[2] = {axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER), axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)};
-    bool shoulders[2] = {down(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), down(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)};
-    for (int side = 0; side < 2; side++) {
-        float x0 = side == 0 ? -150.0f : 84.0f;
-        list->AddRectFilled(pt(x0, -86), pt(x0 + 66, -70), shoulders[side] ? lit : idle, px(8));
-        list->AddRect(pt(x0, -86), pt(x0 + 66, -70), edge, px(8), px(1));
-        list->AddRectFilled(pt(x0 + 6, -108), pt(x0 + 60, -94), idle, px(7));
-        if (triggers[side] > 0.02f) {
-            list->AddRectFilled(pt(x0 + 6, -108), pt(x0 + 6 + 54 * std::min(triggers[side], 1.0f), -94), lit, px(7));
-        }
-        ImVec2 label = ImGui::CalcTextSize(shoulder_names[side]);
-        list->AddText(pt(x0 + 33, -78) - label * 0.5f, shoulders[side] ? p.primary_text : p.secondary, shoulder_names[side]);
-        ImVec2 trigger = ImGui::CalcTextSize(trigger_names[side]);
-        list->AddText(pt(x0 + 33, -101) - trigger * 0.5f, triggers[side] > 0.5f ? p.primary_text : p.secondary, trigger_names[side]);
-    }
-
-    struct Stick {
-        float x;
-        float y;
-        SDL_GamepadAxis horizontal;
-        SDL_GamepadAxis vertical;
-        SDL_GamepadButton press;
-    };
-    const float left_x = -100;
-    const float left_y = playstation ? 24.0f : -18.0f;
-    const float dpad_x = playstation ? -100.0f : -55.0f;
-    const float dpad_y = playstation ? -18.0f : 24.0f;
-    const float left_stick_x = playstation ? -52.0f : left_x;
-    const Stick sticks[2] = {{left_stick_x, left_y, SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_BUTTON_LEFT_STICK},
-                             {52, 24, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, SDL_GAMEPAD_BUTTON_RIGHT_STICK}};
-    for (const Stick& stick : sticks) {
-        bool pressed = down(stick.press);
-        list->AddCircleFilled(pt(stick.x, stick.y), px(25), idle, 40);
-        list->AddCircle(pt(stick.x, stick.y), px(25), edge, 40, px(1.2f));
-        ImVec2 knob = pt(stick.x + axis(stick.horizontal) * 14, stick.y + axis(stick.vertical) * 14);
-        list->AddCircleFilled(knob, px(15), pressed ? lit : p.tertiary, 28);
-        list->AddCircle(knob, px(15), edge, 28, px(1));
-    }
-
-    const SDL_GamepadButton arms[4] = {SDL_GAMEPAD_BUTTON_DPAD_UP, SDL_GAMEPAD_BUTTON_DPAD_DOWN, SDL_GAMEPAD_BUTTON_DPAD_LEFT, SDL_GAMEPAD_BUTTON_DPAD_RIGHT};
-    const float arm_x[4] = {0, 0, -17, 17};
-    const float arm_y[4] = {-17, 17, 0, 0};
-    list->AddRectFilled(pt(dpad_x - 12, dpad_y - 12), pt(dpad_x + 12, dpad_y + 12), idle);
-    for (int i = 0; i < 4; i++) {
-        float half_w = i < 2 ? 12.0f : 11.0f;
-        float half_h = i < 2 ? 11.0f : 12.0f;
-        ImVec2 a = pt(dpad_x + arm_x[i] - half_w, dpad_y + arm_y[i] - half_h);
-        ImVec2 b = pt(dpad_x + arm_x[i] + half_w, dpad_y + arm_y[i] + half_h);
-        list->AddRectFilled(a, b, down(arms[i]) ? lit : idle, px(4));
-        list->AddRect(a, b, edge, px(4), px(1));
-    }
-
-    const SDL_GamepadButton faces[4] = {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH};
-    const float face_x[4] = {100, 122, 78, 100};
-    const float face_y[4] = {4, -18, -18, -40};
-    for (int i = 0; i < 4; i++) {
-        bool pressed = down(faces[i]);
-        ImVec2 center = pt(face_x[i], face_y[i]);
-        list->AddCircleFilled(center, px(13), pressed ? lit : idle, 28);
-        list->AddCircle(center, px(13), edge, 28, px(1));
-        ImU32 ink = pressed ? p.primary_text : p.secondary;
-        if (playstation) {
-            draw_face_symbol(list, i, center, px(26), ink, px(1.8f));
-        } else {
-            std::string name = face_name(i, style);
-            ImVec2 size = ImGui::CalcTextSize(name.c_str());
-            list->AddText(center - size * 0.5f, ink, name.c_str());
-        }
-    }
-
-    const Stick middle[3] = {{-20, -32, SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_BUTTON_BACK},
-                             {20, -32, SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_BUTTON_START},
-                             {0, -14, SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_BUTTON_GUIDE}};
-    for (const Stick& button : middle) {
-        bool pressed = down(button.press);
-        list->AddCircleFilled(pt(button.x, button.y), px(7), pressed ? lit : idle, 16);
-        list->AddCircle(pt(button.x, button.y), px(7), edge, 16, px(1));
-    }
+    PadSvg::Pose pose;
+    pose.lit = {{"south", down(SDL_GAMEPAD_BUTTON_SOUTH)},         {"east", down(SDL_GAMEPAD_BUTTON_EAST)},
+                {"west", down(SDL_GAMEPAD_BUTTON_WEST)},           {"north", down(SDL_GAMEPAD_BUTTON_NORTH)},
+                {"l", down(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)},     {"r", down(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)},
+                {"zl", axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER)},       {"zr", axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)},
+                {"dpad_up", down(SDL_GAMEPAD_BUTTON_DPAD_UP)},     {"dpad_down", down(SDL_GAMEPAD_BUTTON_DPAD_DOWN)},
+                {"dpad_left", down(SDL_GAMEPAD_BUTTON_DPAD_LEFT)}, {"dpad_right", down(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)},
+                {"stick_l", down(SDL_GAMEPAD_BUTTON_LEFT_STICK)},  {"stick_r", down(SDL_GAMEPAD_BUTTON_RIGHT_STICK)},
+                {"back", down(SDL_GAMEPAD_BUTTON_BACK)},           {"start", down(SDL_GAMEPAD_BUTTON_START)},
+                {"guide", down(SDL_GAMEPAD_BUTTON_GUIDE)},         {"misc1", down(SDL_GAMEPAD_BUTTON_MISC1)}};
+    pose.stick_left = ImVec2(axis(SDL_GAMEPAD_AXIS_LEFTX), axis(SDL_GAMEPAD_AXIS_LEFTY));
+    pose.stick_right = ImVec2(axis(SDL_GAMEPAD_AXIS_RIGHTX), axis(SDL_GAMEPAD_AXIS_RIGHTY));
+    pad_svg_.draw(list, origin, pose, draw_width * 0.025f);
+    ImVec2 c(at.x + width * 0.5f, at.y + height * 0.5f);
     if (!pad) {
         const char* note = wp::ui::label("pad.view_none");
         ImVec2 size = ImGui::CalcTextSize(note);

@@ -247,6 +247,12 @@ App::~App() {
         task_thread_.join();
     }
     release_captures();
+    pad_svg_.release();
+}
+
+void App::release_textures() {
+    release_captures();
+    pad_svg_.release();
 }
 
 void App::start_update_check() {

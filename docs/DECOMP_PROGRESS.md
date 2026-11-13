@@ -1449,3 +1449,15 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 
 - Build 2610-026 (game) and 2610-027 (launcher). Contents: the controller view.
 
+## EFB copy waits and launcher diagnostics, issue #6 (2026-11-12)
+
+- Issue #6: a user with an i5-10210U and Intel UHD graphics got low fps at native resolution. Their `game.log` showed the GPU thread idle on the CPU side and 740-1010 ms of every second spent waiting for the GPU on 5-9 EFB copies per second, so the scale was not the cause.
+- Cause: the command thread blocked on the GPU in three places: at draw done (`finish_copies`), whenever its queue ran empty, and for any write-back two frames old (the age rule turned the wait into a blocking one). Each blocking wait drains the whole GPU queue, which hurts integrated GPUs most.
+- Change (`engine/src/gpu/gx.cpp`, `gx_render.cpp`, `gx_render_gl.cpp`, `null_render.cpp`, `gx_render.h`): new `render::poll_copies()` (never blocks; the D3D11 one flushes first) and `render::copies_pending()`. Draw done no longer waits: the finish interrupt is held back (`settle_finish`) until the copies have reached RAM, which the GPU thread checks after each item and every millisecond while idle. `complete_write_backs` takes a second argument so a poll skips the age rule. Texture reads that overlap a pending copy and the 32-copy cap still block, as they must. With `WP_GPU_THREAD=0` the old blocking draw done is kept.
+- Launcher: the System page recommends 1x on integrated graphics (before it allowed 2x) and says why; the diagnostics list the internal resolution setting, the average CPU and GPU thread load of the last session and the milliseconds per second spent waiting for the GPU, all read from `logs/game.log`. English, Spanish and Galician texts added.
+- Not built or run: there is no compiler on the machine where this was written, so none of it has been compiled, and the effect on fps has not been measured. To check on an integrated GPU: the "copies ... ms waiting for the GPU" line in `game.log` should drop, and no texture should look stale.
+- Not done in this version: ultrawide support and online play stay planned (too large to write without being able to build and look at them).
+
+## Version 0.1.20-alpha (2026-11-12)
+
+- Build 2611-028 (game) and 2611-029 (launcher). Contents: the EFB copy synchronization change and the launcher diagnostics above.

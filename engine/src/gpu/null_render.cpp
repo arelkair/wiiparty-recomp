@@ -30,6 +30,12 @@ void take_copy_statistics(uint32_t& write_backs, double& wait_seconds) {
 
 void finish_copies() {}
 
+void poll_copies() {}
+
+bool copies_pending() {
+    return false;
+}
+
 const char* api_name() {
     return "no renderer";
 }

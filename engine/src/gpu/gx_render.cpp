@@ -1479,7 +1479,7 @@ ID3D11Texture2D* take_staging() {
 }
 
 constexpr size_t kMaxPendingWriteBacks = 32;
-void complete_write_backs(bool wait);
+void complete_write_backs(bool wait, bool aged = true);
 
 bool queue_write_back(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
                       bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
@@ -1558,10 +1558,10 @@ bool write_back(const PendingWriteBack& pending, bool wait) {
     return true;
 }
 
-void complete_write_backs(bool wait) {
+void complete_write_backs(bool wait, bool aged) {
     size_t done = 0;
     for (const PendingWriteBack& pending : g_device.write_backs) {
-        if (!write_back(pending, wait || pending.frame + kWriteBackFrames <= g_frame)) {
+        if (!write_back(pending, wait || (aged && pending.frame + kWriteBackFrames <= g_frame))) {
             break;
         }
         done++;
@@ -1651,6 +1651,17 @@ void finish_copies() {
     if (g_device.ready) {
         complete_write_backs(true);
     }
+}
+
+void poll_copies() {
+    if (g_device.ready && !g_device.write_backs.empty()) {
+        g_device.context->Flush();
+        complete_write_backs(false, false);
+    }
+}
+
+bool copies_pending() {
+    return g_device.ready && !g_device.write_backs.empty();
 }
 
 void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const CopyFilter& filter) {

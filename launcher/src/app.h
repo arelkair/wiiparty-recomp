@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "pad_svg.h"
 #include "project.h"
 #include "runner.h"
 #include "toolchain.h"
@@ -55,6 +56,7 @@ public:
     bool busy() const;
     bool quit() const;
     int exit_code() const;
+    void release_textures();
     void apply_theme();
     void add_on_start(const std::string& disc);
     bool use_version_now(const std::string& id);
@@ -97,7 +99,7 @@ private:
     bool crop_target(const std::filesystem::path& path);
     void system_page(float width);
     std::vector<std::pair<std::string, std::string>> diagnostics();
-    int recommended_scale(bool& slowed);
+    int recommended_scale(bool& slowed, bool& integrated);
     void toggle_portable(bool on);
     void move_next_to_launcher();
     void uninstall(bool keep_data);
@@ -193,6 +195,7 @@ private:
     std::vector<std::filesystem::path> capture_targets_;
     size_t capture_target_ = 0;
     SDL_Texture* view_texture_ = nullptr;
+    PadSvg pad_svg_;
     int view_width_ = 0;
     int view_height_ = 0;
     ImVec2 crop_from_{0.0f, 0.0f};
@@ -203,6 +206,7 @@ private:
     std::vector<std::pair<std::string, std::string>> system_lines_;
     int system_scale_ = 1;
     bool system_slowed_ = false;
+    bool system_integrated_ = false;
     bool system_ready_ = false;
     bool diagnostics_copied_ = false;
     std::string system_message_;

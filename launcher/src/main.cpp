@@ -198,6 +198,7 @@ int main(int argc, char** argv) {
         }
     }
     int code = app.exit_code();
+    app.release_textures();
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();

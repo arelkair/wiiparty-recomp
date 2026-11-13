@@ -223,9 +223,15 @@ struct Texts {
     const char* diag_session;
     const char* diag_session_value;
     const char* diag_session_none;
+    const char* diag_scale;
+    const char* diag_load;
+    const char* diag_load_value;
+    const char* diag_waits;
+    const char* diag_waits_value;
     const char* res_label;
     const char* res_detail;
     const char* res_slow;
+    const char* res_integrated;
     const char* res_use;
     const char* res_in_use;
     const char* portable_label;

@@ -1153,6 +1153,24 @@ void execute_copy(uint32_t value) {
 }
 
 std::atomic<bool> g_finish_pending{false};
+bool g_finish_deferred = false;
+const bool g_threaded = [] {
+    const char* setting = std::getenv("WP_GPU_THREAD");
+    return !setting || std::atoi(setting) != 0;
+}();
+
+// The guest expects every EFB copy to be in RAM when the draw done interrupt fires. Waiting for the GPU
+// here would stall the whole command thread, so the interrupt is held back until the copies have landed.
+void settle_finish() {
+    if (!g_finish_deferred) {
+        return;
+    }
+    render::poll_copies();
+    if (!render::copies_pending()) {
+        g_finish_deferred = false;
+        g_finish_pending = true;
+    }
+}
 
 void load_bp(uint32_t word) {
     uint32_t reg = word >> 24;
@@ -1171,8 +1189,13 @@ void load_bp(uint32_t word) {
     }
     g_bp[reg] = (g_bp[reg] & ~mask) | (value & mask);
     if (reg == kBpDrawDone && (value & 2)) {
-        render::finish_copies();
-        g_finish_pending = true;
+        if (g_threaded) {
+            g_finish_deferred = true;
+            settle_finish();
+        } else {
+            render::finish_copies();
+            g_finish_pending = true;
+        }
     } else if (reg == kBpCopyExecute) {
         execute_copy(g_bp[reg]);
     } else if (reg == kBpInvalidateTexture) {
@@ -1471,10 +1494,6 @@ struct GpuQueue {
 };
 
 GpuQueue g_gpu;
-const bool g_threaded = [] {
-    const char* setting = std::getenv("WP_GPU_THREAD");
-    return !setting || std::atoi(setting) != 0;
-}();
 
 
 void gpu_thread() {
@@ -1483,10 +1502,23 @@ void gpu_thread() {
         std::unique_lock<std::mutex> hold(g_gpu.lock);
         if (g_gpu.items.empty()) {
             hold.unlock();
-            render::finish_copies();
+            render::poll_copies();
+            settle_finish();
             hold.lock();
         }
-        g_gpu.work.wait(hold, [] { return !g_gpu.items.empty(); });
+        while (g_gpu.items.empty()) {
+            if (render::copies_pending() || g_finish_deferred) {
+                // Copies are still in flight: check on them again shortly instead of blocking on the GPU.
+                if (!g_gpu.work.wait_for(hold, std::chrono::milliseconds(1), [] { return !g_gpu.items.empty(); })) {
+                    hold.unlock();
+                    render::poll_copies();
+                    settle_finish();
+                    hold.lock();
+                }
+            } else {
+                g_gpu.work.wait(hold, [] { return !g_gpu.items.empty(); });
+            }
+        }
         GpuItem item = std::move(g_gpu.items.front());
         g_gpu.items.pop_front();
         g_queued_bytes -= item.bytes.size();
@@ -1500,6 +1532,7 @@ void gpu_thread() {
         if (item.task) {
             item.task();
         }
+        settle_finish();
         if (item.frame) {
             std::lock_guard<std::mutex> hold(g_gpu.lock);
             g_gpu.frames--;

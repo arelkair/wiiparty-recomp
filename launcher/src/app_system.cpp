@@ -151,6 +151,50 @@ Session last_session(const fs::path& game_log) {
     return session;
 }
 
+struct Load {
+    bool found = false;
+    float cpu = 0.0f;
+    float gpu = 0.0f;
+    float waiting = 0.0f;
+};
+
+// Averages the per-second "threads" and "copies" lines the game writes to its log, skipping the first seconds of loading.
+Load last_load(const fs::path& game_log) {
+    Load load;
+    std::ifstream file(game_log);
+    float cpu = 0.0f;
+    float gpu = 0.0f;
+    float waiting = 0.0f;
+    int threads = 0;
+    int copies = 0;
+    for (std::string line; std::getline(file, line);) {
+        size_t cpu_at = line.find("CPU thread busy ");
+        size_t gpu_at = line.find("GPU thread busy ");
+        if (cpu_at != std::string::npos && gpu_at != std::string::npos) {
+            if (threads++ >= 3) {
+                cpu += std::strtof(line.c_str() + cpu_at + 16, nullptr);
+                gpu += std::strtof(line.c_str() + gpu_at + 16, nullptr);
+                load.found = true;
+            }
+            continue;
+        }
+        size_t wait_at = line.find(" ms waiting for the GPU");
+        if (wait_at != std::string::npos) {
+            size_t start = line.find_last_of(' ', wait_at - 1);
+            if (copies++ >= 3) {
+                waiting += std::strtof(line.c_str() + (start == std::string::npos ? 0 : start + 1), nullptr);
+            }
+        }
+    }
+    if (load.found) {
+        float seconds = static_cast<float>(threads - 3);
+        load.cpu = cpu / seconds;
+        load.gpu = gpu / seconds;
+        load.waiting = copies > 3 ? waiting / static_cast<float>(copies - 3) : 0.0f;
+    }
+    return load;
+}
+
 std::string one_decimal(float value) {
     char buffer[16];
     std::snprintf(buffer, sizeof buffer, "%.1f", value);
@@ -190,8 +234,9 @@ uintmax_t tree_size(const fs::path& folder) {
 
 }
 
-int App::recommended_scale(bool& slowed) {
+int App::recommended_scale(bool& slowed, bool& integrated_graphics) {
     slowed = false;
+    integrated_graphics = false;
     SDL_DisplayID display = SDL_GetDisplayForWindow(window_);
     const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display ? display : SDL_GetPrimaryDisplay());
     int height = mode ? mode->h : 1080;
@@ -199,7 +244,9 @@ int App::recommended_scale(bool& slowed) {
     std::vector<Graphics> cards = graphics_cards(project_.root / "logs" / "game.log");
     bool integrated = !cards.empty() && std::all_of(cards.begin(), cards.end(), [](const Graphics& card) { return card.integrated; });
     if (integrated) {
-        scale = std::min(scale, 2);
+        // Integrated graphics share memory with the processor and cannot keep up above the native resolution.
+        scale = 1;
+        integrated_graphics = true;
     }
     Session session = last_session(project_.root / "logs" / "game.log");
     int current = std::max(1, std::atoi(value("video.scale").c_str()));
@@ -251,6 +298,14 @@ std::vector<std::pair<std::string, std::string>> App::diagnostics() {
     Session session = last_session(project_.root / "logs" / "game.log");
     lines.emplace_back(t.diag_session, session.found ? format(t.diag_session_value, one_decimal(session.average), one_decimal(session.lowest))
                                                      : std::string(t.diag_session_none));
+    lines.emplace_back(t.diag_scale, wp::options::shown_value("video.scale", std::to_string(std::max(1, std::atoi(value("video.scale").c_str())))));
+    Load load = last_load(project_.root / "logs" / "game.log");
+    if (load.found) {
+        lines.emplace_back(t.diag_load, format(t.diag_load_value, std::to_string(static_cast<int>(std::lround(load.cpu))), std::to_string(static_cast<int>(std::lround(load.gpu)))));
+        if (load.waiting >= 1.0f) {
+            lines.emplace_back(t.diag_waits, format(t.diag_waits_value, std::to_string(static_cast<int>(std::lround(load.waiting)))));
+        }
+    }
     return lines;
 }
 
@@ -411,7 +466,7 @@ void App::system_page(float width) {
 
     if (!system_ready_) {
         system_lines_ = diagnostics();
-        system_scale_ = recommended_scale(system_slowed_);
+        system_scale_ = recommended_scale(system_slowed_, system_integrated_);
         system_ready_ = true;
     }
     ui::text(t.diag_title, Font::Semibold, ui::size::kDetail, p.secondary);
@@ -450,7 +505,9 @@ void App::system_page(float width) {
     std::string shown = wp::options::shown_value("video.scale", std::to_string(scale));
     std::string label = format(t.res_label, shown);
     std::string detail = format(t.res_detail, screen, wp::options::shown_value("video.scale", std::to_string(current)));
-    if (slowed) {
+    if (system_integrated_) {
+        detail += " " + std::string(t.res_integrated);
+    } else if (slowed) {
         detail += " " + std::string(t.res_slow);
     }
     row(width, label.c_str(), detail.c_str(), 110.0f, 36.0f, [&] {

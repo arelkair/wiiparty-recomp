@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_FLAGS_RELEASE "-Os -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-Os -DNDEBUG")
-set(WP_LAUNCHER_VERSION "0.1.19-alpha" CACHE STRING "Version shown in the launcher")
-set(WP_LAUNCHER_BUILD "2610-027" CACHE STRING "Build number shown in the launcher")
+set(WP_LAUNCHER_VERSION "0.1.20-alpha" CACHE STRING "Version shown in the launcher")
+set(WP_LAUNCHER_BUILD "2611-029" CACHE STRING "Build number shown in the launcher")
 
 include(FetchContent)
 
@@ -68,6 +68,7 @@ add_executable(launcher WIN32
     src/app_captures.cpp
     src/app_miis.cpp
     src/app_system.cpp
+    src/pad_svg.cpp
     ${WP_ENGINE}/src/platform/settings.cpp
     ${WP_ENGINE}/src/platform/options.cpp
     ${WP_ENGINE}/src/platform/mii.cpp
@@ -80,7 +81,7 @@ include(cmake/embed.cmake)
 
 set_target_properties(launcher PROPERTIES OUTPUT_NAME wiipartyrecomp-launcher)
 target_include_directories(launcher PRIVATE ${WP_ENGINE}/include src)
-target_include_directories(launcher SYSTEM PRIVATE ${WP_ENGINE}/../third_party/stb)
+target_include_directories(launcher SYSTEM PRIVATE ${WP_ENGINE}/../third_party/stb ${WP_ENGINE}/../third_party/nanosvg)
 target_compile_definitions(launcher PRIVATE WP_LAUNCHER_VERSION="${WP_LAUNCHER_VERSION}" WP_LAUNCHER_BUILD="${WP_LAUNCHER_BUILD}")
 target_compile_options(launcher PRIVATE -Wall -Wextra)
 target_link_libraries(launcher PRIVATE imgui)
