@@ -1461,3 +1461,6 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 ## Version 0.1.20-alpha (2026-11-12)
 
 - Build 2611-028 (game) and 2611-029 (launcher). Contents: the EFB copy synchronization change and the launcher diagnostics above.
+- Controls page: the controller picture now uses the Switch Pro, Xbox Series X and DualSense SVGs of AL2009man's Gamepad Asset Pack (MIT), prepared by `tools/pad_svg.py` and drawn with NanoSVG (zlib); the pressed buttons, triggers and sticks are lit. Xbox bumpers do not light up (the SVG does not separate them).
+- Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
+- The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
