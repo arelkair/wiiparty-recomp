@@ -680,8 +680,9 @@ void update_wiimote(uint32_t index) {
         real_wiimote::reset(index);
         return;
     }
-    bool wakes = real ? real_wiimote::take_wake(index) : input::connected(index) && input::wakes_remote(index);
-    if (wiimote.baseband == Baseband::Inactive && wakes) {
+    bool inactive = wiimote.baseband == Baseband::Inactive;
+    bool wakes = real ? real_wiimote::take_wake(index) : inactive && input::connected(index) && input::wakes_remote(index);
+    if (inactive && wakes) {
         wiimote.baseband = Baseband::RequestConnection;
         wiimote.real = real;
     }

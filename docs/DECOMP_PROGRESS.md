@@ -1465,6 +1465,11 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
 - The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
 
+## Version 0.1.23-alpha (2026-11-19)
+
+- Build 2611-032 (game and launcher).
+- The Bluetooth emulation asked every emulated remote whether it should wake up on each poll, even when it was already connected. That made 9,000-80,000 input reads per second (issue #7 log: about 500 ms of CPU per second while the window had focus, 45-58 us per read) and explains the lower frame rate with focus. It now asks only for remotes that are not connected.
+
 ## Version 0.1.22-alpha (2026-11-19)
 
 - Build 2611-031 (game and launcher).
