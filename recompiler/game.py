@@ -1,3 +1,4 @@
+import hashlib
 import os
 import tomllib
 from pathlib import Path
@@ -18,8 +19,14 @@ class Game:
         self.disc = self.folder / config["disc"]
         self.extracted = self.folder / "extracted"
         self.dol = self.extracted / "sys" / "main.dol"
+        self.versions = config.get("versions", {})
+        self.dol_sha256 = hashlib.sha256(self.dol.read_bytes()).hexdigest() if self.dol.exists() else None
         self.compressed_modules = self.extracted / "files" / "rel"
         self.analysis = self.folder / "analysis"
+        version = self.versions.get(self.dol_sha256)
+        if version:
+            self.analysis = self.folder / version["analysis"]
+            self.sdk = version.get("sdk", self.sdk)
         self.resources = self.folder / "res"
         self.symbol_map = ROOT / "reference" / "symbols" / f"{self.id}.map"
         self.build = ROOT / "build" / key

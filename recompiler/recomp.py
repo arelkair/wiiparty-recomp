@@ -213,6 +213,8 @@ def main():
     parser.add_argument("--output", default=str(current.dol_code))
     args = parser.parse_args()
 
+    if current.versions and Path(args.dol) == current.dol and current.dol_sha256 not in current.versions:
+        sys.exit(f"{args.dol} is not the main executable of a supported disc (SHA-256 {current.dol_sha256}). The Europe (SUPP01), USA (SUPE01) and Japan (SUPJ01) discs are supported; Korea is not.")
     dol = dol_module.load(args.dol)
     replacements = load_replacements(args.symbols, args.replacements)
     names = load_names([args.dolphin_symbols, args.symbols])

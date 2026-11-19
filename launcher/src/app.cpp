@@ -60,6 +60,18 @@ std::string read_disc_id(const std::filesystem::path& extracted) {
     return file ? std::string(id, sizeof(id)) : std::string();
 }
 
+std::set<std::string> supported_dol_hashes(const std::filesystem::path& root) {
+    std::set<std::string> hashes;
+    std::ifstream file(root / "games" / kGame / "game.toml", std::ios::binary);
+    const std::string prefix = "[versions.";
+    for (std::string line; std::getline(file, line);) {
+        if (line.compare(0, prefix.size(), prefix) == 0 && line.size() >= prefix.size() + 64) {
+            hashes.insert(line.substr(prefix.size(), 64));
+        }
+    }
+    return hashes;
+}
+
 std::string tail_of(const std::filesystem::path& path, size_t lines) {
     std::ifstream file(path, std::ios::binary);
     std::vector<std::string> kept;
@@ -1866,6 +1878,23 @@ void App::install(bool adding) {
     std::string incoming = std::string("games/") + kGame + "/versions/incoming";
     program(t.step_extract, "nodtool", {"extract", disc, adding ? incoming : std::string("games/") + kGame + "/extracted"}, 2.0f);
     steps.back().skip = [project, adding] { return !adding && project.extracted(); };
+    Step supported;
+    supported.title = t.step_verify_disc;
+    supported.action = [project, adding](std::string& message) {
+        std::filesystem::path folder = adding ? project.versions_folder() / "incoming" : project.extracted_folder();
+        std::set<std::string> supported_hashes = supported_dol_hashes(project.root);
+        std::error_code missing;
+        if (supported_hashes.empty() || !std::filesystem::exists(folder / "sys" / "main.dol", missing) || supported_hashes.count(sha256_of(folder / "sys" / "main.dol")) != 0) {
+            return true;
+        }
+        std::error_code error;
+        if (adding) {
+            std::filesystem::remove_all(project.versions_folder() / "incoming", error);
+        }
+        message = format(texts().disc_unsupported, read_disc_id(folder));
+        return false;
+    };
+    steps.push_back(supported);
     if (adding) {
         std::error_code stale;
         std::filesystem::remove_all(project_.versions_folder() / "incoming", stale);

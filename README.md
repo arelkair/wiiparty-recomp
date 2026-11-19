@@ -110,6 +110,15 @@ The project's scope is the original game, faithful and optimized.
 
 The launcher has a Miis page that links an online Mii editor and loads the Wii Mii files made with it (.mii files or a Wii Mii database) into the console Miis the game lists, up to 100. A Mii editor of its own is not planned.
 
+### Disc versions
+
+| Version | Status |
+| :--- | :--- |
+| Europe (SUPP01) | Supported; the version the game was developed against. |
+| USA (SUPE01) | Supported; its executable is identical to the European one. |
+| Japan (SUPJ01) | Experimental. It starts and runs the menus at 60 fps in Japanese; the minigames and the board games have not been played through. Reports are welcome. |
+| Korea | Not supported yet. The launcher stops with a message when the disc has a different executable. |
+
 ### Platforms
 
 - **Windows 10 and 11:** supported.

@@ -1189,7 +1189,10 @@ void load_bp(uint32_t word) {
     }
     g_bp[reg] = (g_bp[reg] & ~mask) | (value & mask);
     if (reg == kBpDrawDone && (value & 2)) {
-        if (g_threaded) {
+        static const settings::LiveFlag wait_for_copies("video.copy_wait", "WP_COPY_WAIT");
+        if (g_threaded && !wait_for_copies()) {
+            g_finish_pending = true;
+        } else if (g_threaded) {
             g_finish_deferred = true;
             settle_finish();
         } else {

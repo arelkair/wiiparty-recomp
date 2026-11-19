@@ -1464,3 +1464,12 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Controls page: the controller picture now uses the Switch Pro, Xbox Series X and DualSense SVGs of AL2009man's Gamepad Asset Pack (MIT), prepared by `tools/pad_svg.py` and drawn with NanoSVG (zlib); the pressed buttons, triggers and sticks are lit. Xbox bumpers do not light up (the SVG does not separate them).
 - Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
 - The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
+
+## Version 0.1.21-alpha (2026-11-19)
+
+- Build 2611-030 (game and launcher). Japanese disc (SUPJ01) support, tested up to the menus; `tools/port_analysis.py` carries the executable analysis over to a build of the same executable by matching each function with its address fields masked (6,101 of 6,115 functions moved, 12 distinct offsets), and `game.toml` now lists each supported executable by SHA-256 with its analysis folder and SDK addresses (issue #8).
+- Japanese discs start with the console language set to Japanese, since the disc has only `locale/ja_JP`; without it the game stopped with "ARCInitHandle: bad archive format".
+- The launcher and `recomp.py` stop at once with a clear message when the extracted `main.dol` is not one of the listed executables (Korea, for example), instead of failing with a Python error in the translation step.
+- `lifted_tests` is built only for the European executable, because it calls functions by their European addresses.
+- New hidden setting `video.copy_wait` (default 1). With 0 the draw done interrupt no longer waits for the EFB copies to reach RAM (issue #7: 30-35 fps on Board Game Island with the GPU mostly idle, 60 copies per second and about half of the CPU thread idle). Not measured yet; the reporter is asked to try it.
+- `WP_BUILD` is no longer a CMake cache variable: build folders that were updated kept the old number (the log of issue #7 printed 2610-026 on a 2611 build).

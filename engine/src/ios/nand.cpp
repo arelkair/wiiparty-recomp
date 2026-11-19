@@ -34,6 +34,7 @@ constexpr uint8_t kTypeSmallArray = 2;
 constexpr uint8_t kTypeByte = 3;
 constexpr uint8_t kTypeLong = 5;
 constexpr uint8_t kTypeBool = 7;
+constexpr uint8_t kLanguageJapanese = 0;
 constexpr uint8_t kLanguageEnglish = 1;
 constexpr uint8_t kLanguageGerman = 2;
 constexpr uint8_t kLanguageFrench = 3;
@@ -196,6 +197,9 @@ Area console_area() {
 }
 
 uint8_t console_language() {
+    if (static_cast<char>(rd8(kGameIdAddress + 3)) == 'J') {
+        return kLanguageJapanese;
+    }
     struct Name {
         const char* code;
         uint8_t language;

@@ -6,3 +6,13 @@ disc = "disc/wiiparty.rvz"
 [sdk]
 os_save_context = 0x80138290
 setjmp = 0x801c8a1c
+
+[versions.f8f46694f942ded88fa6952ca5f93701100d304d63407978d4c700c1bdceab6c]
+analysis = "analysis"
+
+[versions.9c5d9bb7dc58cf07dd7fb677ddf2527563a5b0f79130245b4d3bdf51d7225ba6]
+analysis = "analysis/SUPJ01"
+
+[versions.9c5d9bb7dc58cf07dd7fb677ddf2527563a5b0f79130245b4d3bdf51d7225ba6.sdk]
+os_save_context = 0x80137b20
+setjmp = 0x801c84ec
