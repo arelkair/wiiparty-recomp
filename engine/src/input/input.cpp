@@ -67,6 +67,9 @@ bool pressed(int key) {
     return video::key_down(key);
 }
 
+std::atomic<int64_t> g_sample_ns{0};
+std::atomic<int64_t> g_sample_calls{0};
+
 bool any_pressed(const std::vector<int>& keys) {
     for (int key : keys) {
         if (pressed(key)) {
@@ -384,8 +387,16 @@ void set_blocked(bool blocked) {
     g_blocked = blocked;
 }
 
+double take_sample_seconds(uint32_t& calls) {
+    calls = static_cast<uint32_t>(g_sample_calls.exchange(0));
+    return static_cast<double>(g_sample_ns.exchange(0)) / 1e9;
+}
+
 Sample sample(uint32_t channel) {
+    auto started = std::chrono::steady_clock::now();
     Sample result = device_sample(channel);
+    g_sample_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count();
+    g_sample_calls++;
     uint32_t held = result.buttons & ~kMotionSideways;
     bool waiting = channel < 4 && g_release_wait[channel].load();
     if (g_blocked.load() || (waiting && held != 0)) {

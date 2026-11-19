@@ -1465,6 +1465,12 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
 - The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
 
+## Version 0.1.22-alpha (2026-11-19)
+
+- Build 2611-031 (game and launcher).
+- `video.copy_wait` now defaults to 0. The issue #7 reporter measured 23-31 fps with 1 against 40-58 fps with 0 in the 3D menus, and 32-38 against 42-58 on Board Game Island, with no visual glitches. Set it to 1 to restore the wait if an integrated GPU shows the stalls of issue #6.
+- The log gets an `input` line with the number of input reads per second and the time they take, to look into the lower frame rate while the window has focus.
+
 ## Version 0.1.21-alpha (2026-11-19)
 
 - Build 2611-030 (game and launcher). Japanese disc (SUPJ01) support, tested up to the menus; `tools/port_analysis.py` carries the executable analysis over to a build of the same executable by matching each function with its address fields masked (6,101 of 6,115 functions moved, 12 distinct offsets), and `game.toml` now lists each supported executable by SHA-256 with its analysis folder and SDK addresses (issue #8).

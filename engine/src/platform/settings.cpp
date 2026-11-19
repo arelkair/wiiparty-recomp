@@ -25,7 +25,7 @@ const Option kBaseOptions[] = {
     {"video.scale", "1"},
     {"video.fullscreen", "0"},
     {"video.copy_filter", "1"},
-    {"video.copy_wait", "1"},
+    {"video.copy_wait", "0"},
     {"video.dump_textures", "0"},
     {"video.custom_textures", "1"},
     {"input.gamepads", "1"},

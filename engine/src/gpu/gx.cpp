@@ -26,6 +26,7 @@
 #include "wp/gx_lighting.h"
 #include "wp/gx_render.h"
 #include "wp/gx_state.h"
+#include "wp/input.h"
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/profile.h"
@@ -1115,6 +1116,9 @@ void execute_copy(uint32_t value) {
                 double gpu = thread_seconds(gpu_clock);
                 log::write("copies", "%u EFB copies written back to RAM, %.1f ms waiting for the GPU", write_backs, write_back_seconds * 1000.0);
                 log::write("memory", "%zu MB private memory, %zu KB of graphics commands queued", private_memory_mb(), g_queued_bytes.load() >> 10);
+                uint32_t input_calls = 0;
+                double input_seconds = input::take_sample_seconds(input_calls);
+                log::write("input", "%u input reads, %.2f ms in total", input_calls, input_seconds * 1000.0);
                 double idle = idle_share();
                 if (idle >= 0.0) {
                     log::write("threads", "CPU thread busy %.0f%% (guest idle %.0f%%), GPU thread busy %.0f%%", (cpu - previous_cpu) * 100.0 / seconds, idle * 100.0, (gpu - previous_gpu) * 100.0 / seconds);
