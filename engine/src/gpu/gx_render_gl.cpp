@@ -652,6 +652,7 @@ struct PendingWriteBack {
     uint32_t logical_height = 0;
     uint32_t texture_format = 0;
     uint64_t frame = 0;
+    uint64_t guard = 0;
 };
 
 struct Program {
@@ -1515,7 +1516,24 @@ GLuint take_buffer() {
 }
 
 constexpr size_t kMaxPendingWriteBacks = 32;
+constexpr size_t kGuardSamples = 1024;
 void complete_write_backs(bool wait, bool aged = true);
+
+uint64_t range_guard(uint32_t address, size_t size) {
+    if (size < 8) {
+        return 0;
+    }
+    const uint8_t* data = host(address);
+    size_t count = std::min<size_t>(kGuardSamples, size / 8);
+    size_t step = size / count;
+    uint64_t hash = 1469598103934665603ull;
+    for (size_t i = 0; i < count; i++) {
+        uint64_t word = 0;
+        std::memcpy(&word, data + std::min(i * step, size - 8), 8);
+        hash = (hash ^ word) * 1099511628211ull;
+    }
+    return hash;
+}
 
 bool queue_write_back(uint32_t address, uint32_t stride, int x, int y, int width, int height, uint32_t logical_width, uint32_t logical_height, uint32_t format,
                       bool intensity, bool alpha, bool depth, const CopyFilter& filter) {
@@ -1552,17 +1570,28 @@ bool queue_write_back(uint32_t address, uint32_t stride, int x, int y, int width
     pending.logical_height = logical_height;
     pending.texture_format = texture_format;
     pending.frame = g_frame;
+    pending.guard = range_guard(address, span);
     g_device.write_backs.push_back(pending);
     return true;
 }
 
-bool write_back(const PendingWriteBack& pending, bool wait) {
+bool write_back(const PendingWriteBack& pending, bool wait, bool& stale) {
+    stale = false;
     auto wait_start = std::chrono::steady_clock::now();
     GLenum status = gl.ClientWaitSync(pending.fence, GL_SYNC_FLUSH_COMMANDS_BIT, wait ? kWaitForever : 0);
     if (status == GL_TIMEOUT_EXPIRED) {
         return false;
     }
     gl.DeleteSync(pending.fence);
+    if (range_guard(pending.address, pending.end - pending.start) != pending.guard) {
+        stale = true;
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            std::fprintf(stderr, "an EFB copy arrived after the game reused its memory and was dropped\n");
+        }
+        return true;
+    }
     Layout layout = layout_for(pending.texture_format);
     uint32_t blocks_x = (pending.logical_width + layout.block_width - 1) / layout.block_width;
     uint32_t blocks_y = (pending.logical_height + layout.block_height - 1) / layout.block_height;
@@ -1596,16 +1625,28 @@ bool write_back(const PendingWriteBack& pending, bool wait) {
 
 void complete_write_backs(bool wait, bool aged) {
     size_t done = 0;
-    for (const PendingWriteBack& pending : g_device.write_backs) {
-        if (!write_back(pending, wait || (aged && pending.frame + kWriteBackFrames <= g_frame))) {
+    for (size_t index = 0; index < g_device.write_backs.size(); index++) {
+        const PendingWriteBack pending = g_device.write_backs[index];
+        bool stale = false;
+        if (!write_back(pending, wait || (aged && pending.frame + kWriteBackFrames <= g_frame), stale)) {
             break;
         }
         done++;
         g_device.free_buffers.push_back(pending.buffer);
+        if (!stale) {
+            for (size_t later = index + 1; later < g_device.write_backs.size(); later++) {
+                PendingWriteBack& other = g_device.write_backs[later];
+                if (other.start < pending.end && pending.start < other.end) {
+                    other.guard = range_guard(other.address, other.end - other.start);
+                }
+            }
+        }
         auto copied = g_device.copies.find(pending.address);
         if (copied != g_device.copies.end() && copied->second.pending_writes > 0 && --copied->second.pending_writes == 0) {
             CopiedTexture& entry = copied->second;
-            entry.guest_hash = guest_range_valid(pending.address, entry.bytes) ? sample_hash(host(pending.address), entry.bytes) : 0;
+            entry.guest_hash = stale || !guest_range_valid(pending.address, entry.bytes) ? 0 : sample_hash(host(pending.address), entry.bytes);
+        } else if (stale && copied != g_device.copies.end()) {
+            copied->second.guest_hash = 0;
         }
     }
     g_device.write_backs.erase(g_device.write_backs.begin(), g_device.write_backs.begin() + static_cast<std::ptrdiff_t>(done));
