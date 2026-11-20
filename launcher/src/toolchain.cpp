@@ -1,5 +1,7 @@
 #include "toolchain.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <regex>
@@ -138,6 +140,15 @@ std::vector<ToolStatus> Toolchain::inspect() const {
 #ifdef _WIN32
             if (status.usable && std::strcmp(requirement.program, kCompiler) == 0) {
                 status.usable = capture(path, {"-dumpmachine"}).find("mingw32") != std::string::npos;
+            }
+            if (status.usable && std::strcmp(requirement.program, "cmake") == 0) {
+                std::string lowered = path;
+                std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return c == '/' ? '\\' : static_cast<char>(std::tolower(c)); });
+                for (const char* posix_tree : {"\\msys", "\\cygwin", "devkitpro"}) {
+                    if (lowered.find(posix_tree) != std::string::npos) {
+                        status.usable = false;
+                    }
+                }
             }
 #endif
         }
