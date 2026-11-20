@@ -2,14 +2,10 @@
 
 Thank you for helping improve the project! This document outlines the guidelines and technical requirements for contributing to this static recompilation ecosystem.
 
----
-
 ## Intellectual Property & Asset Protection
 - **No Copyrighted Material:** Never upload, commit, or link to any copyrighted Nintendo data. This includes `main.dol`, `.rel` files, ISO/WBFS/RVZ images, textures, models, audio, fonts, videos, or memory dumps. This rule strictly applies to commits, issues, and pull requests.
 - **Git Boundaries:** The directories `games/wiiparty/disc/`, `games/wiiparty/extracted/`, and `reference/` are explicitly ignored by Git. Never alter these exclusions.
 - **Legal Source:** You must use your own legally obtained copy of Wii Party to develop, test, or verify code.
-
----
 
 ## Licensing & Third-Party Code
 
@@ -22,8 +18,6 @@ All contributions are licensed under the **GNU General Public License, version 3
 - **Provenance Logging:** Record the precise origin in `THIRD_PARTY_NOTICES.md` (include the upstream path, commit/revision, authors, and exact license). Do not log this information in code comments.
 - **Strict Prohibitions:** Code from InputEvelution/wp without explicit authorization, leaks, proprietary code, or unverified source material is strictly forbidden. If provenance or licensing is ambiguous, do not add the code.
 
----
-
 ## Code Quality & Style Conventions
 
 - **Zero Code Comments:** Absolutely no comments are allowed inside source code files (`.c`, `.cpp`, `.h`, or scripts). All technical notes, architectural rationale, and documentation must live inside `docs/DECOMP_PROGRESS.md`.
@@ -33,8 +27,6 @@ All contributions are licensed under the **GNU General Public License, version 3
 ### Recompilation Fidelity
 - **No Arbitrary Stubs:** Do not replace original game or SDK logic with clean stubs for convenience.
 - **Allowed Substitutions:** Only hardware or console-specific dependencies (such as thread switching or cache operations) may be substituted. Every substitution must be explicitly justified and logged in `docs/DECOMP_PROGRESS.md`.
-
----
 
 ## Build, Test & Verification
 
@@ -57,8 +49,6 @@ ctest --test-dir build/out
 > [!IMPORTANT]
 > Passing compilation or core unit tests does not guarantee correctness. Any change affecting the runtime must be manually verified by running the game binary (`build/out/wiiparty`). If a runtime test was not performed, you must state this clearly in your pull request description.
 
----
-
 ## Commits & Documentation
 
 ### Git Commit Style
@@ -69,11 +59,9 @@ ctest --test-dir build/out
 ### Progress Tracking
 You must update `docs/DECOMP_PROGRESS.md` immediately following any change that alters runtime behavior. State exactly what was verified and the methodology used. Never declare a feature as fully working if it has not been verified under test conditions.
 
----
-
 ## Reporting Issues
 
-When filing a bug or a crash report, please include:
+Open the bug report or the minigame report from the new issue page; the forms ask for what is needed. When you report a bug or a crash yourself from a source build, please include:
 1. The exact commit hash of your branch.
 2. Your operating system version (e.g., Windows 11).
 3. The exact command-line arguments used.
