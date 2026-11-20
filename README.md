@@ -4,11 +4,11 @@ Static recompilation of Wii Party for native PC.
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20%C2%B7%20x64-0078D4)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![Linux](https://img.shields.io/badge/Linux-x64%20%C2%B7%20Experimental-E9B53B)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![PowerPC](https://img.shields.io/badge/PowerPC-Static%20Recompilation-E8860B)](#overview) [![Release](https://img.shields.io/github/v/release/arelkair/wiiparty-recomp?label=Release&color=7B4FE0)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![Downloads](https://img.shields.io/github/downloads/arelkair/wiiparty-recomp/total?label=Downloads&color=17A2B8)](https://github.com/arelkair/wiiparty-recomp/releases) [![Status](https://img.shields.io/badge/Status-Alpha-C0392B)](#current-state--metrics) [![License](https://img.shields.io/badge/License-GPLv3-2EA44F)](https://github.com/arelkair/wiiparty-recomp?tab=GPL-3.0-1-ov-file) [![macOS](https://img.shields.io/badge/macOS-Planned-8E8E93)](https://github.com/arelkair/wiiparty-recomp#platforms) [![Linux ARM64](https://img.shields.io/badge/Linux-ARM64%20%C2%B7%20Planned-8E8E93)](https://github.com/arelkair/wiiparty-recomp#platforms)
 
-> [!NOTE]
-> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **93%** overall.
-
 > [!IMPORTANT]
 > This repository and its releases contain no Nintendo code, no game assets and no game files. You need your own legally obtained copy of the Europe (SUPP01) or USA (SUPE01) disc; Japan (SUPJ01) is experimental. The launcher only downloads the build tools, the translation runs on your PC against your own disc, and nothing from the game is ever uploaded. The repository does hold analysis tables (function addresses and names) that the translator needs; they contain no game code.
+
+> [!NOTE]
+> **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **93%** overall.
 
 ![Project progress](docs/progress.svg)
 
