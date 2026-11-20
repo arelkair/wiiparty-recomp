@@ -1,6 +1,6 @@
 # Third-Party Notices and Provenance Tracking
 
-The original code of this project is licensed under the **GNU General Public License, version 3 or later (GPL-3.0-or-later)**. 
+The original code of this project is Copyright (C) 2026 Arel Kair and the Wii Party Recomp contributors, and is licensed under the **GNU General Public License, version 3 or later (GPL-3.0-or-later)**. 
 
 > [!WARNING]
 > **Asset Protection & Intellectual Property Boundaries:** The project's license does not apply to, nor does it grant any rights over, Nintendo's proprietary game data or binaries.

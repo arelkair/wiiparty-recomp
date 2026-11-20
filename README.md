@@ -171,4 +171,6 @@ Technical notes and the history of every change are in `docs/DECOMP_PROGRESS.md`
 
 Independent project not affiliated with or endorsed by Nintendo. Users must supply their own legally obtained game files.
 
-Licensed under the GPL-3.0-or-later. Third-party code and libraries are listed in `THIRD_PARTY_NOTICES.md`.
+Copyright (C) 2026 Arel Kair and the Wii Party Recomp contributors.
+
+Licensed under the GPL-3.0-or-later. Third-party code and libraries are listed in `THIRD_PARTY_NOTICES.md`. If you copy, modify or redistribute this project, the license requires you to keep this copyright notice and the license text, to state your changes, and to publish your source code under the same license. The original project is at https://github.com/arelkair/wiiparty-recomp.
