@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Open the launcher, go to System and press the report button to create a text file with your system information, then paste it below. Attach `logs/game.log` from the install folder; it says where the time goes and what failed.
+        Open the launcher and press Create report in the System page: it saves a file with your logs, versions and settings. Attach that file, or `logs/game.log` from the install folder, which says where the time goes and what failed.
   - type: input
     id: version
     attributes:
@@ -51,11 +51,6 @@ body:
       description: What you were doing (mode, minigame, menu), what you expected and what you saw. Say how often it happens.
     validations:
       required: true
-  - type: textarea
-    id: system_report
-    attributes:
-      label: System report
-      description: Paste the contents of the report from the launcher.
   - type: markdown
     attributes:
-      value: Attach `logs/game.log` to the issue by dragging it into the comment box.
+      value: Drag the report or `logs/game.log` into the comment box to attach it.
