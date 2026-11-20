@@ -1,8 +1,12 @@
-### Supported versions
+# Security policy
+
+This page says which versions receive security fixes and how to report a problem privately.
+
+## Supported versions
 
 Only the latest release receives fixes. Update the launcher and the game before you report a problem.
 
-### Reporting a vulnerability
+## Reporting a vulnerability
 
 Please do not open a public issue for a security problem. Use the private report of this repository instead: open the Security tab and press **Report a vulnerability**.
 
@@ -14,7 +18,7 @@ Include:
 
 You can expect an answer within a few days. Once the problem is fixed and a release is published, the report can be made public with credit to you, if you want it.
 
-### What counts
+## What counts
 
 - The launcher or the game running code or writing files outside the install folder because of a crafted file or a download.
 - A crash or memory corruption caused by a file the game or the launcher loads from disk.
