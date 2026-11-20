@@ -49,6 +49,12 @@ Tracked in `games/wiiparty/analysis/progress.csv`:
 2. Open it, check the install folder, choose your own copy of Wii Party (`.iso`, `.wbfs`, `.rvz`, `.ciso`, `.wia` or `.gcm`) and press **Install**.
 3. When it finishes, press **Play**.
 
+> [!WARNING]
+> Windows Defender may flag the launcher as a false positive, because it is not code-signed. Compare the file with the SHA-256 listed on the release, and add an exclusion for the install folder instead of turning the antivirus off. The full source code of the launcher is in this repository.
+
+> [!TIP]
+> Press F10 while you play to open the options menu: internal resolution, full screen, key bindings and custom textures. The Controls page of the launcher shows the PC key of every button.
+
 The launcher downloads any missing build tools from their official sites and checks each one against its published SHA-256. Nothing from the game is downloaded and nothing leaves your computer.
 
 **Verify your download:** every release lists the SHA-256 of each file next to it, and from v0.1.23-alpha it also carries `SHA256SUMS.txt`. In PowerShell, `Get-FileHash wiipartyrecomp-launcher.exe` prints the hash to compare; on Linux, `sha256sum -c SHA256SUMS.txt` checks every file that is in the same folder.
@@ -120,6 +126,9 @@ The project's scope is the original game, faithful and optimized.
 The launcher has a Miis page that links an online Mii editor and loads the Wii Mii files made with it (.mii files or a Wii Mii database) into the console Miis the game lists, up to 100. A Mii editor of its own is not planned.
 
 ### Disc versions
+
+> [!NOTE]
+> The launcher reads the disc's main executable before it translates anything. If it is not one of the versions below, it stops at once with a message and changes nothing.
 
 | Version | Status |
 | :--- | :--- |
