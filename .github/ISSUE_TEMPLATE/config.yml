@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installing and playing
+    url: https://github.com/arelkair/wiiparty-recomp#installing
+    about: Read the install steps and the known limitations before opening an issue.

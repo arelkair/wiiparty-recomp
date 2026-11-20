@@ -1,0 +1,61 @@
+name: Bug report
+description: The game or the launcher crashes, freezes, looks wrong or runs slowly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Open the launcher, go to System and press the report button to create a text file with your system information, then paste it below. Attach `logs/game.log` from the install folder; it says where the time goes and what failed.
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version and build
+      description: Shown at the bottom left of the launcher, for example 0.1.25-alpha 2611-034.
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Graphics card and processor
+    validations:
+      required: true
+  - type: dropdown
+    id: disc
+    attributes:
+      label: Disc version
+      options:
+        - Europe (SUPP01)
+        - USA (SUPE01)
+        - Japan (SUPJ01)
+    validations:
+      required: true
+  - type: input
+    id: scale
+    attributes:
+      label: Internal resolution
+      description: 1x, 2x, 3x and so on.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you were doing (mode, minigame, menu), what you expected and what you saw. Say how often it happens.
+    validations:
+      required: true
+  - type: textarea
+    id: system_report
+    attributes:
+      label: System report
+      description: Paste the contents of the report from the launcher.
+  - type: markdown
+    attributes:
+      value: Attach `logs/game.log` to the issue by dragging it into the comment box.

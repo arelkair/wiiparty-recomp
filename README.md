@@ -98,8 +98,10 @@ Every key can be changed on the launcher's **Controls** page or in `games/wiipar
 | Stage | When it is reached |
 | :--- | :--- |
 | **Alpha** (current) | The game runs from start to finish, with known bugs and features still missing. |
-| **Beta** | Every mode and all 80 minigames are checked, including the pair minigames; no known crashes; the known graphics faults in `docs/MINIGAMES.md` are fixed; the install is tested on several different PCs. |
+| **Beta** | No known crashes; the known graphics faults in `docs/MINIGAMES.md` are fixed; the install works on several different PCs; and players have reported every mode and minigame as working or with only the faults listed in `docs/MINIGAMES.md`. |
 | **1.0** | No known bugs, overall progress around 95%, and a period of use by players without serious problems. |
+
+**Help us test.** The minigames were all played in September on early builds, and the project changes quickly. If you play, please tell us how a minigame or a mode worked, even when everything was fine, with the [minigame report](https://github.com/arelkair/wiiparty-recomp/issues/new?template=minigame_report.yml). For crashes, slowdowns and visual problems use the [bug report](https://github.com/arelkair/wiiparty-recomp/issues/new?template=bug_report.yml) and attach `logs/game.log`.
 
 The project's scope is the original game, faithful and optimized.
 

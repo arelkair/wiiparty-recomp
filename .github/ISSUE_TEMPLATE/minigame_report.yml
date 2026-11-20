@@ -1,0 +1,41 @@
+name: Minigame or mode report
+description: Tell us how a minigame or a game mode worked, including when everything was fine.
+labels: ["testing"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version and build
+      description: Shown at the bottom left of the launcher.
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Minigame or mode
+      description: The name as the game shows it, and the list it is in (4 players, 1 vs 3, 1 vs 1, pairs).
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Worked with no problems
+        - Worked with visual or sound problems
+        - Controls did not work as expected
+        - Slow (below 60 fps)
+        - Crashed or froze
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Describe any problem and when it happens. A screenshot helps with visual problems.
+  - type: input
+    id: hardware
+    attributes:
+      label: Graphics card and processor
+    validations:
+      required: true
