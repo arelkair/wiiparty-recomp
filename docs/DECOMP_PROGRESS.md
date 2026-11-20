@@ -1465,6 +1465,10 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
 - The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
 
+## Unreleased
+
+- An EFB copy that reaches RAM after the game has reused that memory is now dropped instead of overwriting it. With `video.copy_wait = 0` the draw done interrupt does not wait for the copies, so on a slow GPU a copy could land late on top of data the game had already loaded (issue #9: crash when picking a Mii at 3x, with the stack pointer holding the text of the game ID). Each pending copy remembers a hash of 1,024 samples of its destination and the copy is written only if the memory still matches; the texture then comes from the GPU copy or from RAM as before. Not reproduced on the development PC; the reporter is asked to test.
+
 ## Version 0.1.24-alpha (2026-11-20)
 
 - Build 2611-033 (game and launcher).
