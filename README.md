@@ -2,7 +2,7 @@
 
 Static recompilation of Wii Party for native PC.
 
-[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20%C2%B7%20x64-0078D4)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![Linux](https://img.shields.io/badge/Linux-x64%20%C2%B7%20experimental-E9B53B)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![PowerPC static recompilation](https://img.shields.io/badge/PowerPC-static%20recompilation-E8860B)](https://github.com/arelkair/wiiparty-recomp) [![Latest release](https://img.shields.io/github/v/release/arelkair/wiiparty-recomp?label=release&color=7B4FE0)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![Downloads](https://img.shields.io/github/downloads/arelkair/wiiparty-recomp/total?label=downloads&color=17A2B8)](https://github.com/arelkair/wiiparty-recomp/releases) [![Status](https://img.shields.io/badge/status-alpha-C0392B)](#current-state--metrics) [![License GPLv3](https://img.shields.io/badge/license-GPLv3-2EA44F)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20%C2%B7%20x64-0078D4)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![Linux](https://img.shields.io/badge/Linux-x64%20%C2%B7%20Experimental-E9B53B)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![PowerPC](https://img.shields.io/badge/PowerPC-Static%20Recompilation-E8860B)](https://github.com/arelkair/wiiparty-recomp) [![Release](https://img.shields.io/github/v/release/arelkair/wiiparty-recomp?label=Release&color=7B4FE0)](https://github.com/arelkair/wiiparty-recomp/releases/latest) [![Downloads](https://img.shields.io/github/downloads/arelkair/wiiparty-recomp/total?label=Downloads&color=17A2B8)](https://github.com/arelkair/wiiparty-recomp/releases) [![Status](https://img.shields.io/badge/Status-Alpha-C0392B)](#current-state--metrics) [![License](https://img.shields.io/badge/License-GPLv3-2EA44F)](LICENSE) [![macOS](https://img.shields.io/badge/macOS-Planned-8E8E93)](https://github.com/arelkair/wiiparty-recomp#platforms) [![Linux ARM64](https://img.shields.io/badge/Linux-ARM64%20%C2%B7%20Planned-8E8E93)](https://github.com/arelkair/wiiparty-recomp#platforms)
 
 > [!NOTE]
 > **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **93%** overall.
@@ -130,6 +130,7 @@ The launcher has a Miis page that links an online Mii editor and loads the Wii M
 - **Windows 10 and 11:** supported.
 - **Linux:** experimental. The launcher is an AppImage and the game plays with an OpenGL renderer, keyboard, mouse, audio, the F10 menu and custom texture packs (tested on Ubuntu 24.04; gamepad support is built in but not yet tested there). **Help wanted:** Linux testers with different GPUs and desktops, please open an issue or a discussion.
 - **macOS:** planned after Linux. **Help wanted:** if you have a Mac and would like to test builds in the future, please open an issue or a discussion.
+- **Linux ARM64:** planned. The game is built for x86_64 today.
 
 ## Repository Layout
 
