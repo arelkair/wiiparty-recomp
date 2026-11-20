@@ -7,6 +7,9 @@ Static recompilation of Wii Party for native PC.
 > [!NOTE]
 > **Project Status:** Alpha. The game boots, reaches every menu and plays complete Board Game Island sessions and every Free Play minigame. Progress is estimated at **93%** overall.
 
+> [!IMPORTANT]
+> This repository and its releases contain no Nintendo code, no game assets and no game files. You need your own legally obtained copy of the Europe (SUPP01) or USA (SUPE01) disc; Japan (SUPJ01) is experimental. The launcher only downloads the build tools, the translation runs on your PC against your own disc, and nothing from the game is ever uploaded. The repository does hold analysis tables (function addresses and names) that the translator needs; they contain no game code.
+
 ![Project progress](docs/progress.svg)
 
 **[Download the latest build](https://github.com/arelkair/wiiparty-recomp/releases)** · Windows 10 and 11 (64-bit) · Linux x86_64 (experimental)
