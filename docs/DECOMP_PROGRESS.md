@@ -1465,6 +1465,12 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
 - The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
 
+## Version 0.1.24-alpha (2026-11-20)
+
+- Build 2611-033 (game and launcher).
+- The launcher no longer accepts a CMake from an MSYS2, Cygwin or devkitPro folder on Windows. That CMake works with POSIX paths and cannot configure the MinGW compiler, so the install stopped at the configure step on PCs that have devkitPro in the PATH. The launcher downloads its own CMake instead.
+- The game links with GCC 16 (WinLibs 16.2): the DSP library had a call to a Dolphin function that is not part of the files we use, and older compilers dropped it. It is now defined as an empty function.
+
 ## Version 0.1.23-alpha (2026-11-19)
 
 - Build 2611-032 (game and launcher).
