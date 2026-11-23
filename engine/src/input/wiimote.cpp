@@ -17,6 +17,7 @@
 #include "wp/gamepad.h"
 #include "wp/input.h"
 #include "wp/settings.h"
+#include "wp/vclock.h"
 
 namespace wp::wiimote {
 
@@ -624,7 +625,7 @@ void update(uint32_t index, const Sender& send) {
         return;
     }
     State& state = g_state[index];
-    auto now = std::chrono::steady_clock::now();
+    auto now = vclock::now();
     if (now < state.next_report) {
         return;
     }

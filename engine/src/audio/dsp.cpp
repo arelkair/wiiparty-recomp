@@ -26,6 +26,7 @@
 #include "wp/dsp_translated.h"
 #include "wp/log.h"
 #include "wp/memory.h"
+#include "wp/vclock.h"
 
 namespace wp::dsp {
 
@@ -83,8 +84,8 @@ struct AudioDma {
     bool source_written = false;
     bool started = false;
     Clock::time_point next_block{};
-    Clock::time_point clock = Clock::now();
-    Clock::time_point last_call = Clock::now();
+    Clock::time_point clock = vclock::now();
+    Clock::time_point last_call = vclock::now();
 };
 
 struct AramDma {
@@ -113,7 +114,7 @@ uint16_t g_aram_refresh = 156;
 AramDma g_aram_dma;
 AudioDma g_audio_dma;
 double g_owed = 0.0;
-Clock::time_point g_last_update = Clock::now();
+Clock::time_point g_last_update = vclock::now();
 Statistics g_statistics;
 std::atomic<bool> g_code_loaded{false};
 std::atomic<bool> g_native{false};
@@ -565,7 +566,7 @@ void start() {
     core->Reset();
     DSP::InitInstructionTable();
     g_core = core;
-    g_last_update = Clock::now();
+    g_last_update = vclock::now();
     audio::start_output();
 }
 
@@ -619,7 +620,7 @@ void update() {
     if (!g_core) {
         return;
     }
-    Clock::time_point now = Clock::now();
+    Clock::time_point now = vclock::now();
     accumulate(now);
     while (g_owed >= kSlice && !halted()) {
         run_slice(kSlice);
@@ -757,7 +758,7 @@ void write16(uint32_t address, uint16_t value) {
             g_audio_dma.remaining = value & 0x7FFF;
             g_audio_dma.source_written = false;
             g_audio_dma.started = false;
-            g_audio_dma.next_block = Clock::now();
+            g_audio_dma.next_block = vclock::now();
             raise(kIntAudioDma);
         }
         break;

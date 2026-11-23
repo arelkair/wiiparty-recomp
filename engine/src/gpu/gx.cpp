@@ -31,6 +31,7 @@
 #include "wp/memory.h"
 #include "wp/profile.h"
 #include "wp/settings.h"
+#include "wp/vclock.h"
 #include "wp/video.h"
 
 #ifdef _WIN32
@@ -1159,6 +1160,9 @@ void execute_copy(uint32_t value) {
 std::atomic<bool> g_finish_pending{false};
 bool g_finish_deferred = false;
 const bool g_threaded = [] {
+    if (vclock::deterministic()) {
+        return false;
+    }
     const char* setting = std::getenv("WP_GPU_THREAD");
     return !setting || std::atoi(setting) != 0;
 }();

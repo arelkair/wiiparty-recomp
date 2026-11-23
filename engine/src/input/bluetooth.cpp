@@ -17,6 +17,7 @@
 #include "wp/ios.h"
 #include "wp/memory.h"
 #include "wp/real_wiimote.h"
+#include "wp/vclock.h"
 #include "wp/wiimote.h"
 
 namespace wp::bluetooth {
@@ -558,7 +559,7 @@ void execute_command(uint32_t data) {
             g_wiimotes[index].real = real_wiimote::present(static_cast<uint32_t>(index));
             g_wiimotes[index].linking = true;
             g_wiimotes[index].host_ready = false;
-            g_wiimotes[index].link_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+            g_wiimotes[index].link_deadline = vclock::now() + std::chrono::milliseconds(500);
             if (role == 0) {
                 std::vector<uint8_t> change = {0x00};
                 put_address(change, static_cast<uint32_t>(index));
@@ -709,7 +710,7 @@ void update_wiimote(uint32_t index) {
             send_signal(index, kSignalConfigRequest, kSignalConfigRequest, request);
         }
     }
-    bool may_link = wiimote.host_ready || std::chrono::steady_clock::now() >= wiimote.link_deadline;
+    bool may_link = wiimote.host_ready || vclock::now() >= wiimote.link_deadline;
     if (wiimote.linking && may_link && link_channel(index, kPsmHidControl) && link_channel(index, kPsmHidInterrupt)) {
         wiimote.linking = false;
     }

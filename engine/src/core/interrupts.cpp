@@ -3,9 +3,11 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <thread>
 
 #include "wp/audio.h"
 #include "wp/cpu.h"
+#include "wp/determinism.h"
 #include "wp/dsp.h"
 #include "wp/exi.h"
 #include "wp/gx.h"
@@ -17,6 +19,7 @@
 #include "wp/runtime.h"
 #include "wp/si.h"
 #include "wp/threads.h"
+#include "wp/vclock.h"
 #include "wp/video.h"
 
 namespace wp {
@@ -41,6 +44,7 @@ constexpr uint16_t kFormatMask = 0x0300;
 constexpr uint16_t kFormatPal = 0x0100;
 constexpr std::chrono::microseconds kPalPeriod(20000);
 constexpr std::chrono::microseconds kNtscPeriod(16683);
+constexpr std::chrono::microseconds kBusyStep(5);
 
 using Clock = std::chrono::steady_clock;
 constexpr uint32_t kCurrentThread = 0x800000E4;
@@ -50,7 +54,7 @@ std::chrono::microseconds retrace_period() {
     return (rd16(kDisplayConfig) & kFormatMask) == kFormatPal ? kPalPeriod : kNtscPeriod;
 }
 
-Clock::time_point g_next_retrace = Clock::now() + kPalPeriod;
+Clock::time_point g_next_retrace = vclock::now() + kPalPeriod;
 bool g_in_interrupt = false;
 
 bool arm_video_interrupt() {
@@ -162,6 +166,13 @@ void poll_interrupts(Cpu& c) {
         return value ? value : 1u << 10;
     }();
     g_poll_counter = interval;
+    if (vclock::deterministic()) {
+        if (rd32(kCurrentThread) == 0) {
+            vclock::jump_to(g_next_retrace);
+        } else {
+            vclock::advance(kBusyStep);
+        }
+    }
     audio::update();
     dsp::update();
     log::watch_modules();
@@ -197,7 +208,7 @@ void poll_interrupts(Cpu& c) {
         deliver_external_interrupt(c, kSerialInterrupt);
     }
     gx::process();
-    Clock::time_point now = Clock::now();
+    Clock::time_point now = vclock::now();
     static Clock::time_point previous_poll = now;
     static bool previous_idle = false;
     bool idle = rd32(kCurrentThread) == 0;
@@ -216,6 +227,15 @@ void poll_interrupts(Cpu& c) {
     }
     si::poll();
     deliver_video_interrupt(c);
+    if (vclock::deterministic()) {
+        static uint64_t retraces = 0;
+        static const Clock::time_point real_start = Clock::now();
+        retraces++;
+        determinism::retrace(retraces);
+        if (!vclock::turbo()) {
+            std::this_thread::sleep_until(real_start + period * static_cast<long>(retraces));
+        }
+    }
 }
 
 }

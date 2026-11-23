@@ -29,6 +29,7 @@
 #include "wp/modules.h"
 #include "wp/watch.h"
 #include "wp/runtime.h"
+#include "wp/vclock.h"
 
 namespace wp {
 
@@ -332,10 +333,11 @@ uint64_t wall_clock_ticks() {
 }
 
 uint64_t time_base() {
-    using clock = std::chrono::steady_clock;
-    static const clock::time_point origin = clock::now();
-    static const uint64_t start = wall_clock_ticks();
-    uint64_t elapsed = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - origin).count());
+    static const uint64_t start = vclock::deterministic() ? 0x0000012345678900ull : wall_clock_ticks();
+    if (vclock::deterministic()) {
+        vclock::advance(std::chrono::nanoseconds(200));
+    }
+    uint64_t elapsed = static_cast<uint64_t>(vclock::elapsed_ns());
     return start + elapsed / 1000000000ull * kTimeBaseHz + elapsed % 1000000000ull * kTimeBaseHz / 1000000000ull;
 }
 

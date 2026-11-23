@@ -22,6 +22,7 @@
 #include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/settings.h"
+#include "wp/vclock.h"
 
 namespace wp::audio {
 
@@ -48,7 +49,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 using Clock = std::chrono::steady_clock;
 
-Clock::time_point g_last = Clock::now();
+Clock::time_point g_last = vclock::now();
 double g_samples = 0.0;
 
 struct Frame {
@@ -348,7 +349,7 @@ void output_thread() {
 }
 
 void update() {
-    Clock::time_point now = Clock::now();
+    Clock::time_point now = vclock::now();
     double elapsed = std::chrono::duration<double>(now - g_last).count();
     g_last = now;
     uint32_t control = rd32(kControl);

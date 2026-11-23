@@ -22,6 +22,14 @@ Consequence: today two instances fed the same inputs do not stay identical, so n
 
 Option 1 is the one that scales and that detects cheating, and it needs the most work first.
 
+## Determinism harness (stage 1)
+
+`WP_DETERMINISTIC=1` turns on the virtual time mode: guest time, the video retrace, the DSP, the audio DMA, the emulated Bluetooth and the console clock follow a counter that the guest advances (5 microseconds per poll while it runs, a jump to the next retrace while it is idle, 200 nanoseconds per read of the time base), and the GPU runs on the same thread. `WP_DETERMINISTIC_TURBO=1` skips the real-time pacing, and `WP_DETERMINISM_EVERY=N` logs a hash of the 88 MB of guest memory (and of each megabyte of it) every N retraces. Nothing of this runs when the variable is not set.
+
+First result, on one PC: two runs with the same scripted input (title, menus, player count and Mii selection, 4 minutes of virtual time, 509 checkpoints) have identical memory at every checkpoint. The emulation is deterministic over that path.
+
+Not yet covered: gameplay (Board Game Island, minigames), another GPU or CPU, and a Linux build.
+
 ## Plan
 
 1. **Determinism harness.** A virtual time mode (`WP_DETERMINISTIC`) and a per-second hash of guest memory in the log. Run the same scripted input twice and compare. Fix each divergence until the hashes match for ten minutes of play. This stage decides the real cost of the rest.

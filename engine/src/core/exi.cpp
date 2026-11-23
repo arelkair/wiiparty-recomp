@@ -10,6 +10,7 @@
 #include <iterator>
 
 #include "wp/memory.h"
+#include "wp/vclock.h"
 
 namespace wp::exi {
 
@@ -128,7 +129,7 @@ public:
 
 private:
     void update_rtc() {
-        std::time_t now = std::time(nullptr);
+        std::time_t now = vclock::deterministic() ? static_cast<std::time_t>(1767225600) : std::time(nullptr);
         std::tm local = *std::localtime(&now);
         std::tm utc = *std::gmtime(&now);
         utc.tm_isdst = local.tm_isdst;
