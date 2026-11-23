@@ -224,6 +224,10 @@ struct Texts {
     const char* diag_session;
     const char* diag_session_value;
     const char* diag_session_none;
+    const char* diag_exit;
+    const char* diag_exit_normal;
+    const char* diag_exit_crash;
+    const char* diag_exit_unknown;
     const char* diag_scale;
     const char* diag_load;
     const char* diag_load_value;

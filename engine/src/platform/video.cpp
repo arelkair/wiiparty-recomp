@@ -153,6 +153,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     switch (message) {
     case WM_CLOSE:
     case WM_DESTROY:
+        log::write("boot", "exit code 0");
         std::_Exit(0);
     case kTitleMessage: {
         std::string title;

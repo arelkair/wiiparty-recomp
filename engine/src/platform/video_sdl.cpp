@@ -224,6 +224,7 @@ void handle_event(SDL_Window* window, const SDL_Event& event) {
     switch (event.type) {
     case SDL_EVENT_QUIT:
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        log::write("boot", "exit code 0");
         std::_Exit(0);
     case SDL_EVENT_KEY_DOWN: {
         int vk = vk_for(event.key.scancode);

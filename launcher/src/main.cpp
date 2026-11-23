@@ -54,11 +54,14 @@ int main(int argc, char** argv) {
     std::string screenshot_prefix;
     std::string added_disc;
     std::string used_version;
+    bool diagnostics_mode = false;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--install") == 0) {
             install_mode = true;
         } else if (std::strcmp(argv[i], "--use-version") == 0 && i + 1 < argc) {
             used_version = argv[++i];
+        } else if (std::strcmp(argv[i], "--diagnostics") == 0) {
+            diagnostics_mode = true;
         } else if (std::strcmp(argv[i], "--add-disc") == 0 && i + 1 < argc) {
             added_disc = argv[++i];
         } else if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
@@ -107,6 +110,9 @@ int main(int argc, char** argv) {
     }
     app.apply_theme();
 
+    if (diagnostics_mode) {
+        return app.write_diagnostics();
+    }
     if (!used_version.empty()) {
         return app.use_version_now(used_version) ? 0 : 1;
     }

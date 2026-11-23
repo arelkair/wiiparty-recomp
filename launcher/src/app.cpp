@@ -7,6 +7,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <sstream>
 #include <memory>
 
 #include "embedded.h"
@@ -1711,16 +1712,8 @@ void App::whats_new_card(float width) {
     ui::gap(20);
 }
 
-void App::create_report() {
-    const Texts& t = texts();
-    std::error_code error;
-    std::filesystem::path folder = project_.root / "reports";
-    std::filesystem::create_directories(folder, error);
-    std::time_t now = std::time(nullptr);
-    char stamp[32];
-    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", std::localtime(&now));
-    std::filesystem::path path = folder / (std::string("report-") + stamp + ".txt");
-    std::ofstream out(path, std::ios::binary);
+std::string App::report_text() {
+    std::ostringstream out;
     std::string id = project_.disc_id();
     out << "Wii Party Recomp report\n\n";
     out << "Launcher: " << WP_LAUNCHER_VERSION << " (build " << WP_LAUNCHER_BUILD << "), files " << payload_revision() << "\n";
@@ -1748,8 +1741,35 @@ void App::create_report() {
     out << "\n--- settings ---\n" << tail_of(project_.game_folder() / "settings.ini", 400);
     out << "\n--- last install (end) ---\n" << tail_of(project_.root / "build" / "install.log", 200);
     out << "\n--- last game session (end) ---\n" << tail_of(project_.root / "logs" / "game.log", 400);
+    return out.str();
+}
+
+bool App::write_report(std::filesystem::path& path) {
+    std::error_code error;
+    std::filesystem::path folder = project_.root / "reports";
+    std::filesystem::create_directories(folder, error);
+    std::time_t now = std::time(nullptr);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", std::localtime(&now));
+    path = folder / (std::string("report-") + stamp + ".txt");
+    std::ofstream out(path, std::ios::binary);
+    out << report_text();
     out.close();
-    launcher_message_failed_ = !out;
+    return static_cast<bool>(out);
+}
+
+int App::write_diagnostics() {
+    std::filesystem::path path;
+    bool written = write_report(path);
+    std::puts(written ? utf8_of(path).c_str() : "the report could not be written");
+    return written ? 0 : 1;
+}
+
+void App::create_report() {
+    const Texts& t = texts();
+    std::filesystem::path path;
+    std::filesystem::path folder = project_.root / "reports";
+    launcher_message_failed_ = !write_report(path);
     launcher_message_ = format(t.report_done, utf8_of(path.filename()));
     SDL_OpenURL(folder_url(folder).c_str());
     SDL_OpenURL("https://github.com/arelkair/wiiparty-recomp/issues/new");

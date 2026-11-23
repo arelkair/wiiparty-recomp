@@ -60,6 +60,7 @@ public:
     void apply_theme();
     void add_on_start(const std::string& disc);
     bool use_version_now(const std::string& id);
+    int write_diagnostics();
 
 private:
     void use_root(const std::filesystem::path& root);
@@ -113,6 +114,8 @@ private:
     uint32_t gamepad_buttons(SDL_Gamepad* pad);
     void whats_new_card(float width);
     void create_report();
+    std::string report_text();
+    bool write_report(std::filesystem::path& path);
     void choose_added_disc();
     void switch_version(const std::string& id);
     void restore_modal();

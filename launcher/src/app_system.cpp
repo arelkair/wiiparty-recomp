@@ -257,6 +257,36 @@ int App::recommended_scale(bool& slowed, bool& integrated_graphics) {
     return scale;
 }
 
+std::string last_exit(const fs::path& game_log, const Texts& t) {
+    std::ifstream file(game_log);
+    bool crashed = false;
+    bool closed = false;
+    std::string crash_detail;
+    std::string exit_code;
+    for (std::string line; std::getline(file, line);) {
+        if (line.size() < 21) {
+            continue;
+        }
+        std::string category = line.substr(13, 7);
+        category.erase(category.find_last_not_of(' ') + 1);
+        std::string message = line.substr(21);
+        if (category == "crash" && !crashed) {
+            crashed = true;
+            crash_detail = message;
+        } else if (category == "boot" && message.compare(0, 10, "exit code ") == 0) {
+            closed = true;
+            exit_code = message.substr(10);
+        }
+    }
+    if (crashed) {
+        return format(t.diag_exit_crash, crash_detail);
+    }
+    if (closed) {
+        return format(t.diag_exit_normal, exit_code);
+    }
+    return t.diag_exit_unknown;
+}
+
 std::vector<std::pair<std::string, std::string>> App::diagnostics() {
     const Texts& t = texts();
     std::vector<std::pair<std::string, std::string>> lines;
@@ -298,6 +328,9 @@ std::vector<std::pair<std::string, std::string>> App::diagnostics() {
     Session session = last_session(project_.root / "logs" / "game.log");
     lines.emplace_back(t.diag_session, session.found ? format(t.diag_session_value, one_decimal(session.average), one_decimal(session.lowest))
                                                      : std::string(t.diag_session_none));
+    if (session.found || std::filesystem::exists(project_.root / "logs" / "game.log")) {
+        lines.emplace_back(t.diag_exit, last_exit(project_.root / "logs" / "game.log", t));
+    }
     lines.emplace_back(t.diag_scale, wp::options::shown_value("video.scale", std::to_string(std::max(1, std::atoi(value("video.scale").c_str())))));
     Load load = last_load(project_.root / "logs" / "game.log");
     if (load.found) {
@@ -484,11 +517,7 @@ void App::system_page(float width) {
     inset_separator(width);
     row(width, diagnostics_copied_ ? t.diag_copied : "", "", 110.0f, 36.0f, [&] {
         if (ui::button(t.diag_copy, Kind::Secondary, 110.0f)) {
-            std::string text;
-            for (const auto& [label, line] : lines) {
-                text += label + ": " + line + "\n";
-            }
-            SDL_SetClipboardText(text.c_str());
+            SDL_SetClipboardText(report_text().c_str());
             diagnostics_copied_ = true;
         }
     });
