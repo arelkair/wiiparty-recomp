@@ -1116,7 +1116,8 @@ void execute_copy(uint32_t value) {
                 static const ThreadClock gpu_clock = current_thread_clock();
                 double gpu = thread_seconds(gpu_clock);
                 log::write("copies", "%u EFB copies written back to RAM, %.1f ms waiting for the GPU", write_backs, write_back_seconds * 1000.0);
-                log::write("memory", "%zu MB private memory, %zu KB of graphics commands queued", private_memory_mb(), g_queued_bytes.load() >> 10);
+                log::write("memory", "%llu MB private memory, %llu KB of graphics commands queued", static_cast<unsigned long long>(private_memory_mb()),
+                           static_cast<unsigned long long>(g_queued_bytes.load() >> 10));
                 uint32_t input_calls = 0;
                 double input_seconds = input::take_sample_seconds(input_calls);
                 log::write("input", "%u input reads, %.2f ms in total", input_calls, input_seconds * 1000.0);
