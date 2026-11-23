@@ -21,14 +21,16 @@ Requirements:
 
 ### 1.2. High refresh rate
 
-Goal: present at 120 Hz, 144 Hz and higher without changing the game logic.
+Goal: present at 120 Hz, 144 Hz and higher without changing what the game computes.
+
+The guest is the game, and it must keep seeing exactly 60 retraces per second (50 in PAL): the game logic, physics, minigame timers and the lockstep of the online mode all depend on it. Decoupling `VIWaitForRetrace` or running the logic at another rate is not allowed, because it changes the guest state and breaks determinism.
 
 Requirements:
-- Separate the presentation loop from the internal game logic.
-- Make `VIWaitForRetrace` compatible with decoupled execution.
-- Use timing based on `std::chrono` or an equivalent.
-- Keep rendering rate, logic, physics and minigame timers independent.
-- A higher frame rate must not speed up animations or gameplay.
+- The guest runs unchanged at its own retrace rate; only the presentation runs faster.
+- Frames between two guest frames are made by interpolating the last two guest frames on the host (object transforms and camera between the two matrices sent to the GPU), never by running the guest more often.
+- Interpolation is optional, off by default, and must be off for a frame that cannot be interpolated reliably (scene cuts, menus that jump, minigames that draw the same object with different matrices in one frame).
+- A higher presentation rate must not change the guest state: the memory hash of the deterministic mode must be identical with and without interpolation.
+- Last item of the roadmap, after the online mode.
 
 ### 1.3. High-resolution textures
 
@@ -241,7 +243,6 @@ Requirements:
 ### Priority 3: graphics
 
 - [ ] Implement the dynamic aspect ratio.
-- [ ] Separate rendering and logic to support high refresh rates.
 - [x] Add HD texture support.
 - [ ] Validate the 2D interface at different resolutions.
 
@@ -252,6 +253,7 @@ Requirements:
 - [ ] Design the online mode interface.
 - [ ] Define and validate the network architecture.
 - [ ] Implement the online mode in phases.
+- [ ] Interpolate the presentation above 60 Hz (the guest stays at its own retrace rate; last item).
 
 ---
 

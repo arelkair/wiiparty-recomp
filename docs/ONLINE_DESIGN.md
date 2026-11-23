@@ -33,6 +33,8 @@ Results, on one PC, with the same scripted input (title, menus, player count, Mi
 - A second test goes through Minigames, Free play and four players to a minigame (Rolling Obstacles, module mg405) and its rules screens, repeating the cycle for about 3,900 seconds of virtual time: two parallel runs have identical memory at all 1,952 common checkpoints.
 - The memory that the DSP writes by DMA (audio) is left out of the hash.
 
+Open condition before any netcode is written: all of this is validated on one machine. The same scripted run, with the same build, must give the same hash log on a PC with another CPU and another graphics card, and on Linux. The graphics card should no longer matter for the state (the copies stay on the GPU), so the real risks are the processor's floating point (paired singles, estimates, the C library's math functions) and a build that is not bit-for-bit the same. Players who test the beta can produce the log with one command, so this is part of the beta and not a separate phase.
+
 Tools for finding a divergence: `WP_DETERMINISM_EVERY=N` logs the hash and the hash of each megabyte; `WP_DETERMINISM_CHUNK=n` adds the hash of each 4 KB page of megabyte n; `WP_DETERMINISM_DUMP=p` writes the content of page p of that megabyte.
 
 Not yet covered: a minigame, another GPU or CPU, and a Linux build.
