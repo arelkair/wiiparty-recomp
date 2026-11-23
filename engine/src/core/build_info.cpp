@@ -34,7 +34,7 @@ constexpr const char* kAvx2 = "off";
 
 const char* fingerprint() {
     static const std::string value =
-        std::string(WP_BUILD_FINGERPRINT) + " target " + kArchitecture + " fma " + kFma + " avx2 " + kAvx2 + " gcc " +
+        std::string(WP_BUILD_FINGERPRINT) + " target " + kArchitecture + " compiled-with-fma " + kFma + " compiled-with-avx2 " + kAvx2 + " gcc " +
 #ifdef __VERSION__
         __VERSION__;
 #else
