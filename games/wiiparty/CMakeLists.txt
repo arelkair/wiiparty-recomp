@@ -25,7 +25,7 @@ else()
     target_sources(wiiparty_code PRIVATE "${CMAKE_SOURCE_DIR}/engine/src/core/no_modules.cpp")
 endif()
 target_link_libraries(wiiparty_code PUBLIC wp_engine)
-target_compile_options(wiiparty_code PRIVATE -Wall -Wextra -Wno-unused-label -Wno-unused-parameter -Wno-clobbered)
+target_compile_options(wiiparty_code PRIVATE -Wall -Wextra -Wno-unused-label -Wno-unused-parameter -Wno-clobbered ${WP_FP_FLAGS})
 
 add_executable(wiiparty)
 if(WIN32)

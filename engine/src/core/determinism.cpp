@@ -1,4 +1,7 @@
 #include "wp/determinism.h"
+#ifndef WP_BUILD_FINGERPRINT
+#define WP_BUILD_FINGERPRINT "unknown"
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -61,7 +64,15 @@ void retrace(uint64_t index) {
         const char* value = std::getenv("WP_DETERMINISM_EVERY");
         return value ? static_cast<uint64_t>(std::strtoull(value, nullptr, 10)) : 0ull;
     }();
-    if (every == 0 || !vclock::deterministic() || index % every != 0) {
+    if (every == 0 || !vclock::deterministic()) {
+        return;
+    }
+    static const bool announced = [] {
+        log::write("determinism", "build %s gcc %s", WP_BUILD_FINGERPRINT, __VERSION__);
+        return true;
+    }();
+    (void)announced;
+    if (index % every != 0) {
         return;
     }
     static const int snapshot_chunk = [] {
