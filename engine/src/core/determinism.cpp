@@ -1,7 +1,4 @@
 #include "wp/determinism.h"
-#ifndef WP_BUILD_FINGERPRINT
-#define WP_BUILD_FINGERPRINT "unknown"
-#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -67,11 +64,6 @@ void retrace(uint64_t index) {
     if (every == 0 || !vclock::deterministic()) {
         return;
     }
-    static const bool announced = [] {
-        log::write("determinism", "build %s gcc %s", WP_BUILD_FINGERPRINT, __VERSION__);
-        return true;
-    }();
-    (void)announced;
     if (index % every != 0) {
         return;
     }
@@ -111,7 +103,7 @@ void retrace(uint64_t index) {
             std::snprintf(text, sizeof text, "%08x ", static_cast<uint32_t>(hash_range(base + page, 4096)));
             pages += text;
             if ((page / 4096) % 32 == 31) {
-                log::write("determinism", "pages %llu %zu %s", static_cast<unsigned long long>(index), page / 4096 - 31, pages.c_str());
+                log::write("determinism", "pages %llu %llu %s", static_cast<unsigned long long>(index), static_cast<unsigned long long>(page / 4096 - 31), pages.c_str());
                 pages.clear();
             }
         }
@@ -120,7 +112,7 @@ void retrace(uint64_t index) {
         int reported = 0;
         for (size_t i = 0; i < kChunk && reported < 8; i += 4) {
             if (std::memcmp(snapshot.data() + i, snapshot_base + i, 4) != 0) {
-                log::write("determinism", "changed while hashing at chunk %d offset %zx: %02x%02x%02x%02x -> %02x%02x%02x%02x", snapshot_chunk, i, snapshot[i], snapshot[i + 1], snapshot[i + 2],
+                log::write("determinism", "changed while hashing at chunk %d offset %llx: %02x%02x%02x%02x -> %02x%02x%02x%02x", snapshot_chunk, static_cast<unsigned long long>(i), snapshot[i], snapshot[i + 1], snapshot[i + 2],
                            snapshot[i + 3], snapshot_base[i], snapshot_base[i + 1], snapshot_base[i + 2], snapshot_base[i + 3]);
                 reported++;
             }
@@ -138,7 +130,7 @@ void retrace(uint64_t index) {
                 std::snprintf(text, sizeof text, "%02x", page[line + i]);
                 hex += text;
             }
-            log::write("determinism", "dump %llu %zu %s", static_cast<unsigned long long>(index), line, hex.c_str());
+            log::write("determinism", "dump %llu %llu %s", static_cast<unsigned long long>(index), static_cast<unsigned long long>(line), hex.c_str());
         }
     }
     log::write("determinism", "retrace %llu virtual %lld ns total %016llx", static_cast<unsigned long long>(index), static_cast<long long>(vclock::elapsed_ns()),

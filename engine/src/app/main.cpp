@@ -18,6 +18,7 @@
 #include "wp/disc.h"
 #include "wp/dol.h"
 #include "wp/game.h"
+#include "wp/build_info.h"
 #include "wp/log.h"
 #include "wp/nand.h"
 #include "wp/ipc.h"
@@ -146,6 +147,7 @@ int main(int argc, char** argv) {
     std::set_terminate(report_terminate);
     if (const char* log_path = std::getenv("WP_LOG_FILE")) {
         wp::log::write("boot", "log started");
+        wp::log::write("boot", "build %s", wp::build_info::fingerprint());
         std::freopen(log_path, "a", stderr);
     }
 #ifdef _WIN32

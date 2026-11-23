@@ -24,6 +24,7 @@ add_library(wp_engine STATIC
     src/ios/nand.cpp
     src/ios/disc.cpp
     src/input/bluetooth.cpp
+    src/core/build_info.cpp
     src/input/wiimote.cpp
     src/input/input.cpp
     src/input/keymap.cpp
@@ -52,8 +53,10 @@ target_sources(wp_engine PRIVATE src/platform/options_render_stb.cpp)
 target_include_directories(wp_engine SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/third_party/stb")
 target_include_directories(wp_engine PUBLIC include)
 string(REPLACE ";" " " WP_FP_TEXT "${WP_FP_FLAGS}")
+string(TOUPPER "${CMAKE_BUILD_TYPE}" WP_BUILD_TYPE_UPPER)
+string(STRIP "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${WP_BUILD_TYPE_UPPER}}" WP_BASE_FLAGS)
 target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}"
-    WP_BUILD_FINGERPRINT="engine ${WP_ENGINE_COMMIT} build ${WP_BUILD} code ${WP_CODE_OPT} fp ${WP_FP_TEXT} compiler ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+    WP_BUILD_FINGERPRINT="engine ${WP_ENGINE_COMMIT} build ${WP_BUILD} code ${WP_CODE_OPT} fp ${WP_FP_TEXT} flags ${WP_BASE_FLAGS} processor ${CMAKE_SYSTEM_PROCESSOR} compiler ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
     WP_DSP_IROM_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin"
     WP_DSP_COEF_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_coef.bin")
 set_source_files_properties(src/audio/dsp_roms.cpp PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin;${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_coef.bin")
