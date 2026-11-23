@@ -1465,17 +1465,20 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
 - The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
 
-## Unreleased
+## Version 0.1.26-alpha (2026-11-23)
 
+- Build 2611-035 (game and launcher).
 - The OpenGL renderer (Linux) drops late EFB copies the same way the Direct3D one does since 0.1.25-alpha: it had the same structure and the same risk with `video.copy_wait = 0`. Only checked that it compiles; not run on Linux.
-
-## Unreleased
-
 - Discord Rich Presence, on by default and switchable in the launcher Settings page and the F10 menu (`system.discord_presence`). The game shows what the player is doing from the loaded module (starting, menus, Board Game Island, a minigame, reading the minigame rules); the launcher shows when it is open or installing, with the percentage. The text follows the console language, or the interface language when that is automatic, in English, Spanish, Galician, German, French, Italian and Dutch. The client is written for this project (no Discord library): it talks to the Discord app through its local pipe or socket, tries every slot, retries every 15 seconds until Discord opens, sends at most one update every 5 seconds and clears the status on exit. Nothing is sent to any server by the program. The application ID is set in `CMakeLists.txt` and `launcher/CMakeLists.txt`.
-
 - Problem reports: `wiipartyrecomp-launcher --diagnostics` writes the report without a window and prints its path; the System page button copies the whole report. It replaces the install folder by `<install>`, the profile folder by `%USERPROFILE%` and the Windows user name by `<user>`, counts the replacements and lists what is not replaced (computer name, Mii names, gamepad names, folder names inside the install, other folders the user chose). The replacement of the short 8.3 form of the profile folder is written but NOT tested with a real alias: the only profile available has a name of five letters, for which Windows creates no alias. The game writes `exit code 0` to its log when it closes normally, and the report says how the last session ended.
 - F9 screenshots are saved at the display aspect ratio taken from the same layout function that composes the frame (`engine/include/wp/present_layout.h`): in widescreen the 4:3 framebuffer was saved squeezed before.
 - Known debt: the PNG writer (`engine/src/platform/png.cpp`) has no compression at all. It writes the data as stored deflate blocks, so there is no zlib level to change, and a 5120x2880 screenshot is 44 MB when a game scene should be 5 to 10 MB. It needs a real deflate implementation.
+- The game writes `exit code 0` to `logs/game.log` when it closes normally, and the first lines of the log carry a build fingerprint (engine commit, build, compiler, flags, architecture; `compiled-with-fma off` and `compiled-with-avx2 off` are compiler settings, not processor features), so a report says which build produced it.
+- The engine and the translated code are compiled with `-ffp-contract=off -fno-fast-math`. On x86-64 without `-mfma` this changes nothing today; it keeps the floating point results the same if the code is ever built for another processor.
+- A deterministic mode for the future online play (`WP_DETERMINISTIC=1`, for development only; normal play is unchanged): virtual time, a memory hash log, and a per-frame input queue with a checked record and replay format. Checked on one PC only; see `docs/ONLINE_DESIGN.md` for what it shows and what it does not.
+- The high refresh rate item of `docs/FEATURES_QOL.md` was rewritten: the game must keep seeing its own retrace rate and only the presentation may be interpolated, and last in the roadmap.
+- The label of the `video.copy_wait` setting was missing in the options menu text; the log lines that used `%zu` printed wrong values with this compiler.
+- Line endings are LF in the repository from now on (`.gitattributes`).
 
 ## Version 0.1.25-alpha (2026-11-20)
 
