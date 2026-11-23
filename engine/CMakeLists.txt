@@ -51,10 +51,10 @@ endif()
 target_sources(wp_engine PRIVATE src/platform/options_render_stb.cpp)
 target_include_directories(wp_engine SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/third_party/stb")
 target_include_directories(wp_engine PUBLIC include)
-target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}"
 string(REPLACE ";" " " WP_FP_TEXT "${WP_FP_FLAGS}")
-    WP_DSP_IROM_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin"
+target_compile_definitions(wp_engine PRIVATE WP_BUILD="${WP_BUILD}"
     WP_BUILD_FINGERPRINT="engine ${WP_ENGINE_COMMIT} build ${WP_BUILD} code ${WP_CODE_OPT} fp ${WP_FP_TEXT} compiler ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+    WP_DSP_IROM_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin"
     WP_DSP_COEF_PATH="${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_coef.bin")
 set_source_files_properties(src/audio/dsp_roms.cpp PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_rom.bin;${CMAKE_SOURCE_DIR}/third_party/dolphin/Data/Sys/GC/dsp_coef.bin")
 target_link_libraries(wp_engine PUBLIC wp_dolphin_dsp)
