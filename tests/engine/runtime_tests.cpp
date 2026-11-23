@@ -16,6 +16,7 @@
 
 #include "wp/cpu.h"
 #include "wp/custom_textures.h"
+#include "wp/frame_input.h"
 #include "wp/function_table.h"
 #include "wp/hollywood.h"
 #include "wp/gx.h"
@@ -846,6 +847,35 @@ void test_screenshot_fit_aspect() {
     CHECK(width == 4 && bad.size() == 10);
 }
 
+void test_frame_input_packing() {
+    wp::input::Sample sample;
+    sample.buttons = wp::input::kButtonA | wp::input::kButtonTwo | wp::input::kMotionShake | wp::input::kMotionSideways;
+    sample.pointer_valid = true;
+    sample.pointer_x = -0.4321f;
+    sample.pointer_y = 0.9876f;
+    sample.motion_valid = true;
+    sample.accel[0] = 0.25f;
+    sample.accel[1] = -1.5f;
+    sample.accel[2] = 2.9f;
+    wp::input::Sample back = wp::frame_input::unpack(wp::frame_input::pack(sample));
+    CHECK(back.buttons == sample.buttons);
+    CHECK(back.pointer_valid && back.motion_valid);
+    CHECK(std::abs(back.pointer_x - sample.pointer_x) < 1.0f / 16384.0f);
+    CHECK(std::abs(back.pointer_y - sample.pointer_y) < 1.0f / 16384.0f);
+    for (int i = 0; i < 3; i++) {
+        CHECK(std::abs(back.accel[i] - sample.accel[i]) < 1.0f / 4096.0f);
+    }
+    wp::input::Sample again = wp::frame_input::quantize(back);
+    CHECK(again.buttons == back.buttons && again.pointer_x == back.pointer_x && again.accel[2] == back.accel[2]);
+    wp::frame_input::Packed hostile = wp::frame_input::pack(sample);
+    hostile.bytes[3] = 0xFF;
+    CHECK((wp::frame_input::unpack(hostile).buttons & ~0x00FF9F1Fu) == 0);
+    wp::input::Sample none;
+    none.pointer_valid = false;
+    none.pointer_x = 0.7f;
+    CHECK(wp::frame_input::unpack(wp::frame_input::pack(none)).pointer_x == 0.0f);
+}
+
 void test_screenshot_names() {
     std::tm time{};
     time.tm_year = 2026 - 1900;
@@ -1398,6 +1428,7 @@ int main() {
     test_screenshot_names();
     test_present_layout();
     test_screenshot_fit_aspect();
+    test_frame_input_packing();
     test_live_settings();
     test_options_menu();
     test_controls_hint();

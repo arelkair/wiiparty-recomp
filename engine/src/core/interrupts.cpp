@@ -10,6 +10,7 @@
 #include "wp/determinism.h"
 #include "wp/dsp.h"
 #include "wp/exi.h"
+#include "wp/frame_input.h"
 #include "wp/gx.h"
 #include "wp/log.h"
 #include "wp/hle.h"
@@ -56,6 +57,7 @@ std::chrono::microseconds retrace_period() {
 
 Clock::time_point g_next_retrace = vclock::now() + kPalPeriod;
 bool g_in_interrupt = false;
+uint64_t g_retraces = 0;
 
 bool arm_video_interrupt() {
     bool armed = false;
@@ -230,15 +232,17 @@ void poll_interrupts(Cpu& c) {
     if (g_next_retrace < now) {
         g_next_retrace = now + period;
     }
+    if (vclock::deterministic()) {
+        g_retraces++;
+        frame_input::begin_frame(g_retraces);
+    }
     si::poll();
     deliver_video_interrupt(c);
     if (vclock::deterministic()) {
-        static uint64_t retraces = 0;
         static const Clock::time_point real_start = Clock::now();
-        retraces++;
-        determinism::retrace(retraces);
+        determinism::retrace(g_retraces);
         if (!vclock::turbo()) {
-            std::this_thread::sleep_until(real_start + period * static_cast<long>(retraces));
+            std::this_thread::sleep_until(real_start + period * static_cast<long>(g_retraces));
         }
     }
 }

@@ -47,7 +47,9 @@ struct Sample {
 };
 
 bool connected(uint32_t channel);
+bool local_connected(uint32_t channel);
 Sample sample(uint32_t channel);
+Sample local_sample(uint32_t channel);
 double take_sample_seconds(uint32_t& calls);
 bool wakes_remote(uint32_t channel);
 void note_wheel(int delta);

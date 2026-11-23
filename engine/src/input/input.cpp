@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "wp/frame_input.h"
 #include "wp/game.h"
 #include "wp/gamepad.h"
 #include "wp/gx.h"
@@ -256,8 +257,15 @@ bool wakes_remote(uint32_t channel) {
     return moved;
 }
 
-bool connected(uint32_t channel) {
+bool local_connected(uint32_t channel) {
     return channel == 0 || gamepad::connected(channel);
+}
+
+bool connected(uint32_t channel) {
+    if (frame_input::latched()) {
+        return frame_input::connected(channel);
+    }
+    return local_connected(channel);
 }
 
 Sample device_sample(uint32_t channel) {
@@ -393,6 +401,13 @@ double take_sample_seconds(uint32_t& calls) {
 }
 
 Sample sample(uint32_t channel) {
+    if (frame_input::latched()) {
+        return frame_input::current(channel);
+    }
+    return local_sample(channel);
+}
+
+Sample local_sample(uint32_t channel) {
     auto started = std::chrono::steady_clock::now();
     Sample result = device_sample(channel);
     g_sample_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count();
