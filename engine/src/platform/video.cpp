@@ -466,8 +466,12 @@ void save_screenshot() {
         log::write("video", "screenshot could not be saved to %s", path.c_str());
         return;
     }
-    std::thread([file, path, pixels = std::move(pixels), width, height] {
-        std::vector<uint8_t> png = encode_png(pixels, width, height);
+    double aspect = g_aspect;
+    std::thread([file, path, pixels = std::move(pixels), width, height, aspect]() mutable {
+        uint32_t saved_width = width;
+        uint32_t saved_height = height;
+        screenshot::fit_aspect(pixels, saved_width, saved_height, aspect);
+        std::vector<uint8_t> png = encode_png(pixels, saved_width, saved_height);
         DWORD written = 0;
         bool ok = WriteFile(file, png.data(), static_cast<DWORD>(png.size()), &written, nullptr) && written == png.size();
         CloseHandle(file);
@@ -476,7 +480,8 @@ void save_screenshot() {
         }
         std::fprintf(stderr, ok ? "screenshot saved to %s" : "screenshot could not be written to %s", path.c_str());
         std::fputc(10, stderr);
-        log::write("video", ok ? "screenshot saved to %s" : "screenshot could not be written to %s", path.c_str());
+        log::write("video", ok ? "screenshot saved to %s (framebuffer %ux%u, saved %ux%u, display aspect %.3f)" : "screenshot could not be written to %s", path.c_str(), width, height,
+                   saved_width, saved_height, aspect);
     }).detach();
 }
 

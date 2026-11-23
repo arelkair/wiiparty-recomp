@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -803,6 +804,36 @@ void test_settings_file_keys() {
     std::remove(path);
 }
 
+void test_screenshot_fit_aspect() {
+    std::vector<uint32_t> pixels(640 * 480, 0x00102030);
+    uint32_t width = 640;
+    uint32_t height = 480;
+    wp::screenshot::fit_aspect(pixels, width, height, 4.0 / 3.0);
+    CHECK(width == 640 && height == 480 && pixels.size() == 640u * 480u);
+    wp::screenshot::fit_aspect(pixels, width, height, 16.0 / 9.0);
+    CHECK(width == 853 && height == 480 && pixels.size() == 853u * 480u);
+    CHECK(pixels.front() == 0x00102030 && pixels.back() == 0x00102030);
+    std::vector<uint32_t> ramp(4 * 2);
+    for (uint32_t y = 0; y < 2; y++) {
+        for (uint32_t x = 0; x < 4; x++) {
+            ramp[y * 4 + x] = x * 0x00505050;
+        }
+    }
+    width = 4;
+    height = 2;
+    wp::screenshot::fit_aspect(ramp, width, height, 3.0);
+    CHECK(width == 6 && height == 2 && ramp.size() == 12);
+    CHECK(ramp[0] == 0 && ramp[5] == 3 * 0x00505050);
+    for (uint32_t x = 1; x < 6; x++) {
+        CHECK((ramp[x] & 0xFF) >= (ramp[x - 1] & 0xFF));
+    }
+    std::vector<uint32_t> bad(10);
+    width = 4;
+    height = 4;
+    wp::screenshot::fit_aspect(bad, width, height, 2.0);
+    CHECK(width == 4 && bad.size() == 10);
+}
+
 void test_screenshot_names() {
     std::tm time{};
     time.tm_year = 2026 - 1900;
@@ -1353,6 +1384,7 @@ int main() {
     test_key_defaults();
     test_settings_file_keys();
     test_screenshot_names();
+    test_screenshot_fit_aspect();
     test_live_settings();
     test_options_menu();
     test_controls_hint();
