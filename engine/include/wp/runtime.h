@@ -12,6 +12,8 @@ namespace wp {
 [[noreturn]] void missing_function(Cpu& c, uint32_t address);
 [[noreturn]] void fatal_error(const char* message);
 bool decrementer_due();
+uint64_t decrementer_deadline_ticks();
+int64_t time_base_to_ns(uint64_t ticks);
 void decrementer_fired();
 void print_call_stack();
 void start_profiler();

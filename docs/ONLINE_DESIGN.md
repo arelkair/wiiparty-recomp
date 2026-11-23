@@ -26,9 +26,15 @@ Option 1 is the one that scales and that detects cheating, and it needs the most
 
 `WP_DETERMINISTIC=1` turns on the virtual time mode: guest time, the video retrace, the DSP, the audio DMA, the emulated Bluetooth and the console clock follow a counter that the guest advances (5 microseconds per poll while it runs, a jump to the next retrace while it is idle, 200 nanoseconds per read of the time base), and the GPU runs on the same thread. `WP_DETERMINISTIC_TURBO=1` skips the real-time pacing, and `WP_DETERMINISM_EVERY=N` logs a hash of the 88 MB of guest memory (and of each megabyte of it) every N retraces. Nothing of this runs when the variable is not set.
 
-First result, on one PC: two runs with the same scripted input (title, menus, player count and Mii selection, 4 minutes of virtual time, 509 checkpoints) have identical memory at every checkpoint. The emulation is deterministic over that path.
+Results, on one PC, with the same scripted input (title, menus, player count, Mii and difficulty selection, start of an Isla Aventura game and its first rules screen):
 
-Not yet covered: gameplay (Board Game Island, minigames), another GPU or CPU, and a Linux build.
+- Two runs of 410 seconds of virtual time (24,600 retraces) have identical memory at all 205 checkpoints, and the same final hash.
+- Getting there needed three fixes besides the virtual clock: an idle guest jumps only to the next event (disc, timer or retrace) instead of the next frame; every read of the time base advances the clock a little, so a loop that waits for the time cannot hang; and the EFB copies stay on the GPU as textures and are not written to guest memory in this mode. The copies were the only source of difference found: the GPU rounds them differently from run to run, and they are exactly what would differ between two graphics cards. The cost is that a game that reads a captured picture back from memory (the photo minigames) does not work online.
+- The memory that the DSP writes by DMA (audio) is left out of the hash.
+
+Tools for finding a divergence: `WP_DETERMINISM_EVERY=N` logs the hash and the hash of each megabyte; `WP_DETERMINISM_CHUNK=n` adds the hash of each 4 KB page of megabyte n; `WP_DETERMINISM_DUMP=p` writes the content of page p of that megabyte.
+
+Not yet covered: a minigame, another GPU or CPU, and a Linux build.
 
 ## Plan
 

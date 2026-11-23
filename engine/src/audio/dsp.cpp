@@ -23,6 +23,7 @@
 #include "wp/big_stack.h"
 #include "wp/cpu.h"
 #include "wp/dsp_roms.h"
+#include "wp/determinism.h"
 #include "wp/dsp_translated.h"
 #include "wp/log.h"
 #include "wp/memory.h"
@@ -829,6 +830,7 @@ void DMAFromDSP(const u16* source, u32 address, u32 size) {
     u32 words = dsp_words(source, size);
     if (!wp::dsp::g_self_testing) {
         wp::dsp::note_dsp_write(dma_address(address), words * 2);
+        wp::determinism::note_dsp_write(dma_address(address) & wp::kAddressMask, words * 2);
     }
     if (wp::dsp::g_write_log) {
         for (u32 i = 0; i < words; i++) {

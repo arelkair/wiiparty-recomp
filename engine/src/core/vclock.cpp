@@ -44,6 +44,21 @@ void advance(Clock::duration step) {
     g_virtual_ns.fetch_add(std::chrono::duration_cast<std::chrono::nanoseconds>(step).count(), std::memory_order_relaxed);
 }
 
+void jump_to_ns(int64_t nanoseconds) {
+    int64_t current = g_virtual_ns.load(std::memory_order_relaxed);
+    if (nanoseconds > current) {
+        g_virtual_ns.store(nanoseconds, std::memory_order_relaxed);
+    }
+}
+
+int64_t ns_of(Clock::time_point point) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(point - origin()).count();
+}
+
+int64_t now_ns() {
+    return g_virtual_ns.load(std::memory_order_relaxed);
+}
+
 void jump_to(Clock::time_point target) {
     int64_t wanted = std::chrono::duration_cast<std::chrono::nanoseconds>(target - origin()).count();
     int64_t current = g_virtual_ns.load(std::memory_order_relaxed);

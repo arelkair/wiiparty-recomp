@@ -199,6 +199,14 @@ void reply(uint32_t request, int32_t result, uint64_t ticks) {
     schedule(ticks, EventKind::Reply, request);
 }
 
+uint64_t next_event_ticks() {
+    uint64_t earliest = UINT64_MAX;
+    for (const Event& event : g_events) {
+        earliest = std::min(earliest, event.due);
+    }
+    return earliest;
+}
+
 void update() {
     ios::update();
     uint32_t request = 0;

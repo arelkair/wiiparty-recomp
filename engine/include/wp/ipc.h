@@ -10,6 +10,7 @@ uint32_t read32(uint32_t address);
 void write32(uint32_t address, uint32_t value);
 void reply(uint32_t request, int32_t result, uint64_t ticks);
 void update();
+uint64_t next_event_ticks();
 bool interrupt_pending();
 void report();
 

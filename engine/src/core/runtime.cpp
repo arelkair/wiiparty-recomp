@@ -332,13 +332,35 @@ uint64_t wall_clock_ticks() {
     return static_cast<uint64_t>(static_cast<int64_t>(now) - kSecondsFrom1970To2000 + offset) * kTimeBaseHz;
 }
 
-uint64_t time_base() {
+namespace {
+
+uint64_t time_base_start() {
     static const uint64_t start = vclock::deterministic() ? 0x0000012345678900ull : wall_clock_ticks();
+    return start;
+}
+
+}
+
+uint64_t time_base() {
+    uint64_t start = time_base_start();
     if (vclock::deterministic()) {
         vclock::advance(std::chrono::nanoseconds(200));
     }
     uint64_t elapsed = static_cast<uint64_t>(vclock::elapsed_ns());
     return start + elapsed / 1000000000ull * kTimeBaseHz + elapsed % 1000000000ull * kTimeBaseHz / 1000000000ull;
+}
+
+int64_t time_base_to_ns(uint64_t ticks) {
+    uint64_t start = time_base_start();
+    if (ticks <= start) {
+        return 0;
+    }
+    uint64_t delta = ticks - start;
+    return static_cast<int64_t>(delta / kTimeBaseHz * 1000000000ull + delta % kTimeBaseHz * 1000000000ull / kTimeBaseHz);
+}
+
+uint64_t decrementer_deadline_ticks() {
+    return g_decrementer_armed ? g_decrementer_deadline : UINT64_MAX;
 }
 
 }

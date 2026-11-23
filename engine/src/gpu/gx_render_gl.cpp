@@ -1,3 +1,4 @@
+#include "wp/vclock.h"
 #include "wp/gx_render.h"
 
 #include "gx_render_common.h"
@@ -1710,7 +1711,7 @@ void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width,
     run_copy(entry.converted, target_width, target_height, x, y, width, height, format, intensity, alpha || depth, depth, filter);
     entry.view = entry.converted.texture;
     entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
-    if (queue_write_back(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter)) {
+    if (!vclock::deterministic() && queue_write_back(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter)) {
         entry.pending_writes++;
     } else if (entry.pending_writes == 0) {
         entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;

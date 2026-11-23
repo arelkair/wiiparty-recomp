@@ -168,7 +168,12 @@ void poll_interrupts(Cpu& c) {
     g_poll_counter = interval;
     if (vclock::deterministic()) {
         if (rd32(kCurrentThread) == 0) {
-            vclock::jump_to(g_next_retrace);
+            int64_t target = vclock::ns_of(g_next_retrace);
+            uint64_t event = std::min(ipc::next_event_ticks(), decrementer_deadline_ticks());
+            if (event != UINT64_MAX) {
+                target = std::min(target, std::max(time_base_to_ns(event), vclock::now_ns()));
+            }
+            vclock::jump_to_ns(target);
         } else {
             vclock::advance(kBusyStep);
         }
