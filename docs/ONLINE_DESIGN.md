@@ -42,6 +42,16 @@ A peer to peer game cannot stop a player from modifying their own PC. The aim is
 - **Privacy.** Peers see each other's IP address in a direct connection. The relay option hides it; the room code is random and short lived.
 - **Saves.** An online match never reads or writes the player's real save.
 
+## Product requirements
+
+The recompilation stays a 1:1 copy of the game. Online play is an optional addition and is off until the player asks for it.
+
+- **Off by default and invisible when off.** With `online.enabled = 0` there is no network code running, no virtual time mode, no deterministic scheduling and no extra button: the game behaves as it does today.
+- **Choice at install.** The launcher asks, when the game is installed, whether to enable online multiplayer. The question explains in plain words what it does: the other players' PCs connect directly, they can see the player's IP address unless a relay is used, and the game of an online match does not touch the real save. The answer is stored in `games/wiiparty/settings.ini`.
+- **Changeable later.** The same switch is on the launcher Settings page (and in the F10 menu), and the install question says so.
+- **A button inside the game.** When online is enabled, the game shows an online button that looks like part of the game, and opens its own menu (create or join a room, invitation code, players, leave). It is drawn by the engine over the game with the look of the game's own menus, and it is not part of the game's code. Patching the game's own menu to add a real button is possible later but is a much larger piece of reverse engineering.
+- **A match never changes the offline game.** The canonical online profile is used for the match; the player's own save, Miis and settings are left alone.
+
 ## Decisions needed
 
 - Lockstep with virtual time, or remote play.
