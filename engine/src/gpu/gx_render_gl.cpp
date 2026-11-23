@@ -1,5 +1,6 @@
 #include "wp/vclock.h"
 #include "wp/gx_render.h"
+#include "wp/present_layout.h"
 
 #include "gx_render_common.h"
 #include "../platform/gl_window.h"
@@ -1844,6 +1845,19 @@ void draw_overlay(int client_width, int client_height) {
     gl.Disable(GL_BLEND);
 }
 
+double composed_aspect(void* window_handle, double aspect) {
+    if (!window_handle) {
+        return aspect;
+    }
+    SDL_Window* window = static_cast<SDL_Window*>(window_handle);
+    int client_width = 0;
+    int client_height = 0;
+    if (!SDL_GetWindowSizeInPixels(window, &client_width, &client_height)) {
+        return aspect;
+    }
+    return layout::composed_aspect(client_width, std::max(1, client_height - titlebar::height(window)), aspect);
+}
+
 bool present_frame(void* window_handle, double aspect) {
     if (!g_device.ready || !g_device.frame.texture || !window_handle) {
         return false;
@@ -1862,14 +1876,8 @@ bool present_frame(void* window_handle, double aspect) {
     gl.Clear(GL_COLOR_BUFFER_BIT);
     int bar = titlebar::height(window);
     int area = std::max(1, client_height - bar);
-    double width = client_width;
-    double height = width / aspect;
-    if (height > area) {
-        height = area;
-        width = height * aspect;
-    }
-    gl.Viewport(static_cast<GLint>((client_width - width) / 2), static_cast<GLint>((area - height) / 2), static_cast<GLsizei>(width),
-                static_cast<GLsizei>(height));
+    layout::Rect frame = layout::compose(client_width, area, aspect);
+    gl.Viewport(static_cast<GLint>(frame.x), static_cast<GLint>(frame.y), static_cast<GLsizei>(frame.width), static_cast<GLsizei>(frame.height));
     use_fullscreen(g_device.present, 1.0f);
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindTexture(GL_TEXTURE_2D, g_device.frame.texture);

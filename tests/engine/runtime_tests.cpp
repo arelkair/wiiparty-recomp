@@ -24,6 +24,7 @@
 #include "wp/ios.h"
 #include "wp/keymap.h"
 #include "wp/mii.h"
+#include "wp/present_layout.h"
 #include "wp/modules.h"
 #include "wp/nand.h"
 #include "wp/options.h"
@@ -804,6 +805,17 @@ void test_settings_file_keys() {
     std::remove(path);
 }
 
+void test_present_layout() {
+    wp::layout::Rect wide = wp::layout::compose(1920.0, 1080.0, 16.0 / 9.0);
+    CHECK(wide.x == 0.0 && wide.y == 0.0 && std::abs(wide.width - 1920.0) < 1e-9 && std::abs(wide.height - 1080.0) < 1e-9);
+    wp::layout::Rect pillar = wp::layout::compose(2560.0, 1080.0, 16.0 / 9.0);
+    CHECK(std::abs(pillar.width - 1920.0) < 1e-9 && std::abs(pillar.x - 320.0) < 1e-9 && pillar.y == 0.0);
+    wp::layout::Rect letter = wp::layout::compose(1000.0, 1000.0, 4.0 / 3.0);
+    CHECK(std::abs(letter.width - 1000.0) < 1e-9 && std::abs(letter.height - 750.0) < 1e-9 && std::abs(letter.y - 125.0) < 1e-9);
+    CHECK(std::abs(wp::layout::composed_aspect(2560.0, 1080.0, 16.0 / 9.0) - 16.0 / 9.0) < 1e-9);
+    CHECK(wp::layout::composed_aspect(0.0, 0.0, 1.5) == 1.5);
+}
+
 void test_screenshot_fit_aspect() {
     std::vector<uint32_t> pixels(640 * 480, 0x00102030);
     uint32_t width = 640;
@@ -1384,6 +1396,7 @@ int main() {
     test_key_defaults();
     test_settings_file_keys();
     test_screenshot_names();
+    test_present_layout();
     test_screenshot_fit_aspect();
     test_live_settings();
     test_options_menu();

@@ -421,7 +421,7 @@ void save_screenshot() {
         log::write("video", "screenshot could not be saved to %s", path.c_str());
         return;
     }
-    double aspect = g_aspect;
+    double aspect = gx::render::composed_aspect(g_window, g_aspect);
     std::thread([file, path, pixels = std::move(pixels), width, height, aspect]() mutable {
         uint32_t saved_width = width;
         uint32_t saved_height = height;

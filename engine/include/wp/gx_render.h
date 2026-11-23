@@ -41,6 +41,7 @@ void poll_copies();
 bool copies_pending();
 void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const CopyFilter& filter);
 bool present_frame(void* window, double aspect);
+double composed_aspect(void* window, double aspect);
 bool read_frame(std::vector<uint32_t>& pixels, uint32_t& width, uint32_t& height);
 void dump_copies(const char* prefix);
 void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width, int height, bool half, uint32_t format, bool intensity, bool depth, bool alpha,

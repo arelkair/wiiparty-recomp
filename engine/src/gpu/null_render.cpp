@@ -47,6 +47,10 @@ void draw(const ScreenVertex*, uint32_t count) {
 
 void copy_to_framebuffer(int, int, int, int, bool, const CopyFilter&) {}
 
+double composed_aspect(void*, double aspect) {
+    return aspect;
+}
+
 bool present_frame(void*, double) {
     return true;
 }

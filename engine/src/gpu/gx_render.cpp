@@ -1,5 +1,6 @@
 #include "wp/vclock.h"
 #include "wp/gx_render.h"
+#include "wp/present_layout.h"
 #include "wp/log.h"
 
 #include "gx_render_common.h"
@@ -1970,6 +1971,17 @@ void draw_overlay(const RECT& client) {
     context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 }
 
+double composed_aspect(void* window_handle, double aspect) {
+    if (!window_handle) {
+        return aspect;
+    }
+    RECT client;
+    if (!GetClientRect(static_cast<HWND>(window_handle), &client)) {
+        return aspect;
+    }
+    return layout::composed_aspect(client.right, client.bottom, aspect);
+}
+
 bool present_frame(void* window_handle, double aspect) {
     if (!g_device.ready || !g_device.frame_view || !window_handle) {
         return false;
@@ -1985,14 +1997,8 @@ bool present_frame(void* window_handle, double aspect) {
     float black[4] = {0, 0, 0, 1};
     context->OMSetRenderTargets(1, &g_device.backbuffer_view, nullptr);
     context->ClearRenderTargetView(g_device.backbuffer_view, black);
-    double width = client.right;
-    double height = width / aspect;
-    if (height > client.bottom) {
-        height = client.bottom;
-        width = height * aspect;
-    }
-    D3D11_VIEWPORT viewport{static_cast<float>((client.right - width) / 2), static_cast<float>((client.bottom - height) / 2),
-                            static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f};
+    layout::Rect frame = layout::compose(client.right, client.bottom, aspect);
+    D3D11_VIEWPORT viewport{static_cast<float>(frame.x), static_cast<float>(frame.y), static_cast<float>(frame.width), static_cast<float>(frame.height), 0.0f, 1.0f};
     context->RSSetViewports(1, &viewport);
     context->RSSetState(g_device.present_rasterizer);
     context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
