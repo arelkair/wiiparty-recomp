@@ -73,6 +73,7 @@ private:
     void play_panel(float width, float height);
     void install_panel(float width);
     void progress_panel(float width, float height);
+    void update_presence();
     void settings_page(float width);
     void saves_page(float width);
     void controls_page(float width);
@@ -214,6 +215,10 @@ private:
     std::mutex task_mutex_;
     std::atomic<int> task_state_{0};
     std::atomic<int> task_percent_{0};
+    uint64_t presence_checked_ = 0;
+    bool presence_on_ = false;
+    int64_t presence_started_ = 0;
+    std::string presence_state_;
     std::string task_error_;
     bool uninstall_confirm_ = false;
     bool uninstall_keep_ = true;

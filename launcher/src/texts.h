@@ -267,6 +267,10 @@ struct Texts {
     const char* captures_close;
     const char* captures_save_crops;
     const char* captures_clear_area;
+    const char* presence_launcher;
+    const char* presence_installing;
+    const char* presence_download;
+    const char* presence_source;
 };
 
 void use_language(const std::string& code);

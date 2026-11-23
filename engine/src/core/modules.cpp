@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "wp/game_presence.h"
 #include "wp/log.h"
 #include "wp/runtime.h"
 
@@ -188,9 +189,6 @@ void describe_loaded_modules(uint32_t address) {
 namespace log {
 
 void watch_modules() {
-    if (!enabled()) {
-        return;
-    }
     using Clock = std::chrono::steady_clock;
     static Clock::time_point next = Clock::now();
     static std::string previous;
@@ -212,9 +210,13 @@ void watch_modules() {
         current += name;
     }
     if (current != previous) {
-        write("module", "loaded modules: %s", current.empty() ? "(none)" : current.c_str());
+        if (enabled()) {
+            write("module", "loaded modules: %s", current.empty() ? "(none)" : current.c_str());
+        }
         previous = current;
+        presence::modules_changed(current);
     }
+    presence::poll();
 }
 
 }

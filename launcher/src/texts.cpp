@@ -268,6 +268,10 @@ constexpr Texts kEnglish = {
     "Close",
     "Save cropped copy (%1)",
     "Clear area",
+    "In the launcher",
+    "Installing the game, %1%",
+    "Get Wii Party Recomp",
+    "Source code",
 };
 
 constexpr Texts kSpanish = {
@@ -534,6 +538,10 @@ constexpr Texts kSpanish = {
     "Cerrar",
     "Guardar copia recortada (%1)",
     "Quitar zona",
+    "En el launcher",
+    "Instalando el juego, %1%",
+    "Descargar Wii Party Recomp",
+    "Código fuente",
 };
 
 constexpr Texts kGalician = {
@@ -801,6 +809,10 @@ constexpr Texts kGalician = {
     "Pechar",
     "Gardar copia recortada (%1)",
     "Quitar zona",
+    "No launcher",
+    "Instalando o xogo, %1%",
+    "Descargar Wii Party Recomp",
+    "Código fonte",
 };
 
 struct Detail {
@@ -865,6 +877,9 @@ constexpr Detail kDetails[] = {
     {"system.skip_notices", "Presses A on the Wii Remote strap notice at start, as a player would.",
      "Pulsa A en el aviso de la correa del Wii Remote al empezar, como haría un jugador.",
      "Preme A no aviso da correa do Wii Remote ao comezar, como faría un xogador."},
+    {"system.discord_presence", "Shows on your Discord profile that you are playing, and what part of the game you are in. Nothing leaves your PC except to the Discord app that is open on it.",
+     "Muestra en tu perfil de Discord que estás jugando y en qué parte del juego estás. Nada sale de tu PC salvo hacia la aplicación de Discord que tengas abierta.",
+     "Mostra no teu perfil de Discord que estás a xogar e en que parte do xogo estás. Nada sae do teu PC salvo cara á aplicación de Discord que teñas aberta."},
     {"system.options_menu", "F10, or Start with Guide or Back on a gamepad, opens these settings over the game.",
      "F10, o Start con Guide o Back en un mando, abre estas opciones sobre el juego.",
      "F10, ou Start con Guide ou Back nun mando, abre estas opcións sobre o xogo."},

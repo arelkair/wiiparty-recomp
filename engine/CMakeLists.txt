@@ -32,6 +32,8 @@ add_library(wp_engine STATIC
     src/core/exi.cpp
     src/core/hollywood.cpp
     src/core/io.cpp
+    src/platform/discord_presence.cpp
+    src/platform/game_presence.cpp
     src/platform/png.cpp
     src/platform/save_backup.cpp
     src/platform/screenshot.cpp

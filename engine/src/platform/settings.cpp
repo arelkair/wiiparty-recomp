@@ -43,6 +43,7 @@ const Option kBaseOptions[] = {
     {"system.language", "auto"},
     {"system.pal60", "1"},
     {"system.skip_notices", "1"},
+    {"system.discord_presence", "1"},
     {"system.options_menu", "1"},
     {"audio.mute", "0"},
     {"audio.wiimote_speaker", "1"},

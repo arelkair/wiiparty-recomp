@@ -1469,6 +1469,10 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 
 - The OpenGL renderer (Linux) drops late EFB copies the same way the Direct3D one does since 0.1.25-alpha: it had the same structure and the same risk with `video.copy_wait = 0`. Only checked that it compiles; not run on Linux.
 
+## Unreleased
+
+- Discord Rich Presence, on by default and switchable in the launcher Settings page and the F10 menu (`system.discord_presence`). The game shows what the player is doing from the loaded module (starting, menus, Board Game Island, a minigame, reading the minigame rules); the launcher shows when it is open or installing, with the percentage. The text follows the console language, or the interface language when that is automatic, in English, Spanish, Galician, German, French, Italian and Dutch. The client is written for this project (no Discord library): it talks to the Discord app through its local pipe or socket, tries every slot, retries every 15 seconds until Discord opens, sends at most one update every 5 seconds and clears the status on exit. Nothing is sent to any server by the program. The application ID is set in `CMakeLists.txt` and `launcher/CMakeLists.txt`.
+
 ## Version 0.1.25-alpha (2026-11-20)
 
 - Build 2611-034 (game and launcher).

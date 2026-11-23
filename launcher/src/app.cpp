@@ -20,6 +20,7 @@
 #include "subprocess.h"
 #include "texts.h"
 #include "wiimote_pairing.h"
+#include "wp/discord_presence.h"
 #include "wp/keymap.h"
 #include "wp/options.h"
 #include "wp/padmap.h"
@@ -249,6 +250,7 @@ App::App(SDL_Window* window, Project project, bool install_mode)
 }
 
 App::~App() {
+    wp::discord::stop();
     if (download_thread_.joinable()) {
         download_thread_.join();
     }
@@ -549,7 +551,50 @@ void App::stop_capture() {
     capture_reserved_ = false;
 }
 
+void App::update_presence() {
+    static const char* const application = WP_DISCORD_APP_ID;
+    if (!*application) {
+        return;
+    }
+    uint64_t now = SDL_GetTicks();
+    if (presence_checked_ != 0 && now - presence_checked_ < 1000) {
+        return;
+    }
+    presence_checked_ = now;
+    if (!wp::settings::flag("system.discord_presence", "WP_DISCORD_PRESENCE")) {
+        if (presence_on_) {
+            wp::discord::stop();
+            presence_on_ = false;
+        }
+        return;
+    }
+    if (!presence_on_) {
+        presence_started_ = static_cast<int64_t>(std::time(nullptr));
+        wp::discord::start(application);
+        presence_on_ = true;
+        presence_state_.clear();
+    }
+    const Texts& t = texts();
+    std::string state = runner_.running() ? format(t.presence_installing, std::to_string(task_percent_.load())) : t.presence_launcher;
+    if (state == presence_state_) {
+        return;
+    }
+    presence_state_ = state;
+    wp::discord::Activity activity;
+    activity.details = "Wii Party Recomp";
+    activity.state = state;
+    activity.large_image = "logo";
+    activity.large_text = std::string("Wii Party Recomp launcher ") + WP_LAUNCHER_VERSION;
+    activity.start = presence_started_;
+    activity.first_label = t.presence_download;
+    activity.first_url = "https://github.com/arelkair/wiiparty-recomp/releases";
+    activity.second_label = t.presence_source;
+    activity.second_url = "https://github.com/arelkair/wiiparty-recomp";
+    wp::discord::update(activity);
+}
+
 void App::frame() {
+    update_presence();
     {
         std::lock_guard<std::mutex> lock(picked_mutex_);
         if (!picked_disc_.empty()) {
