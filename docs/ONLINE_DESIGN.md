@@ -30,6 +30,7 @@ Results, on one PC, with the same scripted input (title, menus, player count, Mi
 
 - Two runs of 410 seconds of virtual time (24,600 retraces) have identical memory at all 205 checkpoints, and the same final hash.
 - Getting there needed three fixes besides the virtual clock: an idle guest jumps only to the next event (disc, timer or retrace) instead of the next frame; every read of the time base advances the clock a little, so a loop that waits for the time cannot hang; and the EFB copies stay on the GPU as textures and are not written to guest memory in this mode. The copies were the only source of difference found: the GPU rounds them differently from run to run, and they are exactly what would differ between two graphics cards. The cost is that a game that reads a captured picture back from memory (the photo minigames) does not work online.
+- A second test goes through Minigames, Free play and four players to a minigame (Rolling Obstacles, module mg405) and its rules screens, repeating the cycle for about 3,900 seconds of virtual time: two parallel runs have identical memory at all 1,952 common checkpoints.
 - The memory that the DSP writes by DMA (audio) is left out of the hash.
 
 Tools for finding a divergence: `WP_DETERMINISM_EVERY=N` logs the hash and the hash of each megabyte; `WP_DETERMINISM_CHUNK=n` adds the hash of each 4 KB page of megabyte n; `WP_DETERMINISM_DUMP=p` writes the content of page p of that megabyte.
