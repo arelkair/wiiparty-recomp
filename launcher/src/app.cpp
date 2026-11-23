@@ -131,33 +131,90 @@ int replace_all_ignoring_case(std::string& text, const std::string& what, const 
     return count;
 }
 
-int redact_personal_data(std::string& text) {
-    int count = 0;
-    const char* home_folder = SDL_GetUserFolder(SDL_FOLDER_HOME);
-    std::string home = home_folder ? home_folder : "";
-    while (!home.empty() && (home.back() == '\\' || home.back() == '/')) {
-        home.pop_back();
+struct Redaction {
+    int install = 0;
+    int profile = 0;
+    int user_name = 0;
+    int short_form = 0;
+};
+
+#ifdef _WIN32
+std::string short_form_of(const std::string& utf8_path) {
+    int wide_size = MultiByteToWideChar(CP_UTF8, 0, utf8_path.c_str(), -1, nullptr, 0);
+    if (wide_size <= 1) {
+        return "";
     }
-    if (home.size() > 3) {
-        std::string slashed = home;
-        std::replace(slashed.begin(), slashed.end(), '\\', '/');
-        std::string doubled;
-        for (char letter : home) {
-            doubled += letter;
-            if (letter == '\\') {
-                doubled += '\\';
-            }
-        }
-        count += replace_all_ignoring_case(text, doubled, "%USERPROFILE%");
-        count += replace_all_ignoring_case(text, home, "%USERPROFILE%");
-        count += replace_all_ignoring_case(text, slashed, "%USERPROFILE%");
-        size_t separator = home.find_last_of("\\/");
-        std::string name = separator == std::string::npos ? home : home.substr(separator + 1);
-        if (name.size() >= 3) {
-            count += replace_all_ignoring_case(text, name, "<user>", true);
+    std::wstring wide(static_cast<size_t>(wide_size), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8_path.c_str(), -1, wide.data(), wide_size);
+    wchar_t buffer[MAX_PATH * 2];
+    DWORD length = GetShortPathNameW(wide.c_str(), buffer, MAX_PATH * 2);
+    if (length == 0 || length >= MAX_PATH * 2) {
+        return "";
+    }
+    int utf8_size = WideCharToMultiByte(CP_UTF8, 0, buffer, static_cast<int>(length), nullptr, 0, nullptr, nullptr);
+    std::string result(static_cast<size_t>(utf8_size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, buffer, static_cast<int>(length), result.data(), utf8_size, nullptr, nullptr);
+    return result;
+}
+#else
+std::string short_form_of(const std::string&) {
+    return "";
+}
+#endif
+
+std::string without_trailing_separators(std::string path) {
+    while (!path.empty() && (path.back() == '\\' || path.back() == '/')) {
+        path.pop_back();
+    }
+    return path;
+}
+
+std::string last_component(const std::string& path) {
+    size_t separator = path.find_last_of("\\/");
+    return separator == std::string::npos ? path : path.substr(separator + 1);
+}
+
+int replace_path(std::string& text, const std::string& path, const std::string& with) {
+    if (path.size() <= 3) {
+        return 0;
+    }
+    std::string slashed = path;
+    std::replace(slashed.begin(), slashed.end(), '\\', '/');
+    std::string doubled;
+    for (char letter : path) {
+        doubled += letter;
+        if (letter == '\\') {
+            doubled += '\\';
         }
     }
+    int count = replace_all_ignoring_case(text, doubled, with);
+    count += replace_all_ignoring_case(text, path, with);
+    count += replace_all_ignoring_case(text, slashed, with);
     return count;
+}
+
+Redaction redact_personal_data(std::string& text, const std::string& install_folder) {
+    Redaction counts;
+    counts.install = replace_path(text, without_trailing_separators(install_folder), "<install>");
+    const char* home_folder = SDL_GetUserFolder(SDL_FOLDER_HOME);
+    std::string home = without_trailing_separators(home_folder ? home_folder : "");
+    if (home.size() <= 3) {
+        return counts;
+    }
+    std::string short_home = without_trailing_separators(short_form_of(home));
+    counts.profile = replace_path(text, home, "%USERPROFILE%");
+    if (!short_home.empty()) {
+        counts.short_form = replace_path(text, short_home, "%USERPROFILE%");
+    }
+    std::string name = last_component(home);
+    if (name.size() >= 3) {
+        counts.user_name = replace_all_ignoring_case(text, name, "<user>", true);
+    }
+    std::string short_name = last_component(short_home);
+    if (short_name.size() >= 3 && lowered(short_name) != lowered(name)) {
+        counts.short_form += replace_all_ignoring_case(text, short_name, "<user>", true);
+    }
+    return counts;
 }
 
 std::string folder_url(const std::filesystem::path& folder) {
@@ -1812,9 +1869,13 @@ std::string App::report_text() {
     out << "\n--- last install (end) ---\n" << tail_of(project_.root / "build" / "install.log", 200);
     out << "\n--- last game session (end) ---\n" << tail_of(project_.root / "logs" / "game.log", 400);
     std::string text = out.str();
-    int replaced = redact_personal_data(text);
-    text += "\n--- privacy ---\nThe Windows user name and the profile folder were replaced by <user> and %USERPROFILE% in this report (" + std::to_string(replaced) +
-            " replacements). Read it before sharing it: other personal data, such as a Mii name or a custom folder name, is not detected.\n";
+    Redaction counts = redact_personal_data(text, utf8_of(project_.root));
+    text += "\n--- privacy ---\n";
+    text += "Replaced in this report: the install folder by <install> (" + std::to_string(counts.install) + "), the Windows profile folder by %USERPROFILE% (" +
+            std::to_string(counts.profile) + "), the Windows user name by <user> (" + std::to_string(counts.user_name) + "), the short 8.3 form of the profile folder and user name (" +
+            std::to_string(counts.short_form) + ").\n";
+    text += "Not replaced: the computer name, Mii names, gamepad names, the names of folders inside the install (texture packs, backups), any other folder you chose, and the "
+            "hardware names. Read the report before sharing it.\n";
     return text;
 }
 
