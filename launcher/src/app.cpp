@@ -90,6 +90,76 @@ std::string tail_of(const std::filesystem::path& path, size_t lines) {
     return text.empty() ? "(none)\n" : text;
 }
 
+std::string lowered(std::string text) {
+    for (char& letter : text) {
+        if (letter >= 'A' && letter <= 'Z') {
+            letter = static_cast<char>(letter - 'A' + 'a');
+        }
+    }
+    return text;
+}
+
+bool is_word_character(char letter) {
+    return (letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z') || (letter >= '0' && letter <= '9') || letter == '_' ||
+           static_cast<unsigned char>(letter) >= 0x80;
+}
+
+int replace_all_ignoring_case(std::string& text, const std::string& what, const std::string& with, bool whole_word = false) {
+    if (what.empty()) {
+        return 0;
+    }
+    int count = 0;
+    std::string haystack = lowered(text);
+    std::string needle = lowered(what);
+    std::string result;
+    size_t position = 0;
+    for (size_t found = haystack.find(needle); found != std::string::npos; found = haystack.find(needle, position)) {
+        size_t end = found + needle.size();
+        bool inside_word = whole_word && ((found > 0 && is_word_character(text[found - 1])) || (end < text.size() && is_word_character(text[end])));
+        if (inside_word) {
+            result.append(text, position, end - position);
+            position = end;
+            continue;
+        }
+        result.append(text, position, found - position);
+        result += with;
+        position = end;
+        count++;
+    }
+    result.append(text, position, std::string::npos);
+    text = result;
+    return count;
+}
+
+int redact_personal_data(std::string& text) {
+    int count = 0;
+    const char* home_folder = SDL_GetUserFolder(SDL_FOLDER_HOME);
+    std::string home = home_folder ? home_folder : "";
+    while (!home.empty() && (home.back() == '\\' || home.back() == '/')) {
+        home.pop_back();
+    }
+    if (home.size() > 3) {
+        std::string slashed = home;
+        std::replace(slashed.begin(), slashed.end(), '\\', '/');
+        std::string doubled;
+        for (char letter : home) {
+            doubled += letter;
+            if (letter == '\\') {
+                doubled += '\\';
+            }
+        }
+        count += replace_all_ignoring_case(text, doubled, "%USERPROFILE%");
+        count += replace_all_ignoring_case(text, home, "%USERPROFILE%");
+        count += replace_all_ignoring_case(text, slashed, "%USERPROFILE%");
+        size_t separator = home.find_last_of("\\/");
+        std::string name = separator == std::string::npos ? home : home.substr(separator + 1);
+        if (name.size() >= 3) {
+            count += replace_all_ignoring_case(text, name, "<user>", true);
+        }
+    }
+    return count;
+}
+
 std::string folder_url(const std::filesystem::path& folder) {
     std::string url = "file:///" + utf8_of(folder.lexically_normal());
     std::replace(url.begin(), url.end(), '\\', '/');
@@ -1741,7 +1811,11 @@ std::string App::report_text() {
     out << "\n--- settings ---\n" << tail_of(project_.game_folder() / "settings.ini", 400);
     out << "\n--- last install (end) ---\n" << tail_of(project_.root / "build" / "install.log", 200);
     out << "\n--- last game session (end) ---\n" << tail_of(project_.root / "logs" / "game.log", 400);
-    return out.str();
+    std::string text = out.str();
+    int replaced = redact_personal_data(text);
+    text += "\n--- privacy ---\nThe Windows user name and the profile folder were replaced by <user> and %USERPROFILE% in this report (" + std::to_string(replaced) +
+            " replacements). Read it before sharing it: other personal data, such as a Mii name or a custom folder name, is not detected.\n";
+    return text;
 }
 
 bool App::write_report(std::filesystem::path& path) {
