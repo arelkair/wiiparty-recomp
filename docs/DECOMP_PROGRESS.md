@@ -1465,6 +1465,13 @@ Build cost: each addition of a replaced function regenerates `functions.h` and r
 - Release files: the Windows launcher, the offline pack and the sources zip were built on Windows; the AppImage was built on Debian 11 in WSL2 (needs glibc 2.29). The release notes are in `build/RELEASE_NOTES_v0.1.20-alpha.md` (not committed).
 - The EFB copy change is not measured in game yet (no integrated GPU available when it was written).
 
+## Version 0.1.27-alpha (2026-11-25)
+
+- Build 2611-036 (launcher only; the game is still build 2611-035).
+- Security fix in the launcher: the disc identifier (the first 6 bytes of `sys/boot.bin`) was used as a folder name without any check, so a disc image with an identifier such as `..\..\` and the official main.dol could make the launcher delete the whole `games` folder (saves, backups, settings) when it was added as another version. The identifier must now be six capital letters or digits, a stored version must be a direct child of `versions/`, and a disc with an invalid identifier is rejected with a message in English, Spanish and Galician. Found in a source review of the launcher. Tested in temporary installs: v0.1.26-alpha deletes the folder when asked to switch to `..\..\`, this version refuses and keeps everything. The full disc flow (extracting a modified image) was not run.
+- Not fixed in this version: the launcher update is not signed independently of the GitHub account (the hash comes from the same API reply as the download address), and the Redump verification of a disc may never run on Windows (it starts `nodtool` by a bare name; not confirmed).
+- The rest of the launcher review is partial: the Mii import, the Dolphin import, the save restore, the Bluetooth pairing, the SVG reader and `gunzip` were not reviewed.
+
 ## Version 0.1.26-alpha (2026-11-23)
 
 - Build 2611-035 (game and launcher).
