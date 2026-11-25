@@ -14,6 +14,7 @@
 #include <thread>
 #include <vector>
 
+#include "disc_id.h"
 #include "wp/cpu.h"
 #include "wp/custom_textures.h"
 #include "wp/frame_input.h"
@@ -806,6 +807,34 @@ void test_settings_file_keys() {
     std::remove(path);
 }
 
+void test_disc_id_guards() {
+    CHECK(valid_disc_id("SUPP01"));
+    CHECK(valid_disc_id("SUPE01"));
+    CHECK(valid_disc_id("SUPJ01"));
+    CHECK(!valid_disc_id(""));
+    CHECK(!valid_disc_id("SUPP0"));
+    CHECK(!valid_disc_id("SUPP012"));
+    CHECK(!valid_disc_id("supp01"));
+    CHECK(!valid_disc_id("SUP P1"));
+    CHECK(!valid_disc_id("..\\..\\"));
+    CHECK(!valid_disc_id("../../"));
+    CHECK(!valid_disc_id("/tmp/x"));
+    CHECK(!valid_disc_id("C:\\abc"));
+    CHECK(!valid_disc_id(std::string("SUP\0P1", 6)));
+    std::filesystem::path versions = std::filesystem::path("games") / "wiiparty" / "versions";
+    CHECK(is_direct_child(versions, versions / "SUPP01"));
+    CHECK(is_direct_child(versions, versions / "SUPP01" / "."));
+    CHECK(is_direct_child(versions / "", versions / "SUPE01"));
+    CHECK(!is_direct_child(versions, versions));
+    CHECK(!is_direct_child(versions, versions / ".."));
+    CHECK(!is_direct_child(versions, versions / "../.."));
+    CHECK(!is_direct_child(versions, versions / "../../"));
+    CHECK(!is_direct_child(versions, versions / "SUPP01" / "extracted"));
+    CHECK(!is_direct_child(versions, versions / "SUPP01" / ".." / ".."));
+    CHECK(!is_direct_child(versions, std::filesystem::path("games") / "wiiparty"));
+    CHECK(!is_direct_child(versions, std::filesystem::path("/tmp/x")));
+}
+
 void test_present_layout() {
     wp::layout::Rect wide = wp::layout::compose(1920.0, 1080.0, 16.0 / 9.0);
     CHECK(wide.x == 0.0 && wide.y == 0.0 && std::abs(wide.width - 1920.0) < 1e-9 && std::abs(wide.height - 1080.0) < 1e-9);
@@ -1426,6 +1455,7 @@ int main() {
     test_key_defaults();
     test_settings_file_keys();
     test_screenshot_names();
+    test_disc_id_guards();
     test_present_layout();
     test_screenshot_fit_aspect();
     test_frame_input_packing();

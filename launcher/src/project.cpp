@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "disc_id.h"
 #include "embedded.h"
 #include "payload.h"
 #include "prefs.h"
@@ -229,7 +230,8 @@ std::string Project::disc_id() const {
     std::ifstream file(extracted_folder() / "sys" / "boot.bin", std::ios::binary);
     char id[6] = {};
     file.read(id, sizeof(id));
-    return file ? std::string(id, sizeof(id)) : std::string();
+    std::string text(id, sizeof(id));
+    return file && valid_disc_id(text) ? text : std::string();
 }
 
 std::vector<std::string> Project::disc_languages() const {
@@ -257,7 +259,7 @@ std::vector<std::string> Project::stored_versions() const {
     std::error_code error;
     for (const auto& entry : std::filesystem::directory_iterator(versions_folder(), error)) {
         std::string name = entry.path().filename().string();
-        if (name.size() == 6 && std::filesystem::exists(entry.path() / "extracted" / "sys" / "boot.bin", error)) {
+        if (valid_disc_id(name) && std::filesystem::exists(entry.path() / "extracted" / "sys" / "boot.bin", error)) {
             ids.push_back(name);
         }
     }
@@ -267,11 +269,14 @@ std::vector<std::string> Project::stored_versions() const {
 
 bool Project::store_active_version() const {
     std::string active = disc_id();
-    if (active.size() != 6) {
+    if (!valid_disc_id(active)) {
         return false;
     }
     std::error_code error;
     std::filesystem::path parked = versions_folder() / active;
+    if (!is_direct_child(versions_folder(), parked)) {
+        return false;
+    }
     std::filesystem::create_directories(parked, error);
     std::filesystem::rename(extracted_folder(), parked / "extracted", error);
     if (error) {
@@ -291,7 +296,13 @@ bool Project::store_active_version() const {
 }
 
 bool Project::switch_version(const std::string& id) const {
+    if (!valid_disc_id(id)) {
+        return false;
+    }
     std::filesystem::path stored = versions_folder() / id;
+    if (!is_direct_child(versions_folder(), stored)) {
+        return false;
+    }
     std::error_code error;
     if (!std::filesystem::exists(stored / "extracted", error) || !store_active_version()) {
         return false;

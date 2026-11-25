@@ -1,5 +1,6 @@
 add_executable(runtime_tests engine/runtime_tests.cpp engine/test_game.cpp)
 target_link_libraries(runtime_tests PRIVATE wp_engine)
+target_include_directories(runtime_tests PRIVATE "${CMAKE_SOURCE_DIR}/launcher/src")
 target_compile_options(runtime_tests PRIVATE -Wall -Wextra)
 add_test(NAME runtime_tests COMMAND runtime_tests)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

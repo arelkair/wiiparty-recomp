@@ -135,6 +135,7 @@ struct Texts {
     const char* disc_unknown;
     const char* disc_damaged;
     const char* disc_unsupported;
+    const char* disc_id_invalid;
     const char* step_switch_version;
     const char* version_already;
     const char* gamepads_title;

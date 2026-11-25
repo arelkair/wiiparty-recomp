@@ -15,6 +15,7 @@
 #include "layout.h"
 #include "payload.h"
 #include "prefs.h"
+#include "disc_id.h"
 #include "sha256.h"
 #include "shortcut.h"
 #include "wp/screenshot.h"
@@ -59,7 +60,8 @@ std::string read_disc_id(const std::filesystem::path& extracted) {
     std::ifstream file(extracted / "sys" / "boot.bin", std::ios::binary);
     char id[6] = {};
     file.read(id, sizeof(id));
-    return file ? std::string(id, sizeof(id)) : std::string();
+    std::string text(id, sizeof(id));
+    return file && valid_disc_id(text) ? text : std::string();
 }
 
 std::set<std::string> supported_dol_hashes(const std::filesystem::path& root) {
@@ -2084,6 +2086,14 @@ void App::install(bool adding) {
         std::filesystem::path folder = adding ? project.versions_folder() / "incoming" : project.extracted_folder();
         std::set<std::string> supported_hashes = supported_dol_hashes(project.root);
         std::error_code missing;
+        if (read_disc_id(folder).empty()) {
+            if (adding) {
+                std::error_code removed;
+                std::filesystem::remove_all(project.versions_folder() / "incoming", removed);
+            }
+            message = texts().disc_id_invalid;
+            return false;
+        }
         if (supported_hashes.empty() || !std::filesystem::exists(folder / "sys" / "main.dol", missing) || supported_hashes.count(sha256_of(folder / "sys" / "main.dol")) != 0) {
             return true;
         }
@@ -2104,10 +2114,15 @@ void App::install(bool adding) {
             std::filesystem::path incoming_folder = project.versions_folder() / "incoming";
             std::string id = read_disc_id(incoming_folder);
             std::error_code error;
-            if (id.size() != 6 || id == project.disc_id()) {
+            if (id.empty()) {
+                std::filesystem::remove_all(incoming_folder, error);
+                message = texts().disc_id_invalid;
+                return false;
+            }
+            if (id == project.disc_id()) {
                 std::filesystem::remove_all(incoming_folder, error);
                 message = texts().version_already;
-                return id.size() == 6;
+                return true;
             }
             std::filesystem::path target = project.versions_folder() / id;
             if (std::filesystem::exists(target / "extracted", error)) {
